@@ -34,7 +34,7 @@ struct LAATaskSessionsSection: View {
                             Link(destination: url) {
                                 VStack(alignment: .leading, spacing: LAASpacing.x1) {
                                     Text(verbatim: session.name)
-                                    Text(verbatim: "推定 · " + LAAWorkPresentation.phase(session.phase))
+                                    Text(verbatim: "Inferred · " + LAAWorkPresentation.phase(session.phase))
                                         .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                                 }
                             }

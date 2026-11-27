@@ -69,10 +69,10 @@ struct LAAChatsContent: View {
                 if showSearch { search }
                 if let failure {
                     HStack(spacing: 8) {
-                        Text(verbatim: failure).font(.system(size: 13)).foregroundStyle(LAAColor.secondaryText)
+                        Text(verbatim: failure).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                         Spacer(minLength: 0)
                         if snapshot.groupsState != .unsupported {
-                            Button(String("再試行"), action: retry).font(.system(size: 13)).foregroundStyle(LAAColor.link).frame(minHeight: 44)
+                            Button(String("Retry"), action: retry).laaTextStyle(.secondary).foregroundStyle(LAAColor.link).frame(minHeight: 44)
                         }
                     }
                 }
@@ -216,14 +216,15 @@ struct LAAChatsContent: View {
                         avatar(profile: monet.profile, name: monet.name, size: Self.personAvatarSize)
                         VStack(alignment: .leading, spacing: LAASpacing.x1) {
                             HStack(spacing: 6) {
-                                Text(verbatim: "Monet").font(LAAType.title("Monet", size: 17, relativeTo: .body))
-                                LAARoleBadge(role: "Secretary")
+                                LAAChatsNameLine(role: "Secretary") {
+                                    Text(verbatim: "Monet").font(LAAType.title("Monet", size: 17, relativeTo: .body))
+                                }
                                 if let unread = snapshot.unreadByProfile[monet.profile], unread > 0 {
                                     if unread == 1 { unreadDot(unread) } else { unreadBadge(unread) }
                                 }
                             }
                             if let preview = monet.lastMessage, !preview.isEmpty {
-                                Text(verbatim: preview).font(.system(size: 13))
+                                Text(verbatim: preview).laaTextStyle(.secondary)
                                     .lineLimit(1).foregroundStyle(LAAColor.secondaryText)
                             }
                         }
@@ -236,7 +237,7 @@ struct LAAChatsContent: View {
                     Button { callPerson(monet) } label: {
                         LAACompactGlassIcon(icon: .call)
                     }.buttonStyle(.plain).fixedSize()
-                        .disabled(!monet.available).accessibilityLabel(String("Monetに電話"))
+                        .disabled(!monet.available).accessibilityLabel(String("Call Monet"))
                         .accessibilityIdentifier("laa.chats.monet.call")
                 }
             }
@@ -361,20 +362,18 @@ struct LAAChatsContent: View {
         HStack(spacing: LAASpacing.x3) {
             avatar(profile: person.profile, name: person.name, size: size)
             VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                HStack(spacing: 6) {
+                LAAChatsNameLine(role: LAAChatPerson.role(profile: person.profile, existingRole: person.role)) {
                     Text(verbatim: LAAChatPerson.name(person.name)).font(LAAType.chatListName(person.name, japaneseSize: japaneseNameSize))
-                        .lineLimit(1).truncationMode(.middle)
+                        .truncationMode(.middle)
                         .foregroundStyle(selected ? LAAColor.link : LAAColor.text)
-                        .layoutPriority(1)
-                    if let role = LAAChatPerson.role(profile: person.profile, existingRole: person.role) { LAARoleBadge(role: role) }
                 }
                 if let preview = person.lastMessage, !preview.isEmpty {
-                    Text(verbatim: preview).font(.system(size: 13)).lineLimit(1).foregroundStyle(LAAColor.secondaryText)
+                    Text(verbatim: preview).laaTextStyle(.secondary).lineLimit(1).foregroundStyle(LAAColor.secondaryText)
                 }
             }
             Spacer(minLength: LAASpacing.x2)
             VStack(alignment: .trailing, spacing: 8) {
-                if let date = person.lastMessageAt { Text(verbatim: LAADateText.relative(date)).font(.caption2).foregroundStyle(LAAColor.secondaryText) }
+                if let date = person.lastMessageAt { Text(verbatim: LAADateText.relative(date)).laaTextStyle(.note).foregroundStyle(LAAColor.secondaryText) }
                 if let unread = snapshot.unreadByProfile[person.profile], unread > 0 {
                     if unread == 1 { unreadDot(unread) } else { unreadBadge(unread) }
                 }
@@ -412,7 +411,7 @@ struct LAAChatsContent: View {
             VStack(alignment: .leading, spacing: LAASpacing.x1) {
                 Text(verbatim: room.name).laaTextStyle(.body)
                     .foregroundStyle(selected ? LAAColor.link : LAAColor.text)
-                Text(verbatim: "\(room.members.count)人").font(.system(size: 13)).foregroundStyle(LAAColor.secondaryText)
+                Text(verbatim: "\(room.members.count)人").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             }
             Spacer(minLength: LAASpacing.x2)
 
@@ -435,7 +434,7 @@ struct LAAChatsContent: View {
 
     private func sectionHeader(_ title: String) -> some View {
         Text(verbatim: title)
-            .font(.system(size: 15, weight: .semibold))
+            .laaTextStyle(.body).fontWeight(.semibold)
             .foregroundStyle(LAAColor.text)
             .accessibilityAddTraits(.isHeader)
     }
@@ -568,6 +567,26 @@ private enum LAAChatsRowTarget {
 
 /// Mac only: a row's selected and hovered fill. `active` is false on the
 /// phone, where the list draws neither, so the row is untouched there.
+/// A name and its role on one line. The role shows whole or not at all: a
+/// role squeezed by a long name or large text was cut mid-glyph with no
+/// ellipsis, and a name never breaks inside a word ("Mone / t").
+private struct LAAChatsNameLine<Name: View>: View {
+    let role: String?
+    @ViewBuilder let name: Name
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            if let role {
+                HStack(spacing: 6) {
+                    name.lineLimit(1).fixedSize()
+                    LAARoleBadge(role: role).fixedSize()
+                }
+            }
+            name.lineLimit(1)
+        }
+    }
+}
+
 private struct LAAChatsRowChrome: ViewModifier {
     let active: Bool
     let selected: Bool

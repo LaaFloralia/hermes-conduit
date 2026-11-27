@@ -147,7 +147,7 @@ final class LAATaskRunUITests: XCTestCase {
         XCTAssertLessThanOrEqual(count.frame.maxX, grouping.frame.minX + 1)
         XCTAssertLessThanOrEqual(grouping.frame.maxX, app.frame.maxX)
         XCTAssertFalse(app.buttons["work.tasks.quick.all"].exists, "the quick filters live in the count menu")
-        XCTAssertTrue(count.label.hasPrefix("表示、All、"), count.label)
+        XCTAssertTrue(count.label.hasPrefix("View, All, "), count.label)
         let everything = count.label
 
         assigned.tap()
@@ -155,7 +155,7 @@ final class LAATaskRunUITests: XCTestCase {
         XCTAssertTrue(mine.waitForExistence(timeout: 5))
         XCTAssertTrue(assigned.isSelected)
         XCTAssertFalse(created.isSelected)
-        XCTAssertEqual(count.label, "表示、All、1件")
+        XCTAssertEqual(count.label, "View, All, 1")
 
         created.tap()
         XCTAssertTrue(mine.waitForNonExistence(timeout: 5))
@@ -173,7 +173,7 @@ final class LAATaskRunUITests: XCTestCase {
         XCTAssertTrue(app.buttons["work.linear.archive"].waitForExistence(timeout: 5))
         app.buttons["work.linear.archive"].tap()
         XCTAssertTrue(created.waitForNonExistence(timeout: 5))
-        XCTAssertTrue(count.label.hasPrefix("表示、Archived、"), count.label)
+        XCTAssertTrue(count.label.hasPrefix("View, Archived, "), count.label)
         count.tap()
         XCTAssertTrue(app.buttons["work.tasks.quick.all"].waitForExistence(timeout: 5))
         app.buttons["work.tasks.quick.all"].tap()

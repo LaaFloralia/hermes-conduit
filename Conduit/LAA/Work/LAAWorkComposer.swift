@@ -166,7 +166,7 @@ struct LAAWorkComposer: View {
                 })
             .onTapGesture(count: 2) { withAnimation(.snappy) { manualHeight = nil } }
             .accessibilityElement()
-            .accessibilityLabel(Text(verbatim: "入力欄の高さ"))
+            .accessibilityLabel(Text(verbatim: "Composer Height"))
             .accessibilityValue(Text(verbatim: manualHeight == nil ? "自動" : "\(Int(fieldHeight))ポイント"))
             .accessibilityAdjustableAction { direction in
                 let step: CGFloat = 60

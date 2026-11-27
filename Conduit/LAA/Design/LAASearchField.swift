@@ -95,6 +95,6 @@ private struct LAASearchFieldFace: ViewModifier {
 extension LAACopy {
     /// The clear button's name, read by VoiceOver and shown as the Mac's
     /// tooltip. One label for every section's search.
-    static let searchClear = "検索を消す"
+    static let searchClear = "Clear Search"
 }
 #endif

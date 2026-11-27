@@ -68,10 +68,10 @@ struct LAAPersonalTaskDetailView: View {
                         }
                         if let raw = task.url, let url = URL(string: raw), url.scheme?.lowercased() == "https" {
                             Link(destination: url) {
-                                Label { Text(verbatim: "Linear") } icon: { Image(systemName: "arrow.up.right.square") }
+                                Label { Text(verbatim: LAACopy.WorkTab.openTask) } icon: { Image(systemName: "arrow.up.right.square") }
                             }
                             .buttonStyle(.laaText)
-                            .accessibilityLabel(Text(verbatim: LAACopy.WorkTab.openLinear))
+                            .accessibilityLabel(Text(verbatim: LAACopy.WorkTab.openTask))
                         }
                     } else if error == nil { LAALoadingDots() }
                 }.padding(.horizontal, LAASpacing.horizontal).padding(.vertical, LAASpacing.x4)
@@ -189,8 +189,8 @@ struct LAAPersonalTaskDetailView: View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
             Text(verbatim: "Run").laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
                 .accessibilityAddTraits(.isHeader)
-            if let assignee = runAssignee(owner, task) { runRow("担当", assignee) }
-            if let model = owner.run?.profileLabel ?? owner.run?.profile { runRow("モデル", model) }
+            if let assignee = runAssignee(owner, task) { runRow("Assignee", assignee) }
+            if let model = owner.run?.profileLabel ?? owner.run?.profile { runRow("Model", model) }
             if let status = owner.runStatus {
                 HStack(spacing: LAASpacing.x2) {
                     Text(verbatim: "実施").foregroundStyle(LAAColor.secondaryText)
@@ -225,13 +225,13 @@ struct LAAPersonalTaskDetailView: View {
     /// not repeated.
     private func properties(_ task: LAAPersonalTask) -> some View {
         Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: LAASpacing.x3, verticalSpacing: LAASpacing.x3) {
-            if let status = task.status?.name { property("circle.dashed", "状態") { Text(verbatim: status) } }
-            if let owner = task.owner?.name { property("person", "担当") { Text(verbatim: owner) } }
+            if let status = task.status?.name { property("circle.dashed", "Status") { Text(verbatim: status) } }
+            if let owner = task.owner?.name { property("person", "Assignee") { Text(verbatim: owner) } }
             if let delegate = task.executor?.name {
-                property("arrow.turn.down.right", "委任先") { Text(verbatim: delegate) }
+                property("arrow.turn.down.right", "Delegate") { Text(verbatim: delegate) }
             }
             if let priority = task.priority, priority != 0 {
-                property("chart.bar", "優先度") {
+                property("chart.bar", "Priority") {
                     HStack(spacing: LAASpacing.x1) {
                         LAATaskPriorityMark(value: priority)
                         Text(verbatim: LAALinearTask.priorityLabel(priority))
@@ -239,23 +239,23 @@ struct LAAPersonalTaskDetailView: View {
                 }
             }
             if let due = LAADateText.dueDay(task.dueDate) {
-                property("calendar", "期限") {
+                property("calendar", "Due Date") {
                     Text(verbatim: due.label)
                         .fontWeight(due.urgent ? .semibold : .regular)
                         .foregroundStyle(due.urgent ? LAAColor.attention : LAAColor.text)
                 }
             }
-            if let project = task.project?.name { property("folder", "プロジェクト") { Text(verbatim: project) } }
+            if let project = task.project?.name { property("folder", "Project") { Text(verbatim: project) } }
             if let milestone = task.milestone?.name { property("flag", "マイルストーン") { Text(verbatim: milestone) } }
             if let cycle = task.cycle?.name ?? task.cycle?.number.map(String.init) {
                 property("arrow.triangle.2.circlepath", "サイクル") { Text(verbatim: cycle) }
             }
-            if let estimate = task.estimate { property("gauge.with.dots.needle.33percent", "見積り") { Text(verbatim: estimate.formatted(.number)) } }
+            if let estimate = task.estimate { property("gauge.with.dots.needle.33percent", "Estimate") { Text(verbatim: estimate.formatted(.number)) } }
             if let parent = task.parent {
-                property("arrow.up.left", "親") { Text(verbatim: parent.identifier ?? parent.title ?? parent.id) }
+                property("arrow.up.left", "Parent") { Text(verbatim: parent.identifier ?? parent.title ?? parent.id) }
             }
             if let labels = task.labels, !labels.isEmpty {
-                property("tag", "ラベル") {
+                property("tag", "Labels") {
                     VStack(alignment: .leading, spacing: LAASpacing.x1) {
                         LAATaskMetaFlow(spacing: 6, lineSpacing: 6) {
                             ForEach(labels) { label in
@@ -273,7 +273,7 @@ struct LAAPersonalTaskDetailView: View {
                     }
                 }
             }
-            property("clock", "更新") { Text(verbatim: LAAWorkPresentation.date(task.updatedAt)) }
+            property("clock", "Updated") { Text(verbatim: LAAWorkPresentation.date(task.updatedAt)) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .workRuled()
@@ -283,7 +283,9 @@ struct LAAPersonalTaskDetailView: View {
     @ViewBuilder
     private func property<Value: View>(_ symbol: String, _ label: String, @ViewBuilder value: () -> Value) -> some View {
         let key = Label { Text(verbatim: label) } icon: {
-            Image(systemName: symbol).foregroundStyle(LAAColor.secondaryText).frame(width: LAAIconSize.row)
+            // At least the row's icon width; a larger glyph widens it
+            // rather than running into the label.
+            Image(systemName: symbol).foregroundStyle(LAAColor.secondaryText).frame(minWidth: LAAIconSize.row)
         }
         .laaTextStyle(.secondary)
         .foregroundStyle(LAAColor.secondaryText)

@@ -43,20 +43,20 @@ struct LAASubagentRow: View {
             VStack(alignment: .leading, spacing: 4 * Self.scale) {
                 HStack(spacing: 8 * Self.scale) {
                     Text(verbatim: child.shape).foregroundStyle(child.color)
-                        .font(.system(size: 12 * Self.scale))
-                    Text(verbatim: child.title)
-                        .font(.system(size: 13 * Self.scale, weight: .medium))
+                        .laaTextStyle(.note)
+                    Text(verbatim: child.displayTitle)
+                        .laaTextStyle(.secondary).fontWeight(.medium)
                         .foregroundStyle(LAAColor.text)
                         .lineLimit(1)
                     Text(verbatim: "· " + child.word)
-                        .font(.system(size: 12 * Self.scale, weight: .medium))
+                        .laaTextStyle(.note)
                         .foregroundStyle(child.color)
                         .lineLimit(1)
                         .fixedSize()
                     Spacer(minLength: 8)
                     if child.state == .running, let startedAt = child.startedAt {
                         Text(timerInterval: startedAt...Date.distantFuture, countsDown: false)
-                            .font(.system(size: 12 * Self.scale))
+                            .laaTextStyle(.note)
                             .monospacedDigit()
                             .foregroundStyle(LAAColor.secondaryText)
                             .fixedSize()
@@ -71,13 +71,13 @@ struct LAASubagentRow: View {
                 }
                 if let meta = child.meta, !meta.isEmpty {
                     Text(verbatim: meta)
-                        .font(.system(size: 12 * Self.scale))
+                        .laaTextStyle(.note)
                         .foregroundStyle(LAAColor.secondaryText)
                         .lineLimit(1)
                 }
                 if let preview = child.preview, !preview.isEmpty {
                     Text(verbatim: preview)
-                        .font(.system(size: 12 * Self.scale))
+                        .laaTextStyle(.note)
                         .foregroundStyle(child.state == .failed ? LAASemanticColor.critical : LAAColor.secondaryText)
                         .lineLimit(3)
                 }
@@ -91,7 +91,7 @@ struct LAASubagentRow: View {
         .buttonStyle(.plain)
         .disabled(!child.resolvable)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(verbatim: [child.title, child.word, child.meta].compactMap { $0 }.joined(separator: "、")))
+        .accessibilityLabel(Text(verbatim: [child.displayTitle, child.word, child.meta].compactMap { $0 }.joined(separator: "、")))
         .accessibilityAddTraits(child.resolvable ? .isLink : [])
         .accessibilityIdentifier(identifier)
     }

@@ -26,7 +26,7 @@ final class LAATodayUITests: XCTestCase {
             app.openLAASettings()
             XCTAssertTrue(app.buttons["settings.chat"].waitForExistence(timeout: 10))
             XCTAssertFalse(app.buttons["settings.ai-usage"].exists)
-            XCTAssertTrue(app.staticTexts["接続"].exists)
+            XCTAssertTrue(app.staticTexts["Connect"].exists)
             XCTAssertTrue(app.staticTexts["プロフィール"].exists)
             let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
             shot.name = "settings-after-\(appearance)"

@@ -110,12 +110,12 @@ extension LAACopy {
 
     // MARK: Menus
 
-    static let macMenuGo = "移動"
-    static let macToggleSidebar = "サイドバーを切り替える"
+    static let macMenuGo = "Go"
+    static let macToggleSidebar = "Toggle Sidebar"
     static let macSearch = "Search"
     static let macReload = "Reload"
-    static let macSettingsMenu = "設定…"
-    static let macCloseConversation = "会話を閉じる"
+    static let macSettingsMenu = "Settings…"
+    static let macCloseConversation = "Close Chat"
 }
 
 #endif
@@ -175,7 +175,7 @@ extension View {
 
 extension LAACopy {
     /// The File menu's new item when the section names nothing else.
-    static let macNewChat = "新しい会話"
+    static let macNewChat = "New Chat"
 
     // MARK: Empty detail columns
 

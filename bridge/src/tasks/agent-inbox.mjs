@@ -146,7 +146,7 @@ export function createAgentInboxSource({ source, store, now = () => Date.now() }
       return { items: items.slice(offset, offset + limit), nextCursor: offset + limit < items.length
         ? Buffer.from(JSON.stringify({ viewer: session.viewer.id, archive: includeArchived, offset: offset + limit })).toString('base64url') : null,
         viewerId: session.viewer.id, observedAt: snapshot(session.viewer.id).watermark, inboxMode: 'laa',
-        notice: 'LAAアプリ独自の受信箱。Linearの既読とは同期しません。' };
+        notice: 'LAAアプリ独自の受信箱。タスク側の既読とは同期しません。' };
     },
     getNotificationInSession: notification,
     async getNotification(id) {

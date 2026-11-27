@@ -29,6 +29,10 @@ struct ChatView: View {
     /// call's bar.
     @State private var composerTyping = false
     @Environment(\.accessibilityReduceMotion) private var composerReduceMotion
+#if LAA_BUILD
+    /// The working capsule's height follows the text size (laaBottomRoom).
+    @Environment(\.dynamicTypeSize) private var laaTypeSize
+#endif
     /// V2: the composer floats over the transcript, which scrolls on under
     /// it and fades, instead of ending at a hard edge above it.
     @Environment(\.v2ComposerRests) private var composerFloats
@@ -215,6 +219,28 @@ struct ChatView: View {
         appState.canLoadEarlierMessagesForActiveConversation
     }
 
+    /// The rows the transcript shows: detached earlier history (bounded
+    /// backfill past the display cap) above the live conversation. The
+    /// scroll engine sees both, so a page landing in either keeps the
+    /// reader's row in place.
+    private var displayedTranscriptMessages: [ChatMessage] {
+        guard let detached = appState.persistedTranscriptWindow?.detachedEarlier,
+              !detached.isEmpty else { return appState.messages }
+        return detached + appState.messages
+    }
+
+#if LAA_BUILD
+    /// The first drawn live row, under which detached history ends.
+    private static func firstLiveTargetID(
+        in targets: [ChatMessageScrollTarget],
+        detached: [ChatMessage]
+    ) -> String? {
+        guard !detached.isEmpty else { return nil }
+        let detachedIDs = Set(detached.map(\.id))
+        return targets.first { !detachedIDs.contains($0.message.id) }?.id
+    }
+#endif
+
     private var transcriptBackfillIsLoading: Bool {
         appState.persistedTranscriptWindow?.isLoadingEarlier == true
     }
@@ -311,7 +337,10 @@ struct ChatView: View {
     /// free while a turn runs, so the pill never covers the latest line.
     private var laaBottomRoom: CGFloat {
 #if LAA_BUILD
-        appState.isBusy ? LAAWorkingControlMetrics.coverage : 1
+        appState.isBusy
+            ? LAAWorkingControlMetrics.coverage(children: LAAChatWorking.children(appState.delegateAgents, since: turnStartedAt).count,
+                                                typeSize: laaTypeSize)
+            : 1
 #else
         1
 #endif
@@ -508,6 +537,12 @@ struct ChatView: View {
 
     private func chatScrollView(proxy: ScrollViewProxy) -> some View {
         let visibleTargets = drawnMessageScrollTargets
+#if LAA_BUILD
+        let firstLiveTargetID = Self.firstLiveTargetID(
+            in: visibleTargets,
+            detached: appState.persistedTranscriptWindow?.detachedEarlier ?? []
+        )
+#endif
         return ScrollView {
             LazyVStack(spacing: Self.transcriptRowSpacing) {
                 Color.clear
@@ -531,6 +566,15 @@ struct ChatView: View {
                 // order needed by row geometry (target.order, maintained by
                 // the scroll-target cache) are unchanged.
                 ForEach(visibleTargets) { target in
+#if LAA_BUILD
+                    if target.id == firstLiveTargetID {
+                        LAAChatDetachedHistoryDivider {
+                            appState.jumpToLatestFromDetachedHistory()
+                            requestLatest(animated: false)
+                        }
+                        .id("detached-history-divider")
+                    }
+#endif
                     MessageBubble(
                         message: target.message,
                         gatewayResolver: appState.gatewayMediaResolver,
@@ -684,7 +728,7 @@ struct ChatView: View {
                     viewportTransitionGeneration: appState.chatViewportTransitionGeneration
                 )
                 scrollEngine.transcriptChanged(
-                    messages: appState.messages,
+                    messages: displayedTranscriptMessages,
                     transcriptRevision: appState.chatTranscriptRevision,
                     viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
                     isInitialSync: true
@@ -760,7 +804,15 @@ struct ChatView: View {
         content
             .onChange(of: appState.messages) { _, _ in
                 scrollEngine.transcriptChanged(
-                    messages: appState.messages,
+                    messages: displayedTranscriptMessages,
+                    transcriptRevision: appState.chatTranscriptRevision,
+                    viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
+                    activeSessionKey: activeScrollSessionKey
+                )
+            }
+            .onChange(of: appState.persistedTranscriptWindow?.detachedEarlier) { _, _ in
+                scrollEngine.transcriptChanged(
+                    messages: displayedTranscriptMessages,
                     transcriptRevision: appState.chatTranscriptRevision,
                     viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
                     activeSessionKey: activeScrollSessionKey
@@ -899,7 +951,7 @@ struct ChatView: View {
                 // instead of seeing what they sent (owner, 2026-11-12). A
                 // no-op once the transcript observer has run.
                 scrollEngine.transcriptChanged(
-                    messages: appState.messages,
+                    messages: displayedTranscriptMessages,
                     transcriptRevision: appState.chatTranscriptRevision,
                     viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
                     activeSessionKey: activeScrollSessionKey
@@ -929,7 +981,7 @@ struct ChatView: View {
                     "event profileChanged viaNotification=\(appState.isOpeningNotificationSession)"
                 )
                 scrollEngine.transcriptChanged(
-                    messages: appState.messages,
+                    messages: displayedTranscriptMessages,
                     transcriptRevision: appState.chatTranscriptRevision,
                     viewportTransitionGeneration: appState.chatViewportTransitionGeneration,
                     isInitialSync: true,

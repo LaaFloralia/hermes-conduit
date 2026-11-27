@@ -5,7 +5,7 @@ import UIKit
 // MARK: - Progress while the turn runs
 
 /// The one line at the end of a running session (owner, 2026-11-12): what the
-/// provider is doing in a word, in place of the tool traffic: "Compacting..."
+/// provider is doing in a word, in place of the tool traffic: "Compacting"
 /// or "thinking...". The words are English, as the owner chose. Fixed
 /// height, so the transcript above never jumps when it changes; Reduce
 /// Motion keeps the orb still.
@@ -16,7 +16,7 @@ struct LAAWorkProgressLine: View {
 
     var body: some View {
         // The shared thinking row (LAAThoughtLine), as in Chat.
-        LAAThoughtLine(text: compacting ? "Compacting..." : "thinking...")
+        LAAThoughtLine(text: compacting ? LAAWorkPresentation.compacting : "thinking...")
             .padding(.top, LAATranscriptMetrics.turnGap - LAATranscriptMetrics.rowGap)
             .accessibilityIdentifier(compacting ? "work.session.progress.compacting" : "work.session.progress.thinking")
     }
@@ -182,7 +182,7 @@ struct LAAWorkImagePreview: View {
             .accessibilityIdentifier("work.image.preview")
             Button { dismiss() } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 15, weight: .semibold))
+                    .laaTextStyle(.body).fontWeight(.semibold)
                     .foregroundStyle(.white)
                     .frame(width: 44, height: 44)
                     .conduitGlassControl(cornerRadius: 22, tint: .black.opacity(0.25), interactive: true)
@@ -225,7 +225,7 @@ private struct LAAZoomableImage: View {
                     if scale > 1 { reset() } else { scale = 2.5; settled = 2.5 }
                 }
             }
-            .accessibilityLabel(Text(verbatim: "添付画像"))
+            .accessibilityLabel(Text(verbatim: "Attachments"))
             .accessibilityAddTraits(.isImage)
     }
 

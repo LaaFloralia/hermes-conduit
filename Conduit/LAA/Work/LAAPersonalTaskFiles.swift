@@ -71,7 +71,7 @@ struct LAAPersonalFileButton: View {
             guard response.data.viewerId == viewerId else { throw LAABridgeError.conflict }
             preview = try LAAPersonalPreview.save(response.data)
         } catch let failure as LAABridgeHTTPError {
-            error = failure.code == "file_too_large" ? "20 MiBを超えるファイルはLinearで開いてください。" : LAAWorkHTTP.message(failure)
+            error = failure.code == "file_too_large" ? "20 MiBを超えるファイルは「Open」から開いてください。" : LAAWorkHTTP.message(failure)
         } catch is CancellationError {
         } catch let failure as LAABridgeError { error = failure.japaneseText }
         catch { self.error = "ファイルを開けませんでした。" }

@@ -43,7 +43,7 @@ struct LAAMeetingControls: View {
                 LAAParticleOrb(size: 36, state: orbState(speaking: speakerID != nil),
                                level: meeting.turn.ownerTalking ? meeting.micLevel : meeting.speechLevel)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(verbatim: speaker?.displayName ?? status(speaking: speakerID != nil))
+                    Text(verbatim: speakerID.map { LAACopy.GroupVoice.speaking(speaker?.displayName ?? speaker?.handle ?? $0) } ?? status)
                         .laaTextStyle(.note)
                         .accessibilityIdentifier("laa.room.voice.status")
                     if let note = meeting.note {
@@ -51,7 +51,7 @@ struct LAAMeetingControls: View {
                     }
                 }
                 Spacer(minLength: 0)
-                ForEach(Array(members.filter { $0.memberID != nil }.prefix(5)), id: \.memberID) { member in
+                ForEach(members.filter { $0.memberID != nil }, id: \.memberID) { member in
                     let isSpeaking = speakerID != nil && (member.profile == speakerID || member.memberID == speakerID)
                     StaffMascotView(profile: member.profile ?? "", name: member.displayName ?? member.handle ?? "",
                                     size: 24, level: isSpeaking ? Float(meeting.speechLevel) : 0)
@@ -95,7 +95,7 @@ struct LAAMeetingControls: View {
     private func buttons(_ queue: LAAChairedVoicePlayback) -> some View {
         let engaged = queue.phase != .silent
         let talking = meeting.turn.ownerTalking
-        let talkButton = button(meeting.claiming ? "接続を中止" : talking ? "話し終える" : "話す",
+        let talkButton = button(meeting.claiming ? LAACopy.GroupVoice.cancelConnection : talking ? LAACopy.GroupVoice.finish : LAACopy.GroupVoice.talk,
                                 symbol: talking ? "mic.fill" : "mic", id: "talk") {
             if talking || meeting.claiming { releaseTalk() } else { Task { await talk() } }
         }
@@ -114,10 +114,10 @@ struct LAAMeetingControls: View {
         #else
         talkButton.disabled(hasCompetingAudio())
         #endif
-        button(queue.muted ? "消音解除" : "消音", symbol: queue.muted ? "speaker.slash.fill" : "speaker.slash",
+        button(queue.muted ? LAACopy.GroupVoice.unmute : LAACopy.GroupVoice.mute, symbol: queue.muted ? "speaker.slash.fill" : "speaker.slash",
                id: "stop", action: mute).disabled(!engaged)
-        button("次へ", symbol: "forward.end", id: "skip", action: skip).disabled(queue.current == nil)
-        button("終了", symbol: "stop", id: "end", action: end).disabled(!engaged)
+        button(LAACopy.GroupVoice.skip, symbol: "forward.end", id: "skip", action: skip).disabled(queue.current == nil)
+        button(LAACopy.GroupVoice.end, symbol: "stop", id: "end", action: end).disabled(!engaged)
     }
 
     private func button(_ title: String, symbol: String, id: String, action: @escaping () -> Void) -> some View {
@@ -132,15 +132,13 @@ struct LAAMeetingControls: View {
         .accessibilityIdentifier("laa.room.voice.\(id)")
     }
 
-    private func status(speaking: Bool) -> String {
-        if speaking { return "発言中" }
-        if meeting.claiming { return "音声に接続中" }
-        if meeting.turn.ownerTalking { return "あなたの番" }
+    private var status: String {
+        if meeting.claiming { return LAACopy.GroupVoice.connecting }
+        if meeting.turn.ownerTalking { return LAACopy.GroupVoice.ownerTurn }
         switch meeting.turn.phase {
-        case .idle: return "壁打ち Voice"
-        case .listening: return "聞く"
-        case .sending: return "発言を確認して送信"
-        case .waiting, .speaking: return "応答を待っています"
+        case .idle, .listening: return LAACopy.GroupVoice.title
+        case .sending: return LAACopy.GroupVoice.review
+        case .waiting, .speaking: return LAACopy.GroupVoice.waiting
         }
     }
 }

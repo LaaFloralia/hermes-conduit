@@ -60,13 +60,36 @@ struct LAAEmployeeConversationHeader: View {
     private var sameCall: Bool {
         calls.snapshot?.context.profile == profile && calls.snapshot?.context.conversationID == appState.activeSessionId
     }
+    @State private var connectingFired: LAAConnectionWait.Key?
+    @State private var connectingStalled: LAAConnectionWait.Key?
+    @State private var retries = 0
     private var status: String {
         if sameCall {
-            if case .failed = calls.snapshot?.phase { return "通話を確認" }
-            return "通話中"
+            if case .failed = calls.snapshot?.phase { return "Check Call" }
+            return "On Call"
         }
-        return appState.isConnected ? "" : "接続中…"
+        return LAAConnectionWait.text(phase)
     }
+    /// Quiet, 接続中… after half a second, the reason after ten; reconnects
+    /// that gave up say why at once (D-25).
+    private var phase: LAAConnectionWait.Phase {
+        if sameCall { return .quiet }
+        if !appState.isConnected, appState.laaReconnectGaveUp { return .stalled(appState.laaConnectionStallReason) }
+        return LAAConnectionWait.phase(connectingTarget, scope: connectingScope, fired: connectingFired,
+                                       stalled: connectingStalled, reason: appState.laaConnectionStallReason)
+    }
+    private var isStalled: Bool {
+        if case .stalled = phase { return true }
+        return false
+    }
+    /// Only a reconnect actually under way says so; a quiet return, a
+    /// connected chat and an idle, offline one say nothing (D-15).
+    private var connectingTarget: String {
+        appState.isConnected || appState.hidesBriefReconnect || !appState.isRecoveringConnection
+            ? "" : LAAConnectionWait.connecting
+    }
+    /// A Retry starts the clock over.
+    private var connectingScope: String { "\(profile)|\(appState.activeSessionId ?? "")|\(retries)" }
 
     private var header: some View {
         LAAEmployeeHeader(profile: profile, name: name, avatarURL: appState.profileAvatarURL(for: profile),
@@ -78,14 +101,181 @@ struct LAAEmployeeConversationHeader: View {
     }
 
     var body: some View {
-        header
+        VStack(spacing: LAASpacing.x2) {
+            header
+            if isStalled {
+                Button {
+                    retries &+= 1
+                    Task { await appState.reconnect() }
+                } label: {
+                    Label { Text(verbatim: LAAConnectionWait.retry) } icon: { Image(systemName: "arrow.clockwise") }
+                }
+                .accessibilityIdentifier("laa.employee.header.retry")
+            }
+        }
             .frame(maxWidth: LAAConversationHeaderLayout.nameWidth(screenWidth: screenWidth))
             .frame(maxWidth: .infinity)
             // The mascot's top is the navigation controls' top; only what
             // hangs below that row insets the transcript.
             .padding(.top, -LAAConversationHeaderLayout.controlHeight)
+            .laaConnectionWait(connectingTarget, scope: connectingScope, fired: $connectingFired,
+                               stalled: $connectingStalled)
+            #if DEBUG
+            .background { LAAConnectionWaitTestHook(words: sameCall ? "" : status, identifier: "laa.employee.header.connecting") }
+            #endif
     }
 }
+
+/// "接続中…" appears only once a wait has lasted half a second, so an open
+/// or reconnect that lands sooner never shows it (D-15). The fired wait is
+/// kept with its scope and words, and `words` checks it against the current
+/// ones in the same render, so a wait that ended or belongs to another
+/// employee never shows for a frame before the reset runs.
+enum LAAConnectionWait {
+    static let connecting = "接続中…"
+    static let retry = "接続を再試行"
+    static let delay: Duration = .milliseconds(500)
+    /// A wait never says 接続中… past this: it gives its reason and a Retry
+    /// instead (D-25). Presentation only: the launch's own lease and any
+    /// queued message are untouched.
+    static let stallAfter: Duration = .seconds(10)
+
+    struct Key: Equatable {
+        let scope: String
+        let target: String
+    }
+
+    /// The one state machine behind the opening screen and the live
+    /// heading (D-25): quiet under half a second, 接続中… until ten, then
+    /// the reason with a Retry.
+    enum Phase: Equatable {
+        case quiet
+        case connecting
+        case stalled(String)
+    }
+
+    static func words(_ target: String, scope: String, fired: Key?) -> String {
+        !target.isEmpty && fired == Key(scope: scope, target: target) ? target : ""
+    }
+
+    /// The phase for a wait `target` (empty: no wait) in `scope`, from the
+    /// keys the timers fired. A fired key for another scope or wait counts
+    /// as nothing, in the same render that the reset runs in.
+    static func phase(_ target: String, scope: String, fired: Key?, stalled: Key?, reason: String) -> Phase {
+        guard !target.isEmpty else { return .quiet }
+        let key = Key(scope: scope, target: target)
+        if stalled == key { return .stalled(reason) }
+        return fired == key ? .connecting : .quiet
+    }
+
+    /// The same phase by elapsed time, for code that keeps a start time.
+    static func phase(elapsed: TimeInterval, reason: String) -> Phase {
+        if elapsed < seconds(delay) { return .quiet }
+        if elapsed < seconds(stallAfter) { return .connecting }
+        return .stalled(reason)
+    }
+
+    static func seconds(_ duration: Duration) -> TimeInterval {
+        let parts = duration.components
+        return TimeInterval(parts.seconds) + TimeInterval(parts.attoseconds) / 1e18
+    }
+
+    static func text(_ phase: Phase) -> String {
+        switch phase {
+        case .quiet: return ""
+        case .connecting: return connecting
+        case .stalled(let reason): return reason
+        }
+    }
+
+    static let offline = "オフラインです"
+    static let signIn = "再ログインが必要です"
+    static let slowMac = "Macの応答が遅れています"
+
+    /// Why a wait stalled, from what the app already knows, most decisive
+    /// first: no network, a sign-in, the last step that failed, else a slow
+    /// Mac. `failedStep` is a connection timeline line ("Ticket failed …").
+    static func reason(networkUsable: Bool, needsSignIn: Bool, failure: ConnectionFailure?,
+                       failedStep: String?) -> String {
+        if !networkUsable || failure == .offline { return offline }
+        if needsSignIn || failure == .loginRequired || failure == .authenticationRejected { return signIn }
+        if let failedStep {
+            if failedStep.hasPrefix("Ticket") || failedStep.hasPrefix("Password sign-in and ticket") {
+                return "接続の許可を受け取れません"
+            }
+            if failedStep.hasPrefix("Socket") { return "Macとの通信を開けません" }
+            if failedStep.hasPrefix("Chat list") || failedStep.hasPrefix("Cron runs") { return "会話の一覧を読めません" }
+            if failedStep.hasPrefix("Chat history") || failedStep.hasPrefix("Chat sync") { return "会話を再開できません" }
+            if failedStep.hasPrefix("Connection check") { return "Macの応答を確認できません" }
+        }
+        switch failure {
+        case .hostNotFound, .unreachable, .connectionRefused: return "Macに届きません"
+        case .tlsUntrusted, .tlsBadDate, .tlsFailure, .tlsHostnameMismatch, .tlsNotStandardsCompliant:
+            return "安全な接続を確立できません"
+        case .sessionTicketFailure: return "接続の許可を受け取れません"
+        case .dashboardUnavailable, .unexpectedServerResponse: return "Macの会話サービスが応答しません"
+        default: return slowMac
+        }
+    }
+}
+
+extension AppState {
+    /// The concrete reason a connection wait shows at ten seconds (D-25).
+    var laaConnectionStallReason: String {
+        let failedStep = connectionTimeline?.events.last(where: { $0.label.contains(" failed") })?.label
+        return LAAConnectionWait.reason(networkUsable: networkPathUsable, needsSignIn: showLogin,
+                                        failure: lastConnectionFailure, failedStep: failedStep)
+    }
+}
+
+private struct LAAConnectionWaitModifier: ViewModifier {
+    let key: LAAConnectionWait.Key
+    @Binding var fired: LAAConnectionWait.Key?
+    var stalled: Binding<LAAConnectionWait.Key?>?
+
+    func body(content: Content) -> some View {
+        content.task(id: key) {
+            if fired != nil, fired != key { fired = nil }
+            if let stalled, stalled.wrappedValue != nil, stalled.wrappedValue != key { stalled.wrappedValue = nil }
+            guard !key.target.isEmpty else { return }
+            if fired != key {
+                guard (try? await Task.sleep(for: LAAConnectionWait.delay)) != nil, !Task.isCancelled else { return }
+                fired = key
+            }
+            guard let stalled, stalled.wrappedValue != key else { return }
+            guard (try? await Task.sleep(for: LAAConnectionWait.stallAfter - LAAConnectionWait.delay)) != nil,
+                  !Task.isCancelled else { return }
+            stalled.wrappedValue = key
+        }
+    }
+}
+
+extension View {
+    func laaConnectionWait(_ target: String, scope: String, fired: Binding<LAAConnectionWait.Key?>,
+                           stalled: Binding<LAAConnectionWait.Key?>? = nil) -> some View {
+        modifier(LAAConnectionWaitModifier(key: LAAConnectionWait.Key(scope: scope, target: target), fired: fired,
+                                           stalled: stalled))
+    }
+}
+
+#if DEBUG
+/// UI tests only (`CONDUIT_UITEST`): the heading's label is hidden from
+/// accessibility, so the delayed words get a findable twin.
+struct LAAConnectionWaitTestHook: View {
+    let words: String
+    let identifier: String
+
+    var body: some View {
+        if ProcessInfo.processInfo.environment["CONDUIT_UITEST"] == "1", !words.isEmpty {
+            Color.clear.frame(width: 1, height: 1)
+                .allowsHitTesting(false)
+                .accessibilityElement()
+                .accessibilityLabel(Text(verbatim: words))
+                .accessibilityIdentifier(identifier)
+        }
+    }
+}
+#endif
 
 /// The call button and the conversation menu at the bar's trailing end.
 /// One item on iPhone, since two get a capsule too wide to leave the name

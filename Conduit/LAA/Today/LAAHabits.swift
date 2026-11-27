@@ -97,27 +97,27 @@ enum LAAHabitEventText {
     }
     static func content(_ event: LAAHabitEvents.Event) -> String {
         switch event.type {
-        case "habit.created": return "追加"
+        case "habit.created": return "Add"
         case "habit.archived": return "やめた"
         case "habit.restored": return "戻した"
         case "checkin.set": return "した" + (event.date.map { " · " + day($0) } ?? "")
         case "checkin.cleared": return "記録を外した" + (event.date.map { " · " + day($0) } ?? "")
         case "habit.updated":
-            let fields = [("title", "名前"), ("weeklyTarget", "週の目標"), ("minutes", "1回の目安"), ("minimum", "最小の形"), ("support", "Monetの支援"), ("note", "メモ")]
+            let fields = [("title", "Name"), ("weeklyTarget", "Weekly Goal"), ("minutes", "Session Length"), ("minimum", "Minimum"), ("support", "Monetの支援"), ("note", "Notes")]
             let changes = fields.compactMap { key, name -> String? in
                 guard let change = event.changes[key] else { return nil }
                 guard key != "note", case .object(let values) = change, let from = values["from"], let to = values["to"] else { return name }
                 return name + ": " + value(from) + " → " + value(to)
             }
             return changes.isEmpty ? "変更" : changes.joined(separator: "、")
-        default: return "記録"
+        default: return "History"
         }
     }
     private static func value(_ input: LAABridgeJSONValue) -> String {
         switch input {
         case .string(let v): return ["off": "見せない", "ask": "聞いた時だけ", "plan": "提案に含める"][v] ?? v
         case .number(let v): return v.formatted()
-        case .null: return "なし"
+        case .null: return "None"
         default: return "変更"
         }
     }
@@ -143,7 +143,7 @@ enum LAAHabitEventText {
     }
     func refresh(_ bridge: LAABridgeSession) async {
         updateToday()
-        guard let device = bridge.deviceID, bridge.status == .paired else { error = "Macに未接続"; return }
+        guard let device = bridge.deviceID, bridge.status == .paired else { error = "Disconnected"; return }
         let key = device + ":habits:" + selectedWeek
         if identity != key { identity = key; value = LAAHabitCache.read(LAAHabitWeek.self, key: key) }
         generation += 1; let current = generation

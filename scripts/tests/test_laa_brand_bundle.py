@@ -62,7 +62,7 @@ class LAABrandBundleTests(unittest.TestCase):
             self.assertNotIn("Conduit", info["NSMicrophoneUsageDescription"])
             scenes = info["UIApplicationSceneManifest"]["UISceneConfigurations"]
             self.assertEqual(scenes, {"UIWindowSceneSessionRoleApplication": [{"UISceneClassName": "MainScene"}]})
-            self.assertEqual(plistlib.loads((local / "Localizable.strings").read_bytes())["Open Conduit"], "LAAを開く")
+            self.assertEqual(plistlib.loads((local / "Localizable.strings").read_bytes())["Open Conduit"], "Open Hortensia")
             self.assertEqual(plistlib.loads((local / "InfoPlist.strings").read_bytes())["CFBundleName"], "LAA")
             self.assertTrue((bundle / "Contents/Resources/en.lproj/Localizable.strings").is_file())
             self.assertFalse((bundle / "en.lproj").exists())
@@ -73,15 +73,48 @@ class LAABrandBundleTests(unittest.TestCase):
             command = [sys.executable, str(ROOT / "scripts/laa/brand-bundle.py"),
                        "--input-info", str(ROOT / "Conduit/Info.plist"), "--output-info", str(output),
                        "--kind", "app", "--source", str(ROOT), "--name", "LAA", "--bundle-name", "LAA"]
-            subprocess.run(command, check=True, capture_output=True)
+            env = {key: value for key, value in os.environ.items() if key not in {"LAA_BRIDGE_URL", "LAA_RELAY_PUBLIC_URL"}}
+            subprocess.run(command, check=True, capture_output=True, env=env)
             with output.open("rb") as stream:
                 info = plistlib.load(stream)
+            self.assertNotIn("LAABridgeURL", info)
+            self.assertEqual(info["ConduitDefaultRelayURL"], "$(CONDUIT_DEFAULT_RELAY_URL)")
             self.assertEqual(info["CFBundleDisplayName"], "LAA")
             self.assertEqual(info["CFBundleName"], "LAA")
             self.assertNotIn("Conduit", info["NSMicrophoneUsageDescription"])
             self.assertNotIn("Hermes", info["NSMicrophoneUsageDescription"])
             self.assertEqual(info["CFBundleIdentifier"], "$(PRODUCT_BUNDLE_IDENTIFIER)")
             self.assertNotIn("LAADotsCallURL", info)
+
+    def test_release_endpoints_reach_the_prepared_info_and_are_checked_before_export(self):
+        bridge_url = "https://bridge.fixture.ts.net:8445"
+        relay_url = "https://relay.example.test:9443/push"
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "Info.plist"
+            command = [sys.executable, str(ROOT / "scripts/laa/brand-bundle.py"),
+                       "--input-info", str(ROOT / "Conduit/Info.plist"), "--output-info", str(output),
+                       "--kind", "app", "--source", str(ROOT)]
+            endpoints = {"LAA_BRIDGE_URL": bridge_url, "LAA_RELAY_PUBLIC_URL": relay_url}
+            result = subprocess.run(command, check=True, capture_output=True, text=True, env={**os.environ, **endpoints})
+            info = plistlib.loads(output.read_bytes())
+            self.assertEqual(info["LAABridgeURL"], bridge_url)
+            self.assertEqual(info["ConduitDefaultRelayURL"], relay_url)
+            self.assertEqual(result.stdout + result.stderr, "")
+            checker.check_release_endpoints(info, endpoints)
+            for key in ("LAABridgeURL", "ConduitDefaultRelayURL"):
+                with self.assertRaisesRegex(checker.CheckError, "archive is missing the configured"):
+                    checker.check_release_endpoints({**info, key: ""}, endpoints)
+            with self.assertRaises(checker.CheckError):
+                checker.check_release_endpoints(info, {})
+
+    def test_invalid_release_config_reports_only_the_setting_name(self):
+        for name, value in (("LAA_BRIDGE_URL", "https://bridge.example.test:8445"),
+                            ("LAA_BRIDGE_URL", "https://bridge.fixture.ts.net:not-a-port"),
+                            ("LAA_RELAY_PUBLIC_URL", "http://relay.example.test:9443"),
+                            ("LAA_RELAY_PUBLIC_URL", "https://user:dummy@relay.example.test:9443")):
+            with self.subTest(name=name), self.assertRaises(ValueError) as error:
+                brand.embed_endpoints({}, {name: value})
+            self.assertEqual(str(error.exception), f"invalid {name}")
 
     def test_a_leftover_dots_link_never_reaches_the_app(self):
         # Monet (Dots) left the app on 2026-11-26 (owner).
@@ -143,7 +176,7 @@ class LAABrandBundleTests(unittest.TestCase):
             self.assertEqual(info["ConduitLauncherAppGroup"], "group.keep")
             with (local / "Localizable.strings").open("rb") as stream:
                 localized = plistlib.load(stream)
-            self.assertEqual(localized["Open Conduit"], "LAAを開く")
+            self.assertEqual(localized["Open Conduit"], "Open Hortensia")
             self.assertEqual(localized["identifier"], "conduit://keep")
             with (local / "InfoPlist.strings").open("rb") as stream:
                 self.assertNotIn("Conduit", plistlib.load(stream)["NSMicrophoneUsageDescription"])
@@ -431,9 +464,10 @@ class LAABrandBundleTests(unittest.TestCase):
         source = {"Cancel": "Cancel", "Message": "Message", "Chat": "Chat", "user-content": "Cancel"}
         result = brand.values_only(source, locale="ja")
         self.assertEqual(set(result), set(source))
-        self.assertEqual(result["Cancel"], "キャンセル")
-        self.assertEqual(result["Message"], "メッセージ")
-        self.assertEqual(result["Chat"], "チャット")
+        # D-21 (2026-11-27): simple operating words stay English in the Japanese interface.
+        self.assertEqual(result["Cancel"], "Cancel")
+        self.assertEqual(result["Message"], "Message")
+        self.assertEqual(result["Chat"], "Chat")
         self.assertEqual(result["user-content"], "Cancel")
         self.assertEqual(brand.values_only(source, locale="en"), source)
 

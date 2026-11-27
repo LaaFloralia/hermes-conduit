@@ -6,11 +6,11 @@ import SwiftUI
 /// (`hq/roles/<role>/SOUL.md`), shortened; nothing here adds a duty.
 extension LAACopy {
     static let staffIntroDuty = "担当"
-    static let staffIntroVoice = "通話の声"
+    static let staffIntroVoice = "Call Voice"
     static let staffIntroVoiceNote = "ChatGPT の声を社員ごとに設定します"
-    static let staffIntroConversation = "会話"
+    static let staffIntroConversation = "Chat"
     static let staffIntroTurnHint = "左右になぞると回ります"
-    static let conversationInfo = "会話の情報"
+    static let conversationInfo = "Chat Info"
     static let conversationInfoContents = "背景・検索・これまでの会話・モデル"
 
     static func staffIntroHeaderLabel(_ name: String) -> String { name + "の紹介" }
@@ -139,7 +139,7 @@ struct LAAStaffIntroView: View {
     private var identity: some View {
         VStack(spacing: LAASpacing.x2) {
             Text(verbatim: LAAChatPerson.name(name))
-                .font(LAAType.title(LAAChatPerson.name(name), size: 34, relativeTo: .largeTitle))
+                .laaTextStyle(.title)
                 .foregroundStyle(LAAColor.text)
                 .multilineTextAlignment(.center)
                 .accessibilityAddTraits(.isHeader)

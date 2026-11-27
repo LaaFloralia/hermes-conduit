@@ -189,7 +189,7 @@ final class LAAAssetsUITests: XCTestCase {
         folder.press(forDuration: 1)
         let save = app.buttons["Save Offline"]
         XCTAssertTrue(save.waitForExistence(timeout: 10)); save.tap()
-        XCTAssertTrue(app.buttons["ファイルを保存"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons["Save Files"].waitForExistence(timeout: 20))
         let message = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "失敗した場合も、保存済みのファイルは残ります。")).firstMatch
         XCTAssertTrue(message.exists)
         if app.buttons["Cancel"].exists {
@@ -203,7 +203,7 @@ final class LAAAssetsUITests: XCTestCase {
 
     func testEmptyUnconfiguredOfflineAndUnpaired() {
         let empty = launch("empty")
-        XCTAssertTrue(empty.staticTexts["ファイルがありません"].waitForExistence(timeout: 30))
+        XCTAssertTrue(empty.staticTexts["No Files"].waitForExistence(timeout: 30))
         empty.terminate()
         let unconfigured = launch("unconfigured")
         XCTAssertTrue(unconfigured.staticTexts["Google Driveは未連携です。Mac側のGoogle接続を確認してください。"].waitForExistence(timeout: 30))

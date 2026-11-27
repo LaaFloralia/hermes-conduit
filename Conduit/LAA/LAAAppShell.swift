@@ -18,6 +18,7 @@ struct LAAAppShell: View {
     @State private var showUsage = false
     @State private var settingsCardOpen = false
     @ObservedObject private var tabBarVisibility = LAATabBarVisibility.shared
+    @ObservedObject private var ownerAvatar = LAAOwnerAvatarStore.shared
     @AppStorage("laa.work.decisionCount") private var decisionCount = 0
     @State private var chatsPath: [V2Route] = []
     #if DEBUG
@@ -243,7 +244,7 @@ struct LAAAppShell: View {
         .accessibilityHidden(settingsCardOpen)
         .environment(\.laaBehindSettingsCard, settingsCardOpen)
         .laaGlassTabBar(glassTabs, selection: $selectedTab, isExpanded: $settingsCardOpen, isHidden: barHidden,
-                        app: .hortensia) {
+                        app: .hortensia(ownerAvatar)) {
             LAAAppSettingsCard(openSettings: {
                 settingsCardOpen = false
                 onRequestSettings()
@@ -255,7 +256,10 @@ struct LAAAppShell: View {
 
     private var glassTabs: [LAAGlassTab<LAATab>] {
         LAATab.destinations.map { tab in
-            LAAGlassTab(tab, title: tab.title, icon: tab.icon, badge: tab == .work ? decisionCount : 0)
+            if let doc = tab.barArtwork {
+                return LAAGlassTab(tab, title: tab.title, image: doc.regular, selectedImage: doc.selected)
+            }
+            return LAAGlassTab(tab, title: tab.title, icon: tab.icon, badge: tab == .work ? decisionCount : 0)
         }
     }
 

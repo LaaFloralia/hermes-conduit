@@ -26,13 +26,13 @@ enum LAAWorkStatus: Equatable {
 
     var label: String {
         switch self {
-        case .running: String("実行中")
-        case .decision: String("判断待ち")
-        case .error: String("エラー")
-        case .done: String("完了")
-        case .waiting: String("待機")
-        case .stopped: String("停止済み")
-        case .pending: String("結果なし")
+        case .running: String("Running")
+        case .decision: String("Decision")
+        case .error: String("Failed")
+        case .done: String("Done")
+        case .waiting: String("Waiting")
+        case .stopped: String("Stopped")
+        case .pending: String("No Result")
         }
     }
 

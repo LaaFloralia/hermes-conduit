@@ -150,7 +150,7 @@ final class LAAWorkProjectRequirementTests: XCTestCase {
     func testLinkedSessionOutsideThePageStillOpens() {
         let row = LAAWorkLinkedSession.unlisted("ses_00000000000000ff")
         XCTAssertEqual(row.id, "ses_00000000000000ff")
-        XCTAssertEqual(row.name, "一覧にないセッション")
+        XCTAssertEqual(row.name, "Unlisted Session")
         XCTAssertEqual(row.mark, .pending)
     }
 

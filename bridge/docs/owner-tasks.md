@@ -355,7 +355,7 @@ laa-bridge tasks restore --from <snapshot> --to <dir> [--allow-live] [--force]
 | 候補 | 費用 | 長所 | 短所・残るリスク |
 |---|---|---|---|
 | 同じ tailnet の MacBook へ `laa-bridge tasks backup` の出力を rsync（既存の Tailscale） | 0円 | 新しい契約・資格情報が不要。すぐ試せる | MacBook が起動していないと失敗する。世代は MacBook 側にも必要 |
-| Google Drive（floralia@laa-inc.com）へ暗号化スナップショットを置く | 既存契約内 | 既に使っている保管先 | Drive の OAuth が未認可（BUS-318）。暗号化と鍵の管理が要る |
+| Google Drive（設定済みの仕事用アカウント）へ暗号化スナップショットを置く | 既存契約内 | 既に使っている保管先 | Drive の OAuth が未認可（BUS-318）。暗号化と鍵の管理が要る |
 | Backblaze B2 + restic（または `age` + `rclone`） | 約 $0.006/GB/月（数十 MB なら実質 0円） | 世代・暗号化・遠隔地 | 新しい資格情報とツールの導入が要る。親の承認が要る |
 | 外付け SSD へ Time Machine 併用 | 実費（SSD） | オフライン・ランサムウェアに強い | 同じ場所にある。持ち出し運用が要る |
 

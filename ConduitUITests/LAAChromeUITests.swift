@@ -79,8 +79,8 @@ final class LAAChromeUITests: XCTestCase {
             XCTAssertTrue(app.textFields["laa.bridge.address"].exists)
             let code = app.secureTextFields["laa.bridge.code"]
             XCTAssertTrue(code.exists)
-            XCTAssertTrue(app.staticTexts["アドレス"].exists)
-            XCTAssertTrue(app.staticTexts["接続コード"].exists)
+            XCTAssertTrue(app.staticTexts["Address"].exists)
+            XCTAssertTrue(app.staticTexts["Pairing Code"].exists)
             // The bar title may be read once; the body must not repeat it.
             XCTAssertLessThanOrEqual(
                 app.staticTexts.matching(NSPredicate(format: "label == %@", "Macに接続")).count, 1)

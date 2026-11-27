@@ -95,7 +95,7 @@ struct LAAWorkSessionLauncher: View {
                             .accessibilityIdentifier("work.launch.muse.note")
                     }
                     if !favorites.isEmpty { favoriteChips }
-                    LAAWorkComposer(text: $prompt, revision: $revision, placeholder: "依頼内容",
+                    LAAWorkComposer(text: $prompt, revision: $revision, placeholder: "Request",
                                     enabled: !starting && !drafts.persistenceFailed,
                                     canSend: selected != nil && selected?.available != false && chosenProject != nil,
                                     onChange: saveDraft, onSubmit: start, submitLabel: "開始",
@@ -113,7 +113,7 @@ struct LAAWorkSessionLauncher: View {
             }
             .background(LAAColor.background)
             .laaTextStyle(.body).foregroundStyle(LAAColor.text)
-            .navigationTitle(Text(verbatim: "新しいセッション"))
+            .navigationTitle(Text(verbatim: "New Session"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -156,22 +156,22 @@ struct LAAWorkSessionLauncher: View {
                 }
                 Section {
                     Button { creatingProject = true } label: {
-                        Label { Text(verbatim: "新しいプロジェクト") } icon: { Image(systemName: "folder.badge.plus") }
+                        Label { Text(verbatim: "New Project") } icon: { Image(systemName: "folder.badge.plus") }
                     }
                     .accessibilityIdentifier("work.launch.project.new")
                 }
             } label: {
                 HStack(spacing: LAASpacing.x2) {
                     Image(systemName: "folder")
-                    Text(verbatim: chosenProject?.name ?? "プロジェクトを選択").lineLimit(1)
+                    Text(verbatim: chosenProject?.name ?? "Choose Project").lineLimit(1)
                     Image(systemName: "chevron.up.chevron.down").font(.system(size: 11))
                 }
                 .laaTextStyle(.secondary).foregroundStyle(chosenProject == nil ? LAAColor.attention : LAAColor.text)
                 .padding(.horizontal, LAASpacing.x3).frame(minHeight: 36)
                 .background(LAAColor.subtleSurface, in: Capsule())
             }
-            .accessibilityLabel(Text(verbatim: "プロジェクト"))
-            .accessibilityValue(Text(verbatim: chosenProject?.name ?? "未選択"))
+            .accessibilityLabel(Text(verbatim: "Project"))
+            .accessibilityValue(Text(verbatim: chosenProject?.name ?? "None"))
             .accessibilityIdentifier("work.launch.project")
             if chosenProject == nil {
                 Text(verbatim: "セッションはプロジェクトの中に作ります。プロジェクトを選んでください。")
@@ -255,8 +255,8 @@ struct LAAWorkSessionLauncher: View {
             .buttonStyle(.plain)
             .disabled(selected?.fast != true)
             .opacity(selected?.fast == true ? 1 : 0.4)
-            .accessibilityLabel(Text(verbatim: "Fastモード"))
-            .accessibilityValue(Text(verbatim: fast ? "オン" : "オフ"))
+            .accessibilityLabel(Text(verbatim: "Fast Mode"))
+            .accessibilityValue(Text(verbatim: fast ? "On" : "Off"))
             .accessibilityIdentifier("work.launch.fast")
 
             let saved = favorites.contains(current)

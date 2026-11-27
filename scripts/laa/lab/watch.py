@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Validate and test the named LAA Watch simulator pair, using synthetic data."""
+"""Validate and test the named LAA Watch simulator pair, using synthetic data.
+
+Abolished on 2026-11-27 (owner decision): both commands exit 64. Helpers stay
+importable (perf.py) and the body is kept so the owner can re-enable it.
+"""
 import argparse
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -359,7 +363,15 @@ def run_tests(out, phone, watch):
                     raise RuntimeError(f"Watch simulator {key} not restored")
 
 
+ABOLISHED_EXIT = 64
+ABOLISHED = ("Watchシミュレーター試験は2026-11-27に廃止されました（社長決定）。"
+             "実機向けビルド検証は laa-app-gate pre hortensia --src <作業ツリー> を使ってください。")
+
+
 def main():
+    if sys.argv[1:2] in (["pair-check"], ["test"]):
+        print(ABOLISHED, file=sys.stderr)
+        return ABOLISHED_EXIT
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("pair-check", "test"))
     parser.add_argument("--out", type=Path, default=DERIVED / "pair-check")

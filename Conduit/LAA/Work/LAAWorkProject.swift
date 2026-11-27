@@ -80,13 +80,13 @@ struct LAAWorkProjectEditor: View {
                         Text(verbatim: "現在の名前: \(remote.name)")
                         Text(verbatim: "現在の既定モデル: " + profileLabel(remote.defaultProfile))
                         Text(verbatim: "現在の指示:").laaTextStyle(.body).fontWeight(.semibold)
-                        Text(verbatim: remote.instructionError != nil ? "（読み取れません）" : (remote.instructions ?? "（なし）")).textSelection(.enabled)
+                        Text(verbatim: remote.instructionError != nil ? "（読み取れません）" : (remote.instructions ?? "(None)")).textSelection(.enabled)
                         Text(verbatim: "あなたの変更:").laaTextStyle(.body).fontWeight(.semibold)
                         if let mine = draftBody(pending) {
                             Text(verbatim: "名前: " + mine.name).textSelection(.enabled)
                             if mine.changesDefaultProfile { Text(verbatim: "既定モデル: " + profileLabel(mine.defaultProfile)) }
                             Text(verbatim: mine.instructions ?? "（指示は変更しない）").textSelection(.enabled)
-                            if mine.clearInstructionRef { Text(verbatim: "旧形式の参照を消去") }
+                            if mine.clearInstructionRef { Text(verbatim: "Clear Old Reference") }
                         }
                         if !confirmedConflict {
                             Text(verbatim: "前の保存結果は未確認です。結果を確定するまで選択できません。")
@@ -109,7 +109,11 @@ struct LAAWorkProjectEditor: View {
                         }
                     }
                 }
-                Section(LAAWorkPresentation.japanese("名前")) { TextField(LAACopy.WorkTab.projectName, text: $name).disabled(pending != nil) }
+                Section("Name") {
+                    TextField(LAACopy.WorkTab.projectName, text: $name)
+                        .disabled(pending != nil)
+                        .accessibilityIdentifier("work.projectEditor.name")
+                }
                 defaultModelSection
                 Section(LAAWorkPresentation.japanese("共通指示")) {
                     if current?.instructionRef != nil {

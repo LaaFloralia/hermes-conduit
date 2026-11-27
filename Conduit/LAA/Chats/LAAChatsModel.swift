@@ -15,6 +15,48 @@ struct LAAChatsPerson: Identifiable, Equatable {
     var placement: LAAStaff.Placement? { staff?.placement }
 }
 
+/// A row's preview in the list: the latest live row, else the latest cached
+/// one, else the roster's `last_session.preview`. A reply that is only
+/// Hermes' no-reply token ([SILENT]) leaves no message for the reader, so the
+/// list skips it here and keeps the row before it. Records are not changed.
+enum LAAChatsPreview {
+    /// Protocol text, not localized: what a turn answers when it sends nothing.
+    static let noReplySentinel = "[SILENT]"
+
+    struct Choice: Equatable {
+        let text: String
+        let timestamp: String?
+    }
+
+    /// The whole text is the token, outer whitespace aside; case counts.
+    static func isNoReplySentinel(_ text: String) -> Bool {
+        text.trimmingCharacters(in: .whitespacesAndNewlines) == noReplySentinel
+    }
+
+    /// Someone's words: a user or assistant row with text, except an
+    /// assistant row that is only the token. A person's own "[SILENT]" stays.
+    static func shows(role: MessageRole, content: String) -> Bool {
+        guard role == .user || role == .assistant, !content.isEmpty else { return false }
+        return !(role == .assistant && isNoReplySentinel(content))
+    }
+
+    static func latest(_ messages: [ChatMessage]) -> ChatMessage? {
+        messages.last { shows(role: $0.role, content: $0.content) }
+    }
+
+    static func latest(_ messages: [OfflineCachedMessage]) -> OfflineCachedMessage? {
+        messages.last { shows(role: $0.role, content: $0.content) }
+    }
+
+    /// The roster preview carries no role: only the exact token is left out.
+    static func choose(live: ChatMessage?, cached: OfflineCachedMessage?, roster: String?) -> Choice? {
+        if let live { return Choice(text: live.content, timestamp: live.timestamp) }
+        if let cached { return Choice(text: cached.content, timestamp: cached.timestamp) }
+        guard let roster, !isNoReplySentinel(roster) else { return nil }
+        return Choice(text: roster, timestamp: nil)
+    }
+}
+
 /// The Chat list's sections, in order: Monet (with its uncensored variant),
 /// then the employees. Groups follow them.
 enum LAAChatsPlacement {

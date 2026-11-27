@@ -11,8 +11,11 @@ struct LAATaskSelectBox: View {
     let state: State
     let priority: Int
     let action: () -> Void
-    @ScaledMetric(relativeTo: .body) private var size: CGFloat = 20
+    @ScaledMetric(relativeTo: .body) private var scaled: CGFloat = 20
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Grows with the text up to 24 pt: past that the box outgrew its 44 pt
+    /// target, crossed the screen margin and covered the task number.
+    private var size: CGFloat { min(scaled, 24) }
 
     enum State: Equatable { case open, picked, blocked }
 
@@ -44,7 +47,7 @@ struct LAATaskSelectBox: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(verbatim: "Select"))
-        .accessibilityValue(Text(verbatim: state == .picked ? "選択中" : ""))
+        .accessibilityValue(Text(verbatim: state == .picked ? "Selected" : ""))
         .accessibilityAddTraits(state == .picked ? .isSelected : [])
         .accessibilityHint(Text(verbatim: state == .blocked ? LAATaskRunCopy.runningReason : ""))
     }
@@ -77,7 +80,7 @@ struct LAATaskBatchBar: View {
             .buttonStyle(.plain)
             .disabled(progress != nil)
             .padding(.leading, -6)
-            .accessibilityLabel(Text(verbatim: "選択を解除"))
+            .accessibilityLabel(Text(verbatim: "Clear Selection"))
             .accessibilityIdentifier("work.tasks.clearSelection")
             Text(verbatim: "\(count)件を選択中")
                 .laaTextStyle(.secondary).monospacedDigit()
@@ -351,6 +354,19 @@ struct LAATaskControls: View {
         ViewThatFits(in: .horizontal) {
             line(groupingTitle: true)
             line(groupingTitle: false)
+            // Large text: the range on one line, the view and grouping on the next.
+            VStack(alignment: .leading, spacing: 0) {
+                if !archived {
+                    HStack(spacing: LAASpacing.x3) {
+                        ForEach(LAALinearTaskFilter.toggles) { option in toggle(option) }
+                    }
+                }
+                HStack(spacing: LAASpacing.x3) {
+                    viewMenu
+                    Spacer(minLength: LAASpacing.x2)
+                    groupingMenu(title: false)
+                }
+            }
         }
         .sensoryFeedback(.selection, trigger: filter)
     }
@@ -384,7 +400,7 @@ struct LAATaskControls: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(lit ? .isSelected : [])
-        .accessibilityValue(Text(verbatim: lit ? "オン" : "オフ"))
+        .accessibilityValue(Text(verbatim: lit ? "On" : "Off"))
         .accessibilityIdentifier("work.tasks.filter.\(option.rawValue)")
     }
 
@@ -421,7 +437,7 @@ struct LAATaskControls: View {
             .modifier(LAATaskControlFace(selected: archived || quick != .all))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text(verbatim: "表示、\(viewTitle)、\(viewCount)件"))
+        .accessibilityLabel(Text(verbatim: "View, \(viewTitle), \(viewCount)"))
         .accessibilityIdentifier("work.tasks.quick")
     }
 

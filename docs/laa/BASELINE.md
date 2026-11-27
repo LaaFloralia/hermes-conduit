@@ -42,7 +42,7 @@
 ## 4. HQ正本と現状の差分
 
 - `hq/tools/PASEO-HERMES.md`：pluginの記述は「2026-10-24に0.66.1の保存版＝読込み版、restart_needed=false」。実体は0.69.1で上流0.116.0。**文書が実体より古い**。plugin更新は `hermes plugins update conduit_push` → Conduit正規再起動 → loaded_version/restart_needed読戻し、と手順は明記。
-- 同：Conduit接続先は `https://mac-mini.tailc9b8e7.ts.net:8444`（→ 127.0.0.1:9119）、Tailscale内限定。Kanbanは「Mac mini内だけでPaseo等から見えないため現在は使わない」。
+- 同：Conduit接続先は非公開設定を参照。Tailscale内のHTTPSポート8444（→ 127.0.0.1:9119）。Kanbanは「Mac mini内だけでPaseo等から見えないため現在は使わない」。
 - `hq/tools/AI-OPERATING-MODEL.md`：Mac側の共通入口は`laa-personal-agent`。モデル自動切替・新ジョブ基盤を作らない。request ID・ownerの再利用、`awaiting_review`は完了でない、通知を実行命令にしない、を規定。
 - `hq/tools/LINEAR.md`：タスク・判断待ち・実行進捗の正本はLinear。担当LAAへのアサインは実行許可ではない。Brainへ同じタスク状態を複製しない。
 
@@ -113,10 +113,9 @@ Tailscale Serveの実体：8443 → `/`=8081、`/auday`=8082、`/overview`=4318�
 
 ## 13. 操作性能の計測（BUS-392、2026-11-11）
 
-2026-11-24から、アプリの操作性能は本番のBridge・Hermesへ接続しないローカルfixtureで測る。手順・指標・静穏の判定・比較の規則は `docs/laa/LAB.md`「Performance」、採用済みの基準は `scripts/laa/lab/perf-baseline.json`。
+シミュレーター性能計測（`perf.py run`、互換入口 `scripts/laa/perf/run.py`）は2026-11-27に廃止し、終了コード64で止まる。既存の計測同士の比較だけ残す（`docs/laa/LAB.md`「Watch・Performance」、基準 `scripts/laa/lab/perf-baseline.json`）。
 
 ```sh
-python3 scripts/laa/lab/perf.py run --out /absolute/local/work/perf-after --runs 5
 python3 scripts/laa/lab/perf.py compare /absolute/local/work/perf-before/perf.json /absolute/local/work/perf-after/perf.json
 ```
 

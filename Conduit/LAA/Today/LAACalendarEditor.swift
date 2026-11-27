@@ -38,43 +38,43 @@ struct LAACalendarEditor: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField(text: $title) { Text(verbatim: "タイトル") }
+                    TextField(text: $title) { Text(verbatim: "Title") }
                     Picker(selection: $calendarId) {
                         ForEach(calendars.filter(\.writable)) { item in Text(verbatim: item.title).tag(item.id) }
-                    } label: { Text(verbatim: "カレンダー") }.disabled(event != nil)
-                    Toggle(isOn: $allDay) { Text(verbatim: "終日") }
+                    } label: { Text(verbatim: "Calendar") }.disabled(event != nil)
+                    Toggle(isOn: $allDay) { Text(verbatim: "All Day") }
                     DatePicker(selection: $start, displayedComponents: allDay ? [.date] : [.date, .hourAndMinute]) { Text(verbatim: "開始") }
-                    DatePicker(selection: $end, in: start..., displayedComponents: allDay ? [.date] : [.date, .hourAndMinute]) { Text(verbatim: allDay ? "終了（この日は含まない）" : "終了") }
-                    TextField(text: $location) { Text(verbatim: "場所") }
+                    DatePicker(selection: $end, in: start..., displayedComponents: allDay ? [.date] : [.date, .hourAndMinute]) { Text(verbatim: allDay ? "終了（この日は含まない）" : "End") }
+                    TextField(text: $location) { Text(verbatim: "Location") }
                     TextField(text: $attendees, axis: .vertical) { Text(verbatim: "参加者のメール（カンマ区切り）") }
                         .keyboardType(.emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    TextField(text: $notes, axis: .vertical) { Text(verbatim: "メモ") }.lineLimit(4...12)
+                    TextField(text: $notes, axis: .vertical) { Text(verbatim: "Notes") }.lineLimit(4...12)
                 }
                 if event?.recurringEventId == nil {
                     Section {
                         Menu {
                             Button { recurrence = "" } label: { Text(verbatim: "繰り返さない") }
-                            Button { recurrence = "RRULE:FREQ=DAILY" } label: { Text(verbatim: "毎日") }
-                            Button { recurrence = "RRULE:FREQ=WEEKLY" } label: { Text(verbatim: "毎週") }
-                            Button { recurrence = "RRULE:FREQ=MONTHLY" } label: { Text(verbatim: "毎月") }
-                            Button { recurrence = "RRULE:FREQ=YEARLY" } label: { Text(verbatim: "毎年") }
+                            Button { recurrence = "RRULE:FREQ=DAILY" } label: { Text(verbatim: "Daily") }
+                            Button { recurrence = "RRULE:FREQ=WEEKLY" } label: { Text(verbatim: "Weekly") }
+                            Button { recurrence = "RRULE:FREQ=MONTHLY" } label: { Text(verbatim: "Monthly") }
+                            Button { recurrence = "RRULE:FREQ=YEARLY" } label: { Text(verbatim: "Yearly") }
                         } label: { Text(verbatim: recurrenceTitle) }
-                    } header: { Text(verbatim: "繰り返し") }
+                    } header: { Text(verbatim: "Repeat") }
                 }
                 Picker(selection: $reminder) {
                     Text(verbatim: "Googleの既定").tag(-1)
-                    Text(verbatim: "開始時刻").tag(0)
+                    Text(verbatim: "Start Time").tag(0)
                     Text(verbatim: "10分前").tag(10)
                     Text(verbatim: "30分前").tag(30)
                     Text(verbatim: "1日前").tag(1440)
-                } label: { Text(verbatim: "通知") }
+                } label: { Text(verbatim: "Alert") }
                 if let message { Text(verbatim: message).foregroundStyle(LAAColor.attention) }
             }
             .laaTextStyle(.body)
             .scrollContentBackground(.hidden)
             .background(LAAColor.background)
             .navigationBarTitleDisplayMode(.inline)
-            .navigationTitle(Text(verbatim: event == nil ? "予定を作成" : "予定を編集"))
+            .navigationTitle(Text(verbatim: event == nil ? "Create Event" : "Edit Event"))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button { dismiss() } label: { Text(verbatim: LAACopy.cancel) }.disabled(busy) }
                 ToolbarItem(placement: .confirmationAction) {
@@ -97,7 +97,7 @@ struct LAACalendarEditor: View {
     }
     private var recurrenceTitle: String {
         ["": "繰り返さない", "RRULE:FREQ=DAILY": "毎日", "RRULE:FREQ=WEEKLY": "毎週",
-         "RRULE:FREQ=MONTHLY": "毎月", "RRULE:FREQ=YEARLY": "毎年"][recurrence] ?? "カスタム"
+         "RRULE:FREQ=MONTHLY": "Monthly", "RRULE:FREQ=YEARLY": "Yearly"][recurrence] ?? "Custom"
     }
     private func save() async {
         busy = true; defer { busy = false }

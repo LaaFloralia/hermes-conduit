@@ -152,22 +152,25 @@ enum LAAType {
     static func chatListName(_ value: String, japaneseSize: CGFloat) -> Font { .system(size: japaneseSize) }
     static var employeeName: Font { .system(size: bodySize) }
     static var usageValue: Font { display(canvas.number * platformScale).monospacedDigit() }
-    static var usageRowValue: Font { .system(size: canvas.heading * platformScale).monospacedDigit() }
 
     static func display(_ size: CGFloat) -> Font { LAAKit.LAAType.display(size: size) }
 
-    enum TextRole { case body, secondary, section, rowTitle, note }
+    enum TextRole { case title, heading, body, secondary, section, rowTitle, note }
 }
 
 /// Use for system-font text at the specified base size, scaled by Dynamic Type.
 private struct LAATextStyle: ViewModifier {
     let role: LAAType.TextRole
+    @ScaledMetric(relativeTo: .largeTitle) private var titleSize = LAAType.canvas.title * LAAType.platformScale
+    @ScaledMetric(relativeTo: .title3) private var headingSize = LAAType.canvas.heading * LAAType.platformScale
     @ScaledMetric(relativeTo: .body) private var bodySize = LAAType.bodySize
     @ScaledMetric(relativeTo: .footnote) private var secondarySize = LAAType.secondarySize
     @ScaledMetric(relativeTo: .caption) private var sectionSize = LAAType.sectionSize
 
     func body(content: Content) -> some View {
         switch role {
+        case .title: content.font(LAAType.display(titleSize))
+        case .heading: content.font(.system(size: headingSize, weight: .semibold))
         case .body: content.font(.system(size: bodySize))
         case .secondary: content.font(.system(size: secondarySize))
         case .section: content.font(.system(size: sectionSize, weight: .semibold))

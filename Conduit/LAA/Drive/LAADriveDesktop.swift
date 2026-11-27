@@ -49,7 +49,7 @@ struct LAADriveDesktopRow: View {
     }
 
     private var kind: String {
-        entry.item.kind == "shortcut" ? "ショートカット" : entry.item.kindTitle
+        entry.item.kind == "shortcut" ? "Shortcut" : entry.item.kindTitle
     }
 
     private var dateText: String {

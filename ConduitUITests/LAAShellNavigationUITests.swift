@@ -23,14 +23,14 @@ final class LAAShellNavigationUITests: XCTestCase {
             segment.tap()
             XCTAssertTrue(segment.isSelected)
         }
-        let more = app.buttons["work.section.more"]
-        XCTAssertTrue(more.isHittable)
-        more.tap()
-        XCTAssertTrue(app.buttons["work.section.campaigns"].waitForExistence(timeout: 10))
+        // Five sections, one row, every one on screen and tappable; no overflow menu (D-21 B).
+        XCTAssertFalse(app.buttons["work.section.more"].exists)
         XCTAssertFalse(app.buttons["work.section.routines"].exists)
+        for name in ["projects", "sessions", "decisions", "campaigns", "tasks"] {
+            XCTAssertTrue(app.buttons["work.section.\(name)"].isHittable, "\(name) is hidden")
+        }
         LAAWorkSectionUI.open("campaigns", in: app)
-        XCTAssertTrue(more.isSelected)
-        XCTAssertEqual(more.value as? String, "Campaigns")
+        XCTAssertTrue(app.buttons["work.section.campaigns"].isSelected)
         XCTAssertTrue(app.buttons["work.section.projects"].exists)
         XCTAssertFalse(app.buttons["work.section.skills"].exists)
         XCTAssertTrue(app.buttons["work.usage"].exists)

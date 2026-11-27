@@ -9,9 +9,9 @@ enum LAAOwnerTaskCopy {
     static let setDueDate = "Due Date"
     static let addLink = "Add Link"
     static let saveMine = "自分の変更をこの内容に保存"
-    static let useCurrent = "現在の内容を使う"
-    static let keepDraft = "下書きを残す"
-    static let compare = "変更を比較"
+    static let useCurrent = "Use Current"
+    static let keepDraft = "Keep Draft"
+    static let compare = "Compare Changes"
     static let confirmUseCurrent = "現在の内容を使いますか？"
     static let discardAndUseCurrent = "自分の入力を破棄して現在の内容を使う"
     static let restoreCanceled = "Reopen"
@@ -20,13 +20,13 @@ enum LAAOwnerTaskCopy {
     static let discard = "Discard"
     static let otherDevices = "別の端末・別の本人"
     static let move = "Move"
-    static let pending = "送信待ち・下書き"
+    static let pending = "Outbox & Drafts"
     static let confirmAction = "選択した操作を確認"
     static let retryRequest = "Resend"
     static let discardRecord = "端末の記録を破棄"
     static let moveToDevice = "この端末へ移す"
     static let moveDraft = "この端末の下書きへ移す"
-    static let discardLocalDraft = "端末の下書きを破棄"
+    static let discardLocalDraft = "Discard Local Draft"
 }
 
 // Presentation only: the caller supplies confirmed data and owns loading,
@@ -87,7 +87,7 @@ struct LAAOwnerTaskListContent: View {
         HStack(alignment: .center, spacing: LAASpacing.x2) {
             Button { toggleTask(task) } label: {
                 Image(systemName: task.status == .done ? "checkmark.square.fill" : "square")
-                    .font(.title3).foregroundStyle(LAAColor.link)
+                    .laaTextStyle(.heading).foregroundStyle(LAAColor.link)
                     .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
             }
             .buttonStyle(.plain)
@@ -317,7 +317,7 @@ struct LAAOwnerTaskConflictContent: View {
     }
 
     private func value(_ text: String) -> some View {
-        Text(verbatim: text.isEmpty ? "（なし）" : text).textSelection(.enabled)
+        Text(verbatim: text.isEmpty ? "(None)" : text).textSelection(.enabled)
     }
 }
 #endif

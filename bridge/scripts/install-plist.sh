@@ -5,7 +5,7 @@
 #   install-plist.sh <template> <destination> <node> <bridge-dir> <state-dir> <port> <home>
 #
 # The template is rendered to a 0600 temporary file beside the destination, the
-# operator's three opt-in settings are carried over from the live plist, and the
+# operator's allowlisted settings are carried over from the live plist, and the
 # result replaces the live plist only after it passes `plutil -lint`. A live
 # plist that cannot be read stops the install with the live plist untouched.
 set -eu

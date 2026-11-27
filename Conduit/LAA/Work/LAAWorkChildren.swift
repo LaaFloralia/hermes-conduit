@@ -12,7 +12,7 @@ enum LAAWorkChildren {
         let state: LAAWorkingChild.State
         switch session.phase {
         case "running": state = .running
-        case "created", "awaiting_review": state = .waiting
+        case "created", "awaiting_review", "idle": state = .waiting
         case "awaiting_decision", "stop_unconfirmed": state = .attention
         case "error": state = .failed
         default: state = .done

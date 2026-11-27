@@ -93,7 +93,7 @@ struct LAALinearTasksView: View {
     /// How a task comes back from the archive: the phone swipes the row, the
     /// Mac uses the row's menu, so the hint names the one that is there.
     private var archivedFooter: String {
-        guard archivedOnly else { return "Linear · LAA担当" }
+        guard archivedOnly else { return "LAA担当" }
         return laaDesktop ? "アーカイブしたタスクです。" : "アーカイブしたタスクです。スワイプで戻せます。"
     }
 
@@ -106,7 +106,7 @@ struct LAALinearTasksView: View {
     }
 
     private var emptyTitle: String {
-        archivedOnly ? "アーカイブはありません" : searching || quick != .all ? "一致するタスクはありません" : "タスクはありません"
+        archivedOnly ? "No Archive" : searching || quick != .all ? "No Matching Tasks" : "No Tasks"
     }
 
     var body: some View {
@@ -205,7 +205,7 @@ struct LAALinearTasksView: View {
         .confirmationDialog(Text(verbatim: "操作の控えを閉じますか？"), isPresented: $acknowledge) {
             Button { if let pending { _ = drafts.finishSubmission(pending.id, restoring: false) }; Task { await load() } }
             label: { Text(verbatim: "結果を確認して閉じる") }
-        } message: { Text(verbatim: "Linearで反映結果を確認した場合だけ閉じてください。この操作は変更を取り消しません。") }
+        } message: { Text(verbatim: "タスクの反映結果を確認した場合だけ閉じてください。この操作は変更を取り消しません。") }
     }
 
     // MARK: Shared pieces
@@ -311,7 +311,7 @@ struct LAALinearTasksView: View {
                 HStack(spacing: LAASpacing.x4) {
                     Button { startSend(pending, retry: true) } label: { Text(verbatim: "保存結果を確認") }
                         .disabled(busy || !LAAWorkDrafts.canRepeat(pending))
-                    Button { acknowledge = true } label: { Text(verbatim: "Linearで結果を確認済み") }
+                    Button { acknowledge = true } label: { Text(verbatim: "結果を確認済み") }
                         .disabled(busy)
                 }
                 .buttonStyle(.borderless)
@@ -510,7 +510,7 @@ struct LAALinearTasksView: View {
             // ⌘N, ⌘F and ⌘R come from the menu bar, which reads the commands
             // this column publishes.
             .laaMacSectionCommands(LAAMacSectionCommands(
-                newTitle: "新しいタスク",
+                newTitle: "New Task",
                 canCreate: !(busy || pending != nil),
                 create: { editor = Editor(id: UUID().uuidString.lowercased(), task: nil) },
                 canSearch: true,
@@ -634,7 +634,7 @@ struct LAALinearTasksView: View {
         guard bridge.status == .paired, !busy, pending == nil else { return }
         let mutation = LAALinearTaskMutation(method: method, id: id, body: body, version: version, action: action)
         guard mutation.isValid, let data = try? JSONEncoder().encode(mutation),
-              let item = LAAWorkDrafts.reserve(drafts, key: journalKey, text: "Linearタスクの変更", body: data,
+              let item = LAAWorkDrafts.reserve(drafts, key: journalKey, text: "タスクの変更", body: data,
                                              idempotency: LAABridgeIdempotencyKey()) else {
             failure = "入力を端末に保存できません。もう一度お試しください。"; return
         }
@@ -694,11 +694,11 @@ struct LAALinearTasksView: View {
             let scopeMessage = mutation.action == nil
                 ? LAALinearTaskCreate.refusalMessage(status: error.status, code: error.code, body: mutation.body) : nil
             if retry {
-                failure = scopeMessage ?? archivedMessage ?? "前の操作の結果は未確認です。Linearで状態を確認してください。"
+                failure = scopeMessage ?? archivedMessage ?? "前の操作の結果は未確認です。タスクの状態を確認してください。"
             } else if !drafts.finishSubmission(item.id, restoring: false) {
                 failure = "端末の控えを更新できません。入力を保持しています。"
             } else {
-                failure = scopeMessage ?? archivedMessage ?? (error.status == 412 ? "Linearで更新されています。編集画面を閉じて読み直してください。" : "操作が受け付けられませんでした。入力と接続を確認してください。")
+                failure = scopeMessage ?? archivedMessage ?? (error.status == 412 ? "ほかの場所で更新されています。編集画面を閉じて読み直してください。" : "操作が受け付けられませんでした。入力と接続を確認してください。")
             }
         } catch {
             guard bridge.deviceID == device else { return }
@@ -789,7 +789,7 @@ struct LAALinearTasksView: View {
         } catch is CancellationError { return }
         catch {
             guard loadID == epoch, device == bridge.deviceID, !quiet else { return }
-            failure = loaded ? "タスクの更新が止まっています。Linearの接続を確認してください。" : "Linearのタスク一覧が応答しません。接続を確認して再試行してください。"
+            failure = loaded ? "タスクの更新が止まっています。接続を確認してください。" : "タスクの一覧が応答しません。接続を確認して再試行してください。"
         }
     }
 }
@@ -915,7 +915,7 @@ struct LAALinearTaskEditor: View {
                 if let message = localFailure ?? failure { Text(verbatim: message).foregroundStyle(LAAColor.attention) }
             }
             .disabled(busy)
-            .navigationTitle(Text(verbatim: task == nil ? "タスクを追加" : "タスクを編集"))
+            .navigationTitle(Text(verbatim: task == nil ? "Add Task" : "Edit Task"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { LAACloseButton { dismiss() }.accessibilityIdentifier("work.task.editor.close") }

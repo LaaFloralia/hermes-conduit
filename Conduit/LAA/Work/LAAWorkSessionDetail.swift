@@ -79,6 +79,8 @@ private struct LAAWorkPositionedScroll<Content: View>: View {
 struct LAAWorkSessionDetail: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     @Environment(\.laaDesktop) private var laaDesktop
+    /// The working capsule's height follows the text size (the transcript's end room).
+    @Environment(\.dynamicTypeSize) private var typeSize
     @ObservedObject var drafts: ComposerDraftStore
     let id: String
     let projects: [LAAWorkProject]
@@ -217,7 +219,7 @@ struct LAAWorkSessionDetail: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(Text(verbatim: session.name + "、" + LAAWorkPresentation.phase(session.phase)))
-                    .accessibilityHint(Text(verbatim: "名前と最初の指示を表示"))
+                    .accessibilityHint(Text(verbatim: "Show First Prompt"))
                     .accessibilityIdentifier("work.session.detail.title")
                         .frame(maxWidth: LAAConversationHeaderLayout.nameWidth(screenWidth: screenWidth))
                         .frame(minHeight: LAAConversationHeaderLayout.controlHeight)
@@ -349,7 +351,9 @@ struct LAAWorkSessionDetail: View {
             // The end of the page, outside the lazy transcript. New arrivals
             // follow only while this sentinel is on screen.
             // Keeps the working pill's room free while the turn runs.
-            Color.clear.frame(height: session.map(canStop) == true ? LAAWorkingControlMetrics.coverage : 1).id("bottom-end")
+            Color.clear.frame(height: session.flatMap(workingStatus).map {
+                LAAWorkingControlMetrics.coverage(children: $0.children.count, typeSize: typeSize)
+            } ?? 1).id("bottom-end")
                 .onAppear {
                     followsConversation = true
                     userDragged = false
@@ -384,7 +388,7 @@ struct LAAWorkSessionDetail: View {
             ["running", "created", "awaiting_decision", "stop_unconfirmed", "error"].contains(child.phase)
                 || (start.map { start in (LAAWorkChildren.date(child.updatedAt)?.timeIntervalSince(start) ?? 0) > 0 } ?? false)
         }
-        return LAAWorkingStatus(word: compacting ? "圧縮中" : LAAWorkPresentation.phase(session.phase), startedAt: start,
+        return LAAWorkingStatus(word: compacting ? LAAWorkPresentation.compacting : LAAWorkPresentation.phase(session.phase), startedAt: start,
                                 orb: .thinking, children: children.map { LAAWorkChildren.child($0, options: options) })
     }
 
@@ -843,7 +847,7 @@ struct LAAWorkSessionHeaderPill: View {
                          provider: (session.observed ?? session.requested)?.provider, size: 26)
             VStack(alignment: .center, spacing: 2) {
                 Text(verbatim: session.name)
-                    .font(LAAType.title(session.name, size: 16, relativeTo: .headline))
+                    .laaTextStyle(.body).fontWeight(.semibold)
                     .foregroundStyle(LAAColor.text)
                     .lineLimit(1).truncationMode(.middle)
                     .accessibilityIdentifier("work.session.detail.title")
@@ -853,7 +857,7 @@ struct LAAWorkSessionHeaderPill: View {
                         .foregroundStyle(status.color).accessibilityHidden(true)
                     Text(verbatim: status.displayLabel).foregroundStyle(LAAColor.secondaryText)
                 }
-                .font(.caption).fixedSize()
+                .laaTextStyle(.note).fixedSize()
             }
         }
         .modifier(LAAWorkSessionHeaderGlass(clear: clearGlass))

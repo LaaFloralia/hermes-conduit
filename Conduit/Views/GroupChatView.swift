@@ -20,6 +20,11 @@ struct GroupChatView: View {
     /// actions.
     @Environment(\.v2ComposerRests) private var isV2
     @State private var showingDisbandConfirmation = false
+#if LAA_BUILD
+    /// How far the room's title (faces and name) hangs below the bar's
+    /// 44 pt row; the transcript starts below it.
+    @State private var titleHang: CGFloat = 0
+#endif
     @State private var choosingPicture: GroupRoomPictureRequest?
     /// Following the latest event, or browsing history (GroupRoomFollow).
     /// The flag decides scrolling; the published copy draws the button.
@@ -60,7 +65,12 @@ struct GroupChatView: View {
             if isV2 {
 #if LAA_BUILD
                 VStack(spacing: 0) {
+                    // The transcript starts, and is cut, below the title that
+                    // hangs under the bar, as a chat's is below its heading:
+                    // scrolled beneath it, large lines ("今日") showed through.
                     transcript
+                        .padding(.top, titleHang)
+                        .clipped()
                     bottomBar
                 }
 #else
@@ -358,13 +368,14 @@ struct GroupChatView: View {
                                 continuesRun: previous.map { GroupEventRow.sameSpeaker($0, event) } ?? false)
 #if LAA_BUILD
         if event.isMemberMessage, let chair = surface?.room.chair, chair == event.actor.id,
-           event.payload["meeting_phase"]?.stringValue == "conclusion" {
+           let phase = event.payload["meeting_phase"]?.stringValue,
+           phase == "agenda" || phase == "conclusion" {
             VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                Text(verbatim: LAACopy.groupConclusion)
+                Text(verbatim: phase == "agenda" ? LAACopy.groupAgenda : LAACopy.groupConclusion)
                     .laaTextStyle(.section)
                     .foregroundStyle(LAAColor.text)
                     .accessibilityAddTraits(.isHeader)
-                    .accessibilityIdentifier("room.meeting.conclusion")
+                    .accessibilityIdentifier("room.meeting.\(phase)")
                 GroupEventRow(event: event, members: members)
             }
         } else { row }
@@ -474,7 +485,8 @@ struct GroupChatView: View {
     private var roomTitle: some View {
 #if LAA_BUILD
         GroupRoomTitle(name: surface?.room.name ?? "", subtitle: memberSummary, members: members,
-            picture: surface.flatMap { appState.groupRoomPicture(roomID: $0.room.roomID) }, information: menu)
+            picture: surface.flatMap { appState.groupRoomPicture(roomID: $0.room.roomID) }, information: menu,
+            onHang: { titleHang = $0 })
 #else
         GroupRoomTitle(name: surface?.room.name ?? "", subtitle: memberSummary, members: members,
             picture: surface.flatMap { appState.groupRoomPicture(roomID: $0.room.roomID) })
@@ -612,6 +624,8 @@ struct GroupRoomTitle: View {
 
 #if LAA_BUILD
     var information: AnyView? = nil
+    /// How far the title reaches below the bar's row, for the transcript.
+    var onHang: ((CGFloat) -> Void)? = nil
     @State private var showingInformation = false
 #endif
     var body: some View {
@@ -625,7 +639,13 @@ struct GroupRoomTitle: View {
                 }.padding(.horizontal, 12).padding(.vertical, 5)
                     .conduitGlassControl(cornerRadius: 20, tint: LAAColor.link.opacity(0.06), interactive: false)
             }
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { onHang?(max(0, $0 - 44)) }
         }.buttonStyle(.plain).frame(height: 44, alignment: .top)
+            // The title hangs below the bar by a fixed depth, so it does not
+            // grow with the text: larger, it covered the transcript's first
+            // line ("今日"). Touch and hold shows the name large.
+            .dynamicTypeSize(...DynamicTypeSize.large)
+            .accessibilityShowsLargeContentViewer { Text(verbatim: name) }
             .accessibilityLabel(String("\(name)、会話の情報"))
             .accessibilityIdentifier("room.header")
             .sheet(isPresented: $showingInformation) {
@@ -1722,6 +1742,31 @@ struct MentionSuggestionList: View {
 
 // MARK: - Create sheet
 
+#if LAA_BUILD
+/// The bot roster and quick actions use the same picker as LAA Chat and Groups.
+struct GroupCreateSheet: View {
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
+    var preselected: Set<String> = []
+
+    var body: some View {
+        NavigationStack {
+            LAAGroupCreateView(roster: appState.botRoster, capabilities: appState.groupCapabilities,
+                               preselected: preselected) { name, bots, roomID, confidential in
+                let created = await appState.createGroupRoom(name: name, bots: bots, roomID: roomID,
+                                                             confidential: confidential)
+                if created { dismiss() }
+                return created
+            }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(LAAChatLabels.text("Cancel")) { dismiss() }
+                }
+            }
+        }
+    }
+}
+#else
 /// New Group Chat: one name field plus a 2–6 bot picker restricted to the
 /// current gateway's roster (cross-gateway rooms are a later parity slice).
 struct GroupCreateSheet: View {
@@ -1865,6 +1910,7 @@ struct GroupCreateSheet: View {
         }
     }
 }
+#endif
 
 // MARK: - Desktop-synced group chats
 

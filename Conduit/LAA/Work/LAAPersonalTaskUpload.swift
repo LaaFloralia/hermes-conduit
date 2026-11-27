@@ -39,17 +39,17 @@ struct LAAPersonalTaskUpload: View {
                                 Button(LAACopy.WorkTab.retrySameRequest) { Task { await perform(pending, firstAttempt: false) } }
                             }
                         }
-                    } header: { Text(verbatim: "送信待ち") }
+                    } header: { Text(verbatim: "Queued") }
                 }
                 Section() {
                     if let prepared { Text(verbatim: prepared.filename); Text(verbatim: "\(prepared.size) bytes").laaTextStyle(.secondary) }
                     else { Text(verbatim: "ファイルを選んでください（最大20 MiB）。") }
                     Button() { selecting = true } label: { Text(verbatim: "Select File") }.disabled(pending != nil)
                     Button() { submit() } label: { Text(verbatim: "Add") }.disabled(prepared == nil || pending != nil || drafts.persistenceFailed)
-                } header: { Text(verbatim: "ファイル") }
+                } header: { Text(verbatim: "Files") }
             }
             .disabled(busy)
-            .navigationTitle(Text(verbatim: "ファイルを追加"))
+            .navigationTitle(Text(verbatim: "Add File"))
             .toolbar { ToolbarItem(placement: .topBarTrailing) { LAACloseButton { dismiss() }.accessibilityIdentifier("work.task.upload.close") } }
             .fileImporter(isPresented: $selecting, allowedContentTypes: [.item]) { result in
                 switch result {

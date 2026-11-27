@@ -234,7 +234,7 @@ struct LAADriveBrowserView: View {
                     .accessibilityIdentifier("laa.drive.browser.search")
                 if !search.isEmpty {
                     Button { search = "" } label: { Image(systemName: "xmark.circle.fill") }
-                        .accessibilityLabel("検索を消す")
+                        .accessibilityLabel(Text(verbatim: LAACopy.searchClear))
                         .frame(minWidth: LAASpacing.minimumTouchTarget, minHeight: LAASpacing.minimumTouchTarget)
                 }
             }
@@ -277,7 +277,7 @@ struct LAADriveBrowserView: View {
                 }.laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
             }
             if controller.items.isEmpty && controller.error == nil {
-                Text(verbatim: "ファイルがありません").laaTextStyle(.body).foregroundStyle(LAAColor.secondaryText)
+                Text(verbatim: "No Files").laaTextStyle(.body).foregroundStyle(LAAColor.secondaryText)
                     .frame(maxWidth: .infinity, minHeight: 160)
             }
             if controller.incompleteSearch == true {
@@ -317,11 +317,11 @@ struct LAADriveBrowserView: View {
                         .overlay(alignment: .bottomTrailing) {
                             if let duration = entry.durationSeconds, entry.item.mimeType.hasPrefix("video/") {
                                 Text(verbatim: String(format: "%d:%02d", Int(duration) / 60, Int(duration) % 60))
-                                    .font(.caption.monospacedDigit()).foregroundStyle(LAAColor.text)
+                                    .laaTextStyle(.note).monospacedDigit().foregroundStyle(LAAColor.text)
                                     .padding(4).background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.selectionChip)).padding(4)
                             }
                         }
-                    Text(verbatim: entry.item.name).font(.system(size: 14, weight: .medium)).foregroundStyle(LAAColor.text)
+                    Text(verbatim: entry.item.name).laaTextStyle(.body).fontWeight(.medium).foregroundStyle(LAAColor.text)
                         .lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
                 }
             } else {

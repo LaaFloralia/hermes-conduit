@@ -82,18 +82,37 @@ final class LAAEmployeeWidgetTests: XCTestCase {
     }
 
     func testEmptyEmployeeCatalogCreatesConversationInThatProfile() async throws {
-        let dashboard = SavedDashboard(id: dashboardID, label: "Test", normalizedURL: "https://widget-test.invalid")
+        let dashboard = SavedDashboard(id: dashboardID, label: "Test", normalizedURL: "http://127.0.0.1")
         let state = try makeState(dashboards: [dashboard])
         state.setActiveProfileForTesting("laa-monet")
         let connection = HermesConnection(baseUrl: dashboard.normalizedURL, ticket: "test")
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        transport.nextSocket = { socket }
+        let client = HermesClient(connection: connection, profile: "laa-monet",
+                                  transportFactory: { transport }, keepaliveInterval: nil, monitorsPath: false)
+        defer {
+            state.client = nil
+            client.disconnect()
+        }
+        var createProfiles: [String?] = []
+        socket.onSend = { [weak socket] in
+            guard let socket, let text = socket.sentTexts.last,
+                  let request = (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [String: Any],
+                  request["method"] as? String == "session.create", let id = request["id"] as? Int else { return }
+            createProfiles.append((request["params"] as? [String: Any])?["profile"] as? String)
+            socket.deliver(#"{"jsonrpc":"2.0","id":\#(id),"result":{"session_id":"new-monet","stored_session_id":"new-monet","profile":"laa-monet"}}"#)
+        }
+        transport.open(socket)
+        try await client.connect()
+        socket.deliver(#"{"jsonrpc":"2.0","method":"event","params":{"type":"gateway.ready","payload":{"reasoning_delta_optin":false}}}"#)
         state.connection = connection
-        state.client = HermesClient(connection: connection, profile: "laa-monet")
-        state.isConnected = true
+        state.client = client
+        state.isConnected = client.isConnected
         state.profiles = ["default", "laa-monet"]
         state.sessions = []
         let workspace = WidgetWorkspaceID(dashboardID: dashboardID, profile: "laa-monet")
         state.widgetSettledCatalogOwner = workspace
-        state.widgetSessionCreatorOverride = { _, _ in ("new-monet", "new-monet", "laa-monet") }
         let link = try XCTUnwrap(WidgetLaunchLink(action: .employeeChat, workspace: workspace, reference: nil))
 
         let result = await state.performWidgetLaunch(link, lease: WidgetLaunchLease(isCurrent: { true }))
@@ -101,6 +120,8 @@ final class LAAEmployeeWidgetTests: XCTestCase {
         XCTAssertEqual(result, .handled)
         XCTAssertEqual(state.activeSessionId, "new-monet")
         XCTAssertEqual(state.activeProfile, "laa-monet")
+        XCTAssertEqual(createProfiles, ["laa-monet"], "An empty catalog creates once, in the selected employee's profile")
+        XCTAssertTrue(client.laaHasAttachment("new-monet"))
     }
 
     /// A tapped employee's chat shows at once (the opening screen) while the

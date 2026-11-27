@@ -17,10 +17,10 @@ struct LAAPersonalInboxEntry: View {
     var body: some View {
         Group {
             if let viewer { LAAPersonalInboxView(drafts: drafts, viewerId: viewer, onExit: {}) }
-            else if let error { VStack { Text(verbatim: error); Button { Task { await load() } } label: { Text(verbatim: "読み直す") } } }
+            else if let error { VStack { Text(verbatim: error); Button { Task { await load() } } label: { Text(verbatim: "Reload") } } }
             else { LAALoadingDots() }
         }
-        .navigationTitle(Text(verbatim: "受信箱"))
+        .navigationTitle(Text(verbatim: "Inbox"))
         .task(id: bridge.revision) { viewer = nil; await load() }
     }
     @MainActor private func load() async {
@@ -54,7 +54,7 @@ struct LAAPersonalInboxView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: LAASpacing.x3) {
                 Toggle(isOn: $includeArchived) { Text(verbatim: "アーカイブを含む") }
-                Text(verbatim: nativeInbox ? "Linearの受信箱です。取得や表示だけでは既読にしません。" : "LAAアプリ独自の受信箱です。Linearの既読とは同期しません。取得や表示だけでは既読にしません。")
+                Text(verbatim: nativeInbox ? "タスクの受信箱です。取得や表示だけでは既読にしません。" : "LAAアプリ独自の受信箱です。タスク側の既読とは同期しません。取得や表示だけでは既読にしません。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 if let error {
                     Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(LAAColor.attention)
@@ -81,13 +81,13 @@ struct LAAPersonalInboxView: View {
                 if loading { LAALoadingDots() }
                 HStack {
                     Button() { Task { await refresh() } } label: { Text(verbatim: "Refresh") }.disabled(loading || working)
-                    NavigationLink(destination: LAAPersonalPendingView(drafts: drafts, viewerId: viewerId)) { Text(verbatim: "送信待ち") }
+                    NavigationLink(destination: LAAPersonalPendingView(drafts: drafts, viewerId: viewerId)) { Text(verbatim: "Queued") }
                 }
             }
             .padding(.horizontal, LAASpacing.horizontal).padding(.vertical, LAASpacing.x4)
             .laaPageWidth()
         }
-        .navigationTitle(Text(verbatim: "受信箱"))
+        .navigationTitle(Text(verbatim: "Inbox"))
         .navigationBarTitleDisplayMode(.inline)
         .laaHidesTabBar()
         .refreshable { await refresh() }
@@ -145,7 +145,7 @@ struct LAAPersonalInboxView: View {
             nativeInbox = page.inboxMode != "laa"
         } catch is CancellationError {
         } catch LAAPersonalInboxSnapshot.Failure.viewerChanged {
-            if generation == currentGeneration { snapshot = nil; operationCheckOK = false; error = "Linearの本人が変わりました。Tasksを更新してください。" }
+            if generation == currentGeneration { snapshot = nil; operationCheckOK = false; error = "タスクのアカウントが変わりました。Tasksを更新してください。" }
         } catch let failure as LAABridgeError {
             if generation == currentGeneration && !Task.isCancelled { error = failure.japaneseText }
         } catch {
@@ -205,7 +205,7 @@ private struct LAAPersonalNotificationContent: View {
     var body: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x1) {
             HStack {
-                Text(verbatim: item.isUnread ? "未読" : "既読")
+                Text(verbatim: item.isUnread ? "Unread" : "Read")
                     .fontWeight(.semibold).foregroundStyle(item.isUnread ? LAAColor.attention : LAAColor.secondaryText)
                 if item.isArchived { Text(verbatim: "保管済み").foregroundStyle(LAAColor.secondaryText) }
             }
@@ -246,7 +246,7 @@ struct LAAPersonalInboxItemView: View {
                 Button() { Task { await load() } } label: { Text(verbatim: "Refresh") }
             }.padding(.horizontal, LAASpacing.horizontal).padding(.vertical, LAASpacing.x4)
         }
-        .navigationTitle(Text(verbatim: "通知"))
+        .navigationTitle(Text(verbatim: "Notifications"))
         .task(id: "\(bridge.revision)-\(viewerId)-\(id)") { await load() }
     }
     @MainActor private func load() async {

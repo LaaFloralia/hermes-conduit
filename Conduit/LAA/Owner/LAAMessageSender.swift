@@ -45,7 +45,7 @@ struct LAASenderName: View {
     let text: String
     var body: some View {
         Text(verbatim: text)
-            .font(LAAType.title(text, size: 15, relativeTo: .caption))
+            .laaTextStyle(.secondary)
             .foregroundStyle(LAAColor.secondaryText)
             .lineLimit(1)
             .laaPhotoSupportingText()
@@ -192,7 +192,7 @@ struct LAAMessageTime: View {
     var body: some View {
         if let timestamp, let label = MessageTimestampFormatter.displayString(for: timestamp) {
             Text(verbatim: label)
-                .font(.caption2.weight(.medium))
+                .laaTextStyle(.note).fontWeight(.medium)
                 .monospacedDigit()
                 .laaPhotoSupportingText()
                 .foregroundStyle(LAAColor.secondaryText)

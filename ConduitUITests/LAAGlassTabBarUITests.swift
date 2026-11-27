@@ -21,7 +21,7 @@ final class LAAGlassTabBarUITests: XCTestCase {
         let icon = app.laaSettingsEntry
         XCTAssertTrue(icon.waitForExistence(timeout: 10), selected, file: file, line: line)
         XCTAssertTrue(icon.isHittable, selected, file: file, line: line)
-        XCTAssertEqual(icon.label, "Hortensia, Settings", file: file, line: line)
+        XCTAssertEqual(icon.label, "Settings", file: file, line: line)
         XCTAssertFalse(app.buttons["laa.settings.open"].exists, selected, file: file, line: line)
         // XCUI snapshots SwiftUI's .isTabBar group as Other. The bottom row's
         // named buttons, not the decorative unnamed children, are its controls.

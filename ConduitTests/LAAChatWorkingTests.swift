@@ -12,8 +12,8 @@ final class LAAChatWorkingTests: XCTestCase {
     private let start = Date(timeIntervalSinceReferenceDate: 800_000_000)
 
     private func agent(_ id: String, _ status: DelegateAgentActivity.Status, gateway: Bool = true,
-                       updated: Date? = nil) -> DelegateAgentActivity {
-        DelegateAgentActivity(id: id, goal: "Read \(id)\nmore", model: "claude-opus-5-5", status: status,
+                       updated: Date? = nil, goal: String? = nil) -> DelegateAgentActivity {
+        DelegateAgentActivity(id: id, goal: goal ?? "Read \(id)\nmore", model: "claude-opus-5-5", status: status,
                               taskCount: 1, taskIndex: 0, currentTool: status == .running ? "read_file" : nil,
                               summary: status == .failed ? "Timed out reading the folder." : nil, stream: [],
                               hasGatewayID: gateway, sessionId: gateway ? "s1" : "", updatedAt: updated ?? start)
@@ -26,7 +26,7 @@ final class LAAChatWorkingTests: XCTestCase {
         let running = LAAChatWorking.status(isBusy: true, startedAt: start, toolRunning: false, agents: [])
         XCTAssertEqual(running?.word, "Thinking")
         XCTAssertEqual(running?.startedAt, start, "The timer runs from the turn's stable start")
-        XCTAssertEqual(LAAChatWorking.status(isBusy: true, startedAt: start, toolRunning: true, agents: [])?.word, "作業中")
+        XCTAssertEqual(LAAChatWorking.status(isBusy: true, startedAt: start, toolRunning: true, agents: [])?.word, "Working")
     }
 
     func testChildrenOfTheTurn() {
@@ -38,6 +38,7 @@ final class LAAChatWorkingTests: XCTestCase {
                                             since: start)
         XCTAssertEqual(three.map(\.state), [.running, .waiting, .failed])
         XCTAssertEqual(three[0].title, "Read a", "The goal's first line")
+        XCTAssertEqual(LAAChatWorking.child(agent("untitled", .running, goal: "")).title, "Agent")
         XCTAssertEqual(three[0].meta, "Opus 5.5")
         XCTAssertEqual(three[2].preview, "Timed out reading the folder.")
         XCTAssertFalse(LAAChatWorking.child(agent("x", .running, gateway: false)).resolvable,
@@ -52,7 +53,7 @@ final class LAAChatWorkingTests: XCTestCase {
             .init(id: "4", title: "Failed", state: .failed),
         ]
         XCTAssertEqual(rows.map(\.shape), ["●", "▲", "○", "▲"])
-        XCTAssertEqual(rows.map(\.word), ["実行中", "判断待ち", "待機中", "失敗"])
+        XCTAssertEqual(rows.map(\.word), ["Running", "Decision", "Waiting", "Failed"])
         XCTAssertEqual(LAAWorkingChild(id: "5", title: "Work", state: .waiting, label: "確認待ち").word, "確認待ち")
     }
 
@@ -97,8 +98,28 @@ final class LAAChatWorkingTests: XCTestCase {
         XCTAssertEqual(placements.map(\.afterMessageID), ["m1", "m2"])
         let rows = children.map { LAAWorkChildren.child($0, options: nil) }
         XCTAssertEqual(rows.map(\.state), [.running, .attention, .failed])
-        XCTAssertEqual(rows[1].word, "判断待ち")
+        XCTAssertEqual(rows.map(\.word), ["Running", "Decision", "Failed"])
         XCTAssertEqual(rows[0].meta, "Opus 5.5 · High")
+    }
+
+    func testWorkChildLabelsMatchTheWorkingControlVocabulary() throws {
+        let cases: [(String, LAAWorkingChild.State, String)] = [
+            ("running", .running, "Running"),
+            ("awaiting_decision", .attention, "Decision"),
+            ("stop_unconfirmed", .attention, "Decision"),
+            ("created", .waiting, "Waiting"),
+            ("awaiting_review", .waiting, "Waiting"),
+            ("idle", .waiting, "Waiting"),
+            ("error", .failed, "Failed"),
+            ("closed", .done, "Done"),
+            ("stopped", .done, "Done"),
+        ]
+        for (phase, state, word) in cases {
+            let child = LAAWorkChildren.child(try session(phase, created: "2026-11-25T01:00:10Z", phase: phase), options: nil)
+            XCTAssertEqual(child.state, state, phase)
+            XCTAssertEqual(child.word, word, phase)
+        }
+        XCTAssertEqual(LAAWorkPresentation.compacting, "Compacting")
     }
 
     // MARK: Drawn
@@ -109,16 +130,21 @@ final class LAAChatWorkingTests: XCTestCase {
             LAAWorkingChild(id: "b", title: "Check the build", state: .attention, meta: "GPT 6.2 Sol · High"),
             LAAWorkingChild(id: "c", title: "Write the notes", state: .waiting),
         ]
+        let five = three + [
+            LAAWorkingChild(id: "d", title: "子｜Render the page", state: .failed, meta: "Opus 5.5 · High"),
+            LAAWorkingChild(id: "e", title: "Sort the tokens", state: .done, meta: "DeepSeek V4.1 Flash"),
+        ]
         let states: [(String, LAAWorkingStatus?, Bool)] = [
             ("idle", nil, false),
             ("running", LAAWorkingStatus(word: "Thinking", startedAt: Date().addingTimeInterval(-42)), false),
             ("one-child", LAAWorkingStatus(word: "作業中", startedAt: Date().addingTimeInterval(-42), orb: .tool, children: one), false),
             ("three-children", LAAWorkingStatus(word: "作業中", startedAt: Date().addingTimeInterval(-42), orb: .tool, children: three), false),
+            ("five-children", LAAWorkingStatus(word: "作業中", startedAt: Date().addingTimeInterval(-42), orb: .tool, children: five), true),
             ("scrolled-up", LAAWorkingStatus(word: "Thinking", startedAt: Date().addingTimeInterval(-42)), true),
         ]
         for style in [UIUserInterfaceStyle.light, .dark] {
             for (name, status, jump) in states {
-                let image = try render(style: style, height: 180) {
+                let image = try render(style: style, height: 300) {
                     VStack(spacing: 0) {
                         Spacer(minLength: 0)
                         LAAWorkingCluster(status: status, showsJump: jump, jump: {}, openChildren: {}) {
@@ -128,7 +154,7 @@ final class LAAChatWorkingTests: XCTestCase {
                         .padding(.bottom, 12)
                     }
                 }
-                let ink = differs(image, fromRowsAbove: 112, paper: color(LAAColor.background, style))
+                let ink = differs(image, fromRowsAbove: 232, paper: color(LAAColor.background, style))
                 XCTAssertEqual(ink, status != nil || jump, "\(name): the floating row draws only while it has something to say")
                 attach(image, name: "working-\(name)-\(style == .dark ? "dark" : "light")")
             }

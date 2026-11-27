@@ -41,17 +41,17 @@ struct LAAWatchAmbientPlan: Equatable {
     /// Monet at rest with the call entry.
     static func make(_ ambient: LAAWatchAmbient?, now: Date) -> LAAWatchAmbientPlan {
         if let ambient, ambient.waiting > 0 {
-            return LAAWatchAmbientPlan(kind: .decisions, line: "判断待ち \(ambient.waiting)件",
+            return LAAWatchAmbientPlan(kind: .decisions, line: "\(ambient.waiting) Pending",
                                        score: 80 + Float(min(ambient.waiting, 5)), until: nil)
         }
         if let report = ambient?.reportDate, !(report > now), now.timeIntervalSince(report) < reportWindow {
             let age = now.timeIntervalSince(report)
             // Fresh news ranks highest and fades over the window.
             let score = Float(70 * (1 - age / reportWindow)).rounded()
-            return LAAWatchAmbientPlan(kind: .report, line: "報告 \(time(report))",
+            return LAAWatchAmbientPlan(kind: .report, line: "Report \(time(report))",
                                        score: max(10, score), until: report.addingTimeInterval(reportWindow))
         }
-        return LAAWatchAmbientPlan(kind: .idle, line: "話しかける", score: 0, until: nil)
+        return LAAWatchAmbientPlan(kind: .idle, line: "Talk", score: 0, until: nil)
     }
 
     static func time(_ date: Date) -> String {

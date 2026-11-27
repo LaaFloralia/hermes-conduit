@@ -50,6 +50,7 @@ test('a reinstall keeps the opt-in settings and nothing else from the old plist'
     LAA_LINEAR_PERSONAL_TOKEN_HELPER: '/Users/someone/.local/bin/laa-linear-key',
     LAA_LINEAR_PERSONAL_VIEWER_ID: 'viewer-1',
     LAA_GOOGLE_REMINDERS_ENABLED: '1',
+    LAA_GOOGLE_DRIVE_EXPECTED_EMAIL: 'owner@example.test',
     LAA_VOICE_WORKER: '/Applications/LAA Voice.app/Contents/MacOS/saiddone-polish-worker',
     LAA_SOMETHING_ELSE: 'keep-me-out',
   }));
@@ -61,6 +62,7 @@ test('a reinstall keeps the opt-in settings and nothing else from the old plist'
   assert.equal(env.LAA_LINEAR_PERSONAL_TOKEN_HELPER, '/Users/someone/.local/bin/laa-linear-key');
   assert.equal(env.LAA_LINEAR_PERSONAL_VIEWER_ID, 'viewer-1');
   assert.equal(env.LAA_GOOGLE_REMINDERS_ENABLED, '1');
+  assert.equal(env.LAA_GOOGLE_DRIVE_EXPECTED_EMAIL, 'owner@example.test');
   assert.equal(env.LAA_VOICE_WORKER, '/Applications/LAA Voice.app/Contents/MacOS/saiddone-polish-worker');
   assert.equal(env.LAA_SOMETHING_ELSE, undefined, 'only the carried keys survive');
   assert.equal(env.PATH, '/usr/bin:/bin', 'the template keeps its own values');
@@ -80,6 +82,7 @@ test('a fresh install gains none of the opt-in settings', (t) => {
   assert.equal(env.LAA_LINEAR_PERSONAL_TOKEN_HELPER, undefined);
   assert.equal(env.LAA_LINEAR_PERSONAL_VIEWER_ID, undefined);
   assert.equal(env.LAA_GOOGLE_REMINDERS_ENABLED, undefined, 'reminders stay off until an operator enables them');
+  assert.equal(env.LAA_GOOGLE_DRIVE_EXPECTED_EMAIL, undefined);
 });
 
 test('an old plist without the settings carries nothing', (t) => {
@@ -134,10 +137,11 @@ test('install-plist.sh renders a fresh plist without enabling the opt-in setting
   const env = environment(live);
   assert.equal(env.LAA_BRIDGE_PORT, '9137');
   assert.equal(env.LAA_GOOGLE_REMINDERS_ENABLED, undefined);
+  assert.equal(env.LAA_GOOGLE_DRIVE_EXPECTED_EMAIL, undefined);
   assert.deepEqual(readdirSync(dir).sort(), ['com.laa.bridge.plist']);
 });
 
-test('install-plist.sh carries the three settings from the live plist it replaces', (t) => {
+test('install-plist.sh carries the allowlisted settings from the live plist it replaces', (t) => {
   const dir = workspace(t);
   const live = join(dir, 'com.laa.bridge.plist');
   writeFileSync(live, plist({
@@ -145,6 +149,7 @@ test('install-plist.sh carries the three settings from the live plist it replace
     LAA_LINEAR_PERSONAL_TOKEN_HELPER: '/Users/someone/.local/bin/laa-linear-key',
     LAA_LINEAR_PERSONAL_VIEWER_ID: 'viewer-1',
     LAA_GOOGLE_REMINDERS_ENABLED: '1',
+    LAA_GOOGLE_DRIVE_EXPECTED_EMAIL: 'owner@example.test',
     LAA_VOICE_WORKER: '/Applications/LAA Voice.app/Contents/MacOS/saiddone-polish-worker',
     LAA_SOMETHING_ELSE: 'drop-me',
   }));
@@ -155,6 +160,7 @@ test('install-plist.sh carries the three settings from the live plist it replace
   assert.equal(env.LAA_LINEAR_PERSONAL_TOKEN_HELPER, '/Users/someone/.local/bin/laa-linear-key');
   assert.equal(env.LAA_LINEAR_PERSONAL_VIEWER_ID, 'viewer-1');
   assert.equal(env.LAA_GOOGLE_REMINDERS_ENABLED, '1');
+  assert.equal(env.LAA_GOOGLE_DRIVE_EXPECTED_EMAIL, 'owner@example.test');
   assert.equal(env.LAA_VOICE_WORKER, '/Applications/LAA Voice.app/Contents/MacOS/saiddone-polish-worker');
   assert.equal(env.LAA_SOMETHING_ELSE, undefined);
   assert.equal(env.LAA_BRIDGE_PORT, '9137', 'the template still supplies its own values');

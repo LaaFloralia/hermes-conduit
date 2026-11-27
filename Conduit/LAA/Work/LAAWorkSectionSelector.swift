@@ -2,7 +2,9 @@
 import SwiftUI
 import LAAKit
 
-/// Four frequent destinations, with Campaigns in the overflow.
+/// All five Work destinations in one row, never folded into an overflow menu (D-21 B, 2026-11-27: Routines
+/// moved to Console, so the five fit). Equal segments while they fit; when the text is too large for the width
+/// the same row scrolls sideways (the current one kept in view); at accessibility sizes two rows (3 + 2).
 struct LAAWorkSectionSelector: View {
     typealias Section = LAAWorkHub.Section
     @Binding var selection: Section
@@ -11,37 +13,49 @@ struct LAAWorkSectionSelector: View {
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.laaDesktop) private var desktop
 
-    private static let primary: [Section] = [.projects, .sessions, .decisions, .tasks]
+    static let sections: [Section] = Section.allCases
     private var hit: CGFloat { desktop ? LAAControl.Mac.hitArea : LAAControl.IPhone.hitArea }
     private var control: LAAControlSize { desktop ? LAAControl.Mac.secondary : LAAControl.IPhone.compact }
 
     var body: some View {
-        HStack(spacing: LAASpace.s4) {
+        Group {
             if typeSize.isAccessibilitySize {
                 VStack(spacing: 0) {
-                    row(Self.primary.prefix(2))
-                    row(Self.primary.suffix(2))
+                    row(Self.sections.prefix(3), equal: true)
+                    row(Self.sections.suffix(2), equal: true)
                 }
             } else {
-                row(Self.primary[...])
+                ViewThatFits(in: .horizontal) {
+                    row(Self.sections[...], equal: true)
+                    ScrollViewReader { reader in
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            row(Self.sections[...], equal: false)
+                        }
+                        .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+                        .onAppear { reader.scrollTo(selection, anchor: .center) }
+                        .onChange(of: selection) { _, now in
+                            withAnimation(.snappy) { reader.scrollTo(now, anchor: .center) }
+                        }
+                    }
+                }
             }
-            overflow
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("work.segment")
     }
 
-    private func row(_ sections: ArraySlice<Section>) -> some View {
+    private func row(_ sections: ArraySlice<Section>, equal: Bool) -> some View {
         HStack(spacing: 0) {
             ForEach(sections) { section in
                 let selected = selection == section
                 Button { selection = section } label: {
                     Text(verbatim: section.title)
-                        .font(.caption.weight(selected ? .semibold : .medium))
+                        .laaFont(control.label, weight: selected ? .semibold : .medium)
                         .foregroundStyle(selected ? LAAColor.link : LAAColor.text)
+                        .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: true)
-                        .padding(.horizontal, LAASpace.s4)
-                        .frame(maxWidth: .infinity, minHeight: hit)
+                        .padding(.horizontal, LAASpace.s8)
+                        .frame(maxWidth: equal ? .infinity : nil, minHeight: hit)
                         .background {
                             if selected {
                                 RoundedRectangle(cornerRadius: control.radius)
@@ -54,6 +68,7 @@ struct LAAWorkSectionSelector: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .id(section)
                 .accessibilityLabel(Text(verbatim: label(section)))
                 .accessibilityAddTraits(selected ? .isSelected : [])
                 .accessibilityIdentifier("work.section.\(section.rawValue)")
@@ -67,36 +82,6 @@ struct LAAWorkSectionSelector: View {
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
         }
-    }
-
-    private var overflow: some View {
-        let selected = selection == .campaigns
-        return Menu {
-            LAAWorkPickerItem(title: label(.campaigns), selected: selected,
-                              identifier: "work.section.campaigns") { selection = .campaigns }
-        } label: {
-            Image(systemName: "ellipsis")
-                .font(.body.weight(selected ? .semibold : .regular))
-                .foregroundStyle(selected ? LAAColor.link : LAAColor.text)
-                .frame(width: hit, height: hit)
-                // Campaigns lives here: while it is open the overflow wears the
-                // same selection face as a segment, so the place is not lost.
-                .background {
-                    if selected {
-                        RoundedRectangle(cornerRadius: control.radius)
-                            .fill(LAAColor.selectionFill).frame(height: control.height)
-                    }
-                }
-                .overlay(alignment: .bottom) {
-                    if campaigns > 0 { countMark }
-                }
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Text(verbatim: "More"))
-        .accessibilityValue(Text(verbatim: selected ? label(selection) : (campaigns > 0 ? label(.campaigns) : "")))
-        .accessibilityAddTraits(selected ? .isSelected : [])
-        .accessibilityIdentifier("work.section.more")
     }
 
     private var countMark: some View {

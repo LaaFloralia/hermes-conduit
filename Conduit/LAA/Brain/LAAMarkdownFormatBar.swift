@@ -15,13 +15,13 @@ struct LAAMarkdownFormatBar: View {
                 Button(String("見出し1")) { session.apply(.block(.heading1)) }
                 Button(String("見出し2")) { session.apply(.block(.heading2)) }
                 Button(String("見出し3")) { session.apply(.block(.heading3)) }
-                Button(String("本文")) { session.apply(.block(.body)) }
+                Button(String("Body")) { session.apply(.block(.body)) }
                 Divider()
-                Button(String("引用")) { session.apply(.block(.quote)) }
-                Button(String("太字")) { session.apply(.inline("**")) }
-                Button(String("斜体")) { session.apply(.inline("*")) }
-                Button(String("コード")) { session.apply(.inline("`")) }
-                Button(String("表を挿入")) { session.apply(.table) }
+                Button(String("Quote")) { session.apply(.block(.quote)) }
+                Button(String("Bold")) { session.apply(.inline("**")) }
+                Button(String("Italic")) { session.apply(.inline("*")) }
+                Button(String("Code")) { session.apply(.inline("`")) }
+                Button(String("Insert Table")) { session.apply(.table) }
                     .accessibilityIdentifier("laa.markdown.format.table")
             } label: { glyph("textformat", selected: isHeading) }
                 .accessibilityLabel(Text(verbatim: LAACopy.Brain.format))
@@ -52,7 +52,7 @@ struct LAAMarkdownFormatBar: View {
 
     private func glyph(_ symbol: String, selected: Bool) -> some View {
         Image(systemName: symbol)
-            .font(.callout.weight(.medium))
+            .laaTextStyle(.body).fontWeight(.medium)
             .foregroundStyle(selected ? LAAColor.link : LAAColor.text)
             .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumTouchTarget)
             .frame(minWidth: LAASpacing.minimumTouchTarget)

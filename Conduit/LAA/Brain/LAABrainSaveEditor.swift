@@ -121,7 +121,7 @@ struct LAABrainSaveEditor: View {
                 } else if canExportDraft {
                     ScrollView {
                         VStack(alignment: .leading, spacing: LAASpacing.x4) {
-                            versionPanel("自分の下書き", text: draft)
+                            versionPanel("My Draft", text: draft)
                             Button("下書きを書き出す") { prepareExport(Data(draft.utf8), sourcePath: path) }
                                 .accessibilityIdentifier("laa.brain.edit.exportDraft")
                         }.padding(LAASpacing.horizontal)
@@ -134,7 +134,7 @@ struct LAABrainSaveEditor: View {
                 if let message {
                     // The message floats over the editor's own text, so it is
                     // reading-layer paper with a hairline, not glass.
-                    Text(verbatim: message).font(.footnote).foregroundStyle(LAAColor.attention)
+                    Text(verbatim: message).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
                         .padding()
                         .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAAKit.LAARadius.button, style: .continuous))
                         .overlay {
@@ -169,7 +169,7 @@ struct LAABrainSaveEditor: View {
                                 .accessibilityIdentifier("laa.brain.rawToggle")
                             Button("Info", systemImage: "info.circle") { showInfo = true }
                             if let manage { Button("Manage", systemImage: "folder", action: manage).accessibilityIdentifier("laa.brain.manage") }
-                            if autoSaveBlocked { Button(String("保存を再試行")) { autoSaveBlocked = false; Task { await save(automatically: true) } } }
+                            if autoSaveBlocked { Button(String("Retry Save")) { autoSaveBlocked = false; Task { await save(automatically: true) } } }
                         } label: { Image(systemName: "ellipsis") }
                             .accessibilityLabel("Note Menu").accessibilityIdentifier("laa.brain.menu")
                     }
@@ -183,10 +183,10 @@ struct LAABrainSaveEditor: View {
     private var noteTitle: String { LAADateText.noteTitle(URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent) }
     private var visibleBody: String { draft.hasPrefix(metadataPrefix) ? String(draft.dropFirst(metadataPrefix.count)) : draft }
     private var saveStatus: String? {
-        if saving { return "保存中…" }
+        if saving { return "Saving" }
         if autoSaveBlocked || recoveryUnavailable { return "保存できません" }
-        if snapshot?.base != Data(draft.utf8) { return "編集中" }
-        if hasSaved { return "保存済み" }
+        if snapshot?.base != Data(draft.utf8) { return "Editing" }
+        if hasSaved { return "Saved" }
         return updatedAt.map { LAADateText.string($0, .monthDay) + " 更新" }
     }
 
@@ -225,14 +225,14 @@ struct LAABrainSaveEditor: View {
         .sheet(isPresented: $showInfo) {
             NavigationStack {
                 List {
-                    LabeledContent(String("場所"), value: path)
+                    LabeledContent(String("Location"), value: path)
                     ForEach(Array(LAABrainDocument(draft).properties.enumerated()), id: \.offset) { _, property in
                         LabeledContent(property.name, value: property.value)
                     }
                     if let metadata = LAABrainDocument(draft).frontmatter {
                         Text(verbatim: metadata).font(.footnote.monospaced()).textSelection(.enabled)
                     }
-                }.navigationTitle(String("情報"))
+                }.navigationTitle(String("Info"))
                     .toolbar { ToolbarItem(placement: .confirmationAction) { LAACloseButton { showInfo = false }.accessibilityIdentifier("laa.brain.note.info.close") } }
             }
         }
@@ -242,7 +242,7 @@ struct LAABrainSaveEditor: View {
                     ForEach(Array(visibleBody.components(separatedBy: "\n").enumerated()).filter {
                         !findText.isEmpty && $0.element.localizedStandardContains(findText)
                     }, id: \.offset) { _, line in Text(verbatim: line).textSelection(.enabled) }
-                }.searchable(text: $findText, prompt: "文書内を検索").navigationTitle(String("文書内検索"))
+                }.searchable(text: $findText, prompt: "Find in Note").navigationTitle(String("Find in Note"))
                     .toolbar { ToolbarItem(placement: .confirmationAction) { LAACloseButton { showFind = false }.accessibilityIdentifier("laa.brain.find.close") } }
             }
         }
@@ -314,11 +314,11 @@ struct LAABrainSaveEditor: View {
                      ? AppLocalization.string("入れ替え中に別の変更がありました。両方の内容を履歴に保存しました。")
                      : AppLocalization.string("保存前にノートが変更されました。原本は上書きせず、両方の内容を履歴に保存しました。"))
                 if let other = conflict.other {
-                    versionPanel(conflict.afterExchange ? "入れ替え時の内容" : "現在のノート", text: other)
+                    versionPanel(conflict.afterExchange ? "入れ替え時の内容" : "Current Note", text: other)
                 } else {
                     Text("別の内容はUTF-8で読めません。元のデータは履歴に残っています。")
                 }
-                versionPanel("自分の下書き", text: conflict.draft)
+                versionPanel("My Draft", text: conflict.draft)
                 Button("自分の下書きで続ける") { Task { await resolve(using: conflict.draft) } }
                     .laaGlassButton(prominent: true)
                     .accessibilityIdentifier("laa.brain.conflict.useDraft")
@@ -326,14 +326,14 @@ struct LAABrainSaveEditor: View {
                     Button("別の内容で続ける") { Task { await resolve(using: other) } }
                         .accessibilityIdentifier("laa.brain.conflict.useOther")
                 }
-                Text("下書きを確認して保存してください。現在のノートをもう一度確認します。").font(.footnote)
+                Text("下書きを確認して保存してください。現在のノートをもう一度確認します。").laaTextStyle(.secondary)
             }.padding(LAASpacing.horizontal)
         }.disabled(busy).accessibilityIdentifier("laa.brain.conflict")
     }
 
     private func versionPanel(_ title: String, text: String) -> some View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
-            Text(verbatim: title).font(.headline)
+            Text(verbatim: title).laaTextStyle(.heading)
             Text(verbatim: text).font(.body.monospaced()).textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }.padding().background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
@@ -612,8 +612,8 @@ private struct BrainHistoryView: View {
                     } label: {
                         VStack(alignment: .leading) {
                             Text(version.kind.label)
-                            Text(verbatim: LAADateText.string(version.created, .day)).font(.caption)
-                            Text(verbatim: LAADateText.string(version.created, .time)).font(.caption)
+                            Text(verbatim: LAADateText.string(version.created, .day)).laaTextStyle(.note)
+                            Text(verbatim: LAADateText.string(version.created, .time)).laaTextStyle(.note)
                         }
                     }.accessibilityIdentifier("laa.brain.history.version.\(version.kind.rawValue)")
                 }
@@ -663,7 +663,7 @@ private struct BrainHistoryDetail: View {
                         exportName = LAABrainSaveCoordinator.recoveryName(bytes: version.bytes, path: summary.path)
                         showExport = true
                     }.disabled(restoring).accessibilityIdentifier("laa.brain.recovery.export")
-                    Text("復元すると新しいファイルを作ります。書き出す場合は、ほかのノートを上書きしないよう提案された名前を使ってください。履歴は残ります。").font(.footnote)
+                    Text("復元すると新しいファイルを作ります。書き出す場合は、ほかのノートを上書きしないよう提案された名前を使ってください。履歴は残ります。").laaTextStyle(.secondary)
                     if let message {
                         Text(verbatim: message).foregroundStyle(LAAColor.attention)
                             .accessibilityIdentifier("laa.brain.recovery.result")
@@ -760,7 +760,7 @@ struct LAABrainRecoveryCatalogueView: View {
                         } label: {
                             VStack(alignment: .leading) {
                                 Text(verbatim: note.path)
-                                if !note.pending.isEmpty { Text("中断した保存").font(.caption).foregroundStyle(LAAColor.attention) }
+                                if !note.pending.isEmpty { Text("中断した保存").laaTextStyle(.note).foregroundStyle(LAAColor.attention) }
                             }
                         }.accessibilityIdentifier("laa.brain.recovery.note")
                     }
@@ -827,8 +827,8 @@ private struct BrainRecoveryPathView: View {
                         } label: {
                             VStack(alignment: .leading) {
                                 Text(version.kind.label)
-                                Text(verbatim: LAADateText.string(version.created, .day)).font(.caption)
-                                Text(verbatim: LAADateText.string(version.created, .time)).font(.caption)
+                                Text(verbatim: LAADateText.string(version.created, .day)).laaTextStyle(.note)
+                                Text(verbatim: LAADateText.string(version.created, .time)).laaTextStyle(.note)
                             }
                         }.accessibilityIdentifier("laa.brain.recovery.version.\(version.kind.rawValue)")
                     }

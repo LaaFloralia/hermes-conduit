@@ -45,10 +45,13 @@ function project(def, sample, now) {
     detail: { totalBytes: total, availableBytes: available, freshUntil: isoFromMs(freshUntil), deviceLabel: def.deviceLabel, resourceType: def.resourceType, status, warningFreeBytes: warning, criticalFreeBytes: critical, ...extra } });
 }
 
-export async function readGoogleCapacity({ connection = googleConnection } = {}) {
+export async function readGoogleCapacity({ connection = googleConnection, expectedEmail = process.env.LAA_GOOGLE_DRIVE_EXPECTED_EMAIL } = {}) {
+  const expected = expectedEmail?.trim().toLowerCase();
+  if (!expected) throw new Error('Google Drive account not configured');
   const response = await connection.request('https://www.googleapis.com/drive/v3/about?fields=user(emailAddress),storageQuota(limit,usage,usageInDrive)', {}, 'drive');
   const data = await connection.json(response, 'drive');
-  if (data?.user?.emailAddress?.toLowerCase() !== 'floralia@laa-inc.com') throw new Error('account mismatch');
+  const actual = data?.user?.emailAddress;
+  if (typeof actual !== 'string' || actual.toLowerCase() !== expected) throw new Error('account mismatch');
   const totalBytes = bytes(data.storageQuota?.limit), usedBytes = bytes(data.storageQuota?.usage);
   if (totalBytes === null || usedBytes === null) throw new Error('invalid quota');
   return { totalBytes, usedBytes, availableBytes: Math.max(0, totalBytes - usedBytes), driveUsageBytes: bytes(data.storageQuota?.usageInDrive) };

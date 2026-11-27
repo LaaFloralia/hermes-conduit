@@ -23,7 +23,7 @@ struct LAAWorkListPicker<Items: View>: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text(verbatim: "表示、\(title)"))
+        .accessibilityLabel(Text(verbatim: "View, \(title)"))
         .accessibilityIdentifier(identifier)
     }
 }

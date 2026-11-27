@@ -47,6 +47,10 @@ struct LAAChatRuntime: Equatable {
         let effort: String?
         /// Nil until Hermes reports this chat's speed.
         var speed: ModelSpeed? = nil
+        /// Whether Hermes reported the model / the effort for this chat at
+        /// all: a report of none (empty) reads 不明, no report yet does not.
+        var modelReported = false
+        var effortReported = false
     }
 
     /// What the chip shows for the chat on screen; nil reads 「不明」.
@@ -57,12 +61,113 @@ struct LAAChatRuntime: Equatable {
         return Shown(model: modelKnown ? model : nil,
                      provider: modelKnown ? provider : nil,
                      effort: effortKnown ? effort : nil,
-                     speed: speedKnown ? speed : nil)
+                     speed: speedKnown ? speed : nil,
+                     modelReported: modelKnown,
+                     effortReported: effortKnown)
     }
 
     private static func value(_ raw: String) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+/// The model and effort Hermes last reported for an employee on a dashboard,
+/// kept on the device, so an opening chat (or one still waiting for its
+/// `session.info`) shows them as 最終確認 instead of 不明 (D-25). Only values
+/// Hermes reported are kept; a field a report left out keeps its value.
+enum LAAChatRuntimeCache {
+    struct Record: Codable, Equatable {
+        var model: String?
+        var provider: String?
+        var effort: String?
+    }
+
+    static let defaultsKey = "laa.chatRuntime.lastConfirmed.v1"
+    static let maximumRecords = 40
+
+    private static func key(dashboardID: UUID, profile: String) -> String {
+        "\(dashboardID.uuidString)|\(profile)"
+    }
+
+    private static func all(_ defaults: UserDefaults) -> [String: Record] {
+        guard let data = defaults.data(forKey: defaultsKey),
+              let records = try? JSONDecoder().decode([String: Record].self, from: data) else { return [:] }
+        return records
+    }
+
+    static func last(dashboardID: UUID, profile: String, defaults: UserDefaults = .standard) -> Record? {
+        let record = all(defaults)[key(dashboardID: dashboardID, profile: profile)]
+        return record?.model == nil && record?.effort == nil ? nil : record
+    }
+
+    /// Keeps what `shown` reports for the chat (reported fields only).
+    static func record(_ shown: LAAChatRuntime.Shown, dashboardID: UUID, profile: String,
+                       defaults: UserDefaults = .standard) {
+        guard shown.modelReported || shown.effortReported else { return }
+        var records = all(defaults)
+        let key = key(dashboardID: dashboardID, profile: profile)
+        var record = records[key] ?? Record()
+        if shown.modelReported, let model = shown.model {
+            record.model = model
+            record.provider = shown.provider
+        }
+        if shown.effortReported, let effort = shown.effort { record.effort = effort }
+        guard records[key] != record, record.model != nil || record.effort != nil else { return }
+        records[key] = record
+        if records.count > maximumRecords {
+            // Rarely more than the staff on two dashboards: drop arbitrary
+            // others before this one.
+            for other in records.keys where other != key && records.count > maximumRecords {
+                records[other] = nil
+            }
+        }
+        if let data = try? JSONEncoder().encode(records) { defaults.set(data, forKey: defaultsKey) }
+    }
+}
+
+/// What the model and effort capsules show (D-25): Hermes' live report as
+/// soon as there is one; until then the last confirmed values (最終確認);
+/// with neither, 確認中… while the chat is still being reached and
+/// 未確認, with its reason in the menu, once it can't be. A report
+/// of none stays 不明.
+enum LAAChatRuntimeDisplay {
+    struct Value: Equatable {
+        var model: String?
+        var provider: String?
+        var effort: String?
+        var current: Bool
+        var placeholder: String?
+        /// Why nothing current can be shown, for the menus (LAAMenuReason).
+        var reason: String?
+    }
+
+    enum Wait: Equatable {
+        /// Connected and answered: what's missing was simply not reported.
+        case settled
+        /// Still connecting or reading.
+        case checking
+        /// Can't be read now, and why.
+        case unavailable(String)
+    }
+
+    static func resolve(live: LAAChatRuntime.Shown, lastConfirmed: LAAChatRuntimeCache.Record?, wait: Wait) -> Value {
+        let reason: String?
+        let placeholder: String?
+        switch wait {
+        case .settled: reason = nil; placeholder = nil
+        case .checking: reason = nil; placeholder = LAAModelCapsule.checking
+        case .unavailable(let why): reason = why; placeholder = LAAModelCapsule.unavailable
+        }
+        if live.modelReported || live.effortReported {
+            return Value(model: live.model, provider: live.provider, effort: live.effort, current: true,
+                         placeholder: live.modelReported && live.effortReported ? nil : placeholder, reason: nil)
+        }
+        if let lastConfirmed {
+            return Value(model: lastConfirmed.model, provider: lastConfirmed.provider, effort: lastConfirmed.effort,
+                         current: false, placeholder: placeholder, reason: reason)
+        }
+        return Value(model: nil, provider: nil, effort: nil, current: true, placeholder: placeholder, reason: reason)
     }
 }
 
@@ -362,6 +467,8 @@ import SwiftUI
 
 /// LAA owner copy is selected solely from ChatRuntime's machine result.
 enum LAAChatRuntimeCopy {
+    /// The same words as the model menu's lock for a failed read.
+    static let modelsUnavailableReason = "モデルの一覧を読み取れませんでした。"
     static let retryDraftReady = "入力欄に戻しました。実行済みの操作を確かめてから送信してください。"
 
     static func compactionNotice(_ result: ContextCompactResult) -> String? {
@@ -484,8 +591,26 @@ struct LAAChatModelPickers: View {
         var id: String { choice.id }
     }
 
+    @State private var lastConfirmed: LAAChatRuntimeCache.Record?
     private var shown: LAAChatRuntime.Shown {
         runtime.shown(for: activeSessionID.map { [$0] } ?? [])
+    }
+    /// What the capsules show: the live report, else the last confirmed
+    /// values, else why nothing is there yet (LAAChatRuntimeDisplay).
+    private var display: LAAChatRuntimeDisplay.Value {
+        LAAChatRuntimeDisplay.resolve(live: shown, lastConfirmed: lastConfirmed, wait: wait)
+    }
+    private var wait: LAAChatRuntimeDisplay.Wait {
+        if phase == .failed { return .unavailable(LAAChatRuntimeCopy.modelsUnavailableReason) }
+        if !connected {
+            return appState.isRecoveringConnection ? .checking : .unavailable(appState.laaConnectionStallReason)
+        }
+        return phase == .loading || phase == .idle ? .checking : .settled
+    }
+    private func readLastConfirmed() {
+        lastConfirmed = appState.activeDashboardID.flatMap {
+            LAAChatRuntimeCache.last(dashboardID: $0, profile: appState.activeProfile)
+        }
     }
     private var choices: [LAAChatModelCatalog.Choice] {
         if case .ready(let items) = phase { return items }
@@ -515,9 +640,10 @@ struct LAAChatModelPickers: View {
         LAAWrapRow {
             LAAModelEffortPickers(
                 harness: harness, harnessHint: modelLock ?? "この会話の実行基盤を変更",
-                model: shown.model, provider: shown.provider, effort: shown.effort,
+                model: display.model, provider: display.provider, effort: display.effort, current: display.current,
                 changingModel: switching, changingEffort: writingEffort, identifier: "composer.runtime",
-                modelHint: modelLock ?? "この会話のモデルを変更", effortHint: effortLock ?? "この会話の推論の強さを変更"
+                modelHint: modelLock ?? "この会話のモデルを変更", effortHint: effortLock ?? "この会話の推論の強さを変更",
+                placeholder: display.placeholder
             ) {
                 harnessMenu
             } modelMenu: {
@@ -529,8 +655,8 @@ struct LAAChatModelPickers: View {
                 LAAChatFastCapsule(display: fast, changing: writingSpeed, identifier: "composer.runtime.fast") { changeSpeed($0) }
             }
         }
-        .onReceive(appState.$laaChatRuntime.removeDuplicates()) { runtime = $0 }
-        .onReceive(appState.$activeSessionId.removeDuplicates()) { activeSessionID = $0 }
+        .onReceive(appState.$laaChatRuntime.removeDuplicates()) { runtime = $0; readLastConfirmed() }
+        .onReceive(appState.$activeSessionId.removeDuplicates()) { activeSessionID = $0; readLastConfirmed() }
         .onReceive(appState.$client.map { $0 != nil }.removeDuplicates()) { connected = $0 || appState.laaChatModelOperations != nil }
         .task(id: "\(activeSessionID ?? "")|\(connected)|\(shown.model ?? "")|\(shown.provider ?? "")") { await load() }
         .alert(Text(verbatim: "モデルを切り替えますか？"), isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }),
@@ -584,6 +710,12 @@ struct LAAChatModelPickers: View {
 
     @ViewBuilder private var modelMenu: some View {
         if let modelLock { LAAMenuReason(text: modelLock) }
+        if let reason = display.reason, reason != modelLock { LAAMenuReason(text: reason) }
+        if !connected, display.reason != nil {
+            Button { Task { await appState.reconnect() } } label: {
+                Label { Text(verbatim: "接続を再試行") } icon: { Image(systemName: "arrow.clockwise") }
+            }
+        }
         if phase == .failed {
             Button { Task { await load() } } label: {
                 Label { Text(verbatim: "読み直す") } icon: { Image(systemName: "arrow.clockwise") }
@@ -609,6 +741,7 @@ struct LAAChatModelPickers: View {
 
     @ViewBuilder private var effortMenu: some View {
         if let effortLock { LAAMenuReason(text: effortLock) }
+        if let reason = display.reason, reason != effortLock { LAAMenuReason(text: reason) }
         Section {
             ForEach(LAAChatModelCatalog.efforts(current: shown.effort, model: shown.model, provider: shown.provider), id: \.self) { effort in
                 LAAEffortMenu.Row(effort: effort, selected: effort == shown.effort,

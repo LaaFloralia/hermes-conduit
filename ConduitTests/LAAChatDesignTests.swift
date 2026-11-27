@@ -95,9 +95,9 @@ final class LAAChatDesignTests: XCTestCase {
     }
 
     func testConversationActionsUseJapaneseWithoutExposingInternalNames() {
-        XCTAssertEqual(LAAChatLabels.text("Sending…"), "送信中…")
-        XCTAssertEqual(LAAChatLabels.groupAction("Disband Group"), "グループを解散")
-        XCTAssertEqual(LAAChatLabels.text("Expand editor"), "入力欄を拡大")
+        XCTAssertEqual(LAAChatLabels.text("Sending…"), "Sending")
+        XCTAssertEqual(LAAChatLabels.groupAction("Disband Group"), "Disband Group")
+        XCTAssertEqual(LAAChatLabels.text("Expand editor"), "Expand Composer")
         XCTAssertEqual(LAAChatLabels.text("Dictation with Hermes needs a connection to Hermes."), "音声入力にはMacとの接続が必要です。")
     }
 
@@ -112,8 +112,8 @@ final class LAAChatDesignTests: XCTestCase {
         XCTAssertFalse(LAAChatDay.startsSection(sameDay, after: day, calendar: calendar))
         XCTAssertTrue(LAAChatDay.startsSection(day, after: yesterday, calendar: calendar))
         XCTAssertFalse(LAAChatDay.startsSection(nil, after: day, calendar: calendar))
-        XCTAssertEqual(LAAChatDay.label(day, now: sameDay, calendar: calendar), "今日")
-        XCTAssertEqual(LAAChatDay.label(yesterday, now: day, calendar: calendar), "昨日")
+        XCTAssertEqual(LAAChatDay.label(day, now: sameDay, calendar: calendar), "Today")
+        XCTAssertEqual(LAAChatDay.label(yesterday, now: day, calendar: calendar), "Yesterday")
     }
 
     func testDateSectionUsesPreviousVisibleRow() throws {

@@ -138,7 +138,7 @@ struct LAADecisionDetailView: View {
                 Text(verbatim: source).laaTextStyle(.secondary).monospacedDigit().foregroundStyle(LAAColor.secondaryText).lineLimit(1)
             }
             Text(verbatim: item.title)
-                .font(.title2.weight(.semibold))
+                .laaTextStyle(.heading).fontWeight(.semibold)
                 .foregroundStyle(LAAColor.text)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)

@@ -379,7 +379,7 @@ struct LAATaskBoard: Equatable {
                 ("tomorrow", "明日", "sunrise", LAAColor.link, { $0?.days == 1 }),
                 ("week", "7日以内", "calendar", LAAColor.link, { ($0?.days).map { (2..<7).contains($0) } ?? false }),
                 ("later", "それ以降", "calendar.badge.clock", LAAColor.secondaryText, { ($0?.days ?? -1) >= 7 }),
-                ("none", "期限なし", "tray", LAAColor.secondaryText, { $0 == nil }),
+                ("none", "No Due Date", "tray", LAAColor.secondaryText, { $0 == nil }),
             ]
             return order.compactMap { id, title, symbol, tint, test in
                 let picked = rows.filter { test($0.due) }

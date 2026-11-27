@@ -1,33 +1,35 @@
 #if LAA_BUILD
+import LAAKit
 import SwiftUI
 
 extension LAACopy {
-    static let chatToday = "今日"
-    static let chatYesterday = "昨日"
-    static let chatAttach = "添付"
-    static let chatSend = "送信"
-    static let chatExpandEditor = "入力欄を拡大"
+    static let chatToday = "Today"
+    static let chatYesterday = "Yesterday"
+    static let chatAttach = "Attach"
+    static let chatSend = "Send"
+    static let chatMessage = "Message"
+    static let chatExpandEditor = "Expand Composer"
     static let chatCopy = "Copy"
     static let chatCopied = "Copied"
-    static let chatCode = "コード"
-    static let chatStop = "応答を中断"
-    static let chatSteer = "メッセージで指示"
-    static let chatInterrupt = "中断して指示"
-    static let chatQueue = "送信待ちに追加"
+    static let chatCode = "Code"
+    static let chatStop = "Stop Response"
+    static let chatSteer = "Send Direction"
+    static let chatInterrupt = "Interrupt and Send"
+    static let chatQueue = "Queue Message"
     static let chatComposerUnavailable = "入力できません"
     static let chatFileUnavailable = "このファイルを開けません"
-    static let chatCall = "電話"
+    static let chatCall = "Call"
     static let chatGroupCallUnavailable = "このグループは通話に対応していません"
-    static let chatBackground = "背景"
-    static let chatGroupSettings = "グループの設定"
+    static let chatBackground = "Background"
+    static let chatGroupSettings = "Group Settings"
     static let chatPaper = "紙"
     static let chatTealNight = "青緑"
     static let chatInk = "墨"
-    static let chatDevicePhoto = "写真"
-    static let chatSelected = "選択中"
-    static let chatPhotoAdjustments = "写真の調整"
-    static let chatPhotoDim = "暗さ"
-    static let chatPhotoBlur = "ぼかし"
+    static let chatDevicePhoto = "Photos"
+    static let chatSelected = "Selected"
+    static let chatPhotoAdjustments = "Photo Adjustments"
+    static let chatPhotoDim = "Darkness"
+    static let chatPhotoBlur = "Blur"
     static let chatFixturePhoto = "試験用の写真"
 }
 
@@ -109,6 +111,40 @@ struct LAAChatDateSeparator: View {
             .laaPhotoSupportingText()
             .frame(maxWidth: .infinity)
             .accessibilityIdentifier("chat.date.separator")
+    }
+}
+
+/// Where earlier history read through "Load earlier messages" ends once
+/// it detached from the live conversation (D-25): the rows below are the
+/// live chat, and the one action, named for where it goes, returns to
+/// its end.
+struct LAAChatDetachedHistoryDivider: View {
+    let jump: () -> Void
+    var body: some View {
+        HStack(spacing: LAASpace.s12) {
+            rule
+            Button(action: jump) {
+                Text(verbatim: "最新")
+                    .laaTextStyle(.secondary)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(LAAColor.link)
+                    .frame(minHeight: LAASpacing.minimumTouchTarget)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("chat.detachedHistory.latest")
+            rule
+        }
+        .laaPhotoSupportingText()
+        .padding(.vertical, LAASpace.s8)
+        .laaChatColumn(.center)
+    }
+
+    private var rule: some View {
+        Rectangle()
+            .fill(LAAColor.separator)
+            .frame(height: 1)
+            .frame(maxWidth: .infinity)
+            .accessibilityHidden(true)
     }
 }
 

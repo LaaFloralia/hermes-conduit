@@ -62,7 +62,7 @@ struct LAAWorkView: View {
                     if embeddedSection == nil { LAASettingsButton(action: onRequestSettings) }
                     else if section == 1 {
                         Button { showNewProject = true } label: { Image(systemName: "plus") }
-                            .accessibilityLabel(Text(verbatim: "プロジェクトを追加"))
+                            .accessibilityLabel(Text(verbatim: "Add Project"))
                             .disabled(bridge.status != .paired)
                     }
                 }
@@ -134,7 +134,7 @@ struct LAAWorkView: View {
                     .foregroundStyle(LAAColor.attention)
                 Text(verbatim: "右上の設定 > Mac で接続し直します。")
             } else {
-                Label { Text(verbatim: "未接続") } icon: { Image(systemName: "circle") }
+                Label { Text(verbatim: "Disconnected") } icon: { Image(systemName: "circle") }
                     .foregroundStyle(LAAColor.secondaryText)
                 Text(verbatim: bridge.status == .revoked || bridge.status == .unauthorized
                      ? "この端末の接続が無効です。新しいコードで接続してください。"

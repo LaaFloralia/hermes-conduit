@@ -303,14 +303,20 @@ final class LAAWorkTests: XCTestCase {
     func testDeviceScopedSessionCacheRestoresBeforeAnyNetworkRead() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }
-        let url = folder.appendingPathComponent("cache.json")
+        let url = folder.appendingPathComponent("drafts.json")
+        let directory = folder.appendingPathComponent("session-cache-v2")
         let row = try session("p", name: "保存済み", updated: "1")
         let store = ComposerDraftStore(capacity: .max, fileURL: url)
-        LAAWorkSessionCache.save([row], store: store, device: "a", target: "list")
+        let cache = LAAWorkSessionCacheStore(directory: directory)
+        cache.save([row], store: store, device: "a", target: "list")
+        cache.flush()
+        // A relaunch: a fresh cache and store read the snapshot from its own file.
         let restored = ComposerDraftStore(capacity: .max, fileURL: url)
-        let rows = LAAWorkSessionCache.read([LAAWorkSession].self, store: restored, device: "a", target: "list")
+        let relaunched = LAAWorkSessionCacheStore(directory: directory)
+        let rows = relaunched.read([LAAWorkSession].self, store: restored, device: "a", target: "list")
         XCTAssertEqual(rows?.first?.name, "保存済み")
-        XCTAssertNil(LAAWorkSessionCache.read([LAAWorkSession].self, store: restored, device: "b", target: "list"))
+        XCTAssertNil(relaunched.read([LAAWorkSession].self, store: restored, device: "b", target: "list"))
+        XCTAssertTrue(restored.keys.isEmpty, "snapshots are not drafts")
     }
 
     func testNotificationLinksPreserveCalendarIdentityAndValidateSessionRoute() throws {
@@ -331,7 +337,7 @@ final class LAAWorkTests: XCTestCase {
     func testCalendarDeepLinkRoundTripPreservesGoogleIdentifierCharacters() throws {
         let route = LAAWorkLinkRequest()
         let values = [
-            ("invite_123@google.com", "floralia@laa-inc.com"),
+            ("invite_123@google.com", "owner@example.test"),
             ("holiday_123", "ja.japanese#holiday@group.v.calendar.google.com"),
             ("event+with_under_score@google.com", "team+calendar_123@group.calendar.google.com")
         ]
@@ -547,7 +553,7 @@ final class LAAWorkTests: XCTestCase {
         // Observed, and the Bridge accepts a change.
         let on = try XCTUnwrap(LAAWorkFastControl.display(observing: true, observed: true, capable: true))
         XCTAssertEqual(on, LAAWorkFastControl.Display(value: true, current: true, canToggle: true))
-        XCTAssertEqual(LAAWorkFastControl.valueText(on), "オン")
+        XCTAssertEqual(LAAWorkFastControl.valueText(on), "On")
         XCTAssertEqual(LAAWorkFastControl.hint(on), "Fastの切り替え")
 
         // No Fast at all for this model: nothing to show.
@@ -557,7 +563,7 @@ final class LAAWorkTests: XCTestCase {
         // Fast exists, but this Bridge/session cannot change it.
         let readOnly = try XCTUnwrap(LAAWorkFastControl.display(observing: true, observed: false, capable: false))
         XCTAssertEqual(readOnly, LAAWorkFastControl.Display(value: false, current: true, canToggle: false))
-        XCTAssertEqual(LAAWorkFastControl.valueText(readOnly), "オフ")
+        XCTAssertEqual(LAAWorkFastControl.valueText(readOnly), "Off")
         XCTAssertFalse(readOnly.canToggle)
         // An older Bridge that never sent `capabilities.fast` is the same.
         XCTAssertEqual(LAAWorkFastControl.display(observing: true, observed: false, capable: nil)?.canToggle, false)
@@ -566,7 +572,7 @@ final class LAAWorkTests: XCTestCase {
         // freshness is in the value/hint rather than in the word on screen.
         let last = try XCTUnwrap(LAAWorkFastControl.display(observing: false, observed: true, capable: true))
         XCTAssertEqual(last, LAAWorkFastControl.Display(value: true, current: false, canToggle: false))
-        XCTAssertEqual(LAAWorkFastControl.valueText(last), "最終確認: オン")
+        XCTAssertEqual(LAAWorkFastControl.valueText(last), "Last Verified: On")
         XCTAssertEqual(LAAWorkFastControl.hint(last), "最後に確認した値です。現在値は未確認です。")
     }
 
@@ -744,7 +750,7 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertEqual(LAAEffort.name("xhigh"), "XHigh")
     }
 
-    func testSharedChipReadsNamesAndSaysUnknown() {
+    func testSharedChipReadsNamesAndSpeaksUnknown() {
         XCTAssertEqual(LAAModelCapsule.displayName(model: "claude-opus-4-8", provider: "claude"), "Claude Opus 4.8")
         XCTAssertEqual(LAAModelCapsule.displayName(model: "gpt-6.1-sol", provider: "codex"), "GPT 6.1 Sol")
         XCTAssertEqual(LAAModelCapsule.displayName(model: "Claude Fable 5.2", provider: nil), "Claude Fable 5.2")

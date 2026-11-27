@@ -58,12 +58,9 @@ final class LAAWorkShotsUITests: XCTestCase {
         capture(app, "list-tasks-menu-\(theme)")
         app.buttons["work.tasks.quick.all"].tap()
 
-        let more = app.buttons["work.section.more"]
-        XCTAssertTrue(more.isHittable)
-        more.tap()
-        XCTAssertTrue(app.buttons["work.section.campaigns"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["work.section.campaigns"].isHittable)
         XCTAssertFalse(app.buttons["work.section.routines"].exists)
-        capture(app, "work-overflow-\(theme)")
+        capture(app, "work-sections-\(theme)")
         LAAWorkSectionUI.open("campaigns", in: app)
         XCTAssertTrue(app.descendants(matching: .any)["work.campaigns"].firstMatch.waitForExistence(timeout: 10))
         settle(1)

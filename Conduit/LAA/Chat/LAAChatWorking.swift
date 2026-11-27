@@ -10,11 +10,11 @@ enum LAAChatWorking {
     /// profile with no words of its own (unknown, or none read yet).
     static let thinking = LAAStaffThinking.fallback
     /// While a tool runs, whoever answers (never mixed with an employee's words).
-    static let toolRunning = "作業中"
+    static let toolRunning = "Working"
 
     /// The pill's state. With no tool running an employee's chat says that
     /// employee's word for this wait (LAAStaffThinking, D-01 2026-11-26),
-    /// the same one through the whole wait; a tool running says 作業中.
+    /// the same one through the whole wait; a tool running says Working.
     static func status(isBusy: Bool, startedAt: Date?, toolRunning: Bool,
                        agents: [DelegateAgentActivity], profile: String? = nil,
                        words: LAAStaffThinking = .shared) -> LAAWorkingStatus? {
@@ -65,7 +65,7 @@ enum LAAChatWorking {
         }()
         return LAAWorkingChild(
             id: agent.id,
-            title: title.isEmpty ? "子エージェント" : title,
+            title: title.isEmpty ? "Agent" : title,
             state: state,
             meta: agent.model.map(LAAWorkSessionStyle.displayModel),
             preview: state == .running ? agent.currentTool : preview,

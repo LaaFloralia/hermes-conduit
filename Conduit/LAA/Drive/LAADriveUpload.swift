@@ -52,16 +52,16 @@ struct LAADriveUpload: View {
         NavigationStack {
             Form {
                 PhotosPicker(selection: $photo, matching: .any(of: [.images, .videos])) { Text(verbatim: "写真・動画から選択") }.disabled(busy)
-                Button { picker = true } label: { Text(verbatim: "ファイルから選択") }.disabled(busy)
+                Button { picker = true } label: { Text(verbatim: "Choose from Files") }.disabled(busy)
                 if let file {
                     Text(verbatim: file.lastPathComponent)
-                    Text(verbatim: folderId == nil ? "保存先：マイドライブ" : "保存先：開いているフォルダ")
-                    Button { confirm = true } label: { Text(verbatim: session == nil ? "アップロード" : "再開") }.disabled(busy)
+                    Text(verbatim: folderId == nil ? "Destination: My Drive" : "Destination: Current Folder")
+                    Button { confirm = true } label: { Text(verbatim: session == nil ? "Upload" : "Resume") }.disabled(busy)
                 }
                 if busy { ProgressView(value: fraction) }
                 if let message { Text(verbatim: message).foregroundStyle(LAAColor.attention) }
             }
-            .navigationTitle(Text(verbatim: "Driveに追加"))
+            .navigationTitle(Text(verbatim: "Add to Drive"))
             .toolbar { ToolbarItem(placement: .cancellationAction) { LAACloseButton { dismiss() }.accessibilityIdentifier("laa.drive.upload.close").disabled(busy) } }
             .fileImporter(isPresented: $picker, allowedContentTypes: [.item]) { result in
                 if case .success(let url) = result { cleanup(); file = url; ownsFile = false; session = nil }
@@ -75,7 +75,7 @@ struct LAADriveUpload: View {
                 } catch { message = "写真・動画を読み込めませんでした。" }
             }
             .confirmationDialog(Text(verbatim: "Google Driveにアップロードしますか？"), isPresented: $confirm, titleVisibility: .visible) {
-                Button { Task { await upload() } } label: { Text(verbatim: "アップロード") }
+                Button { Task { await upload() } } label: { Text(verbatim: "Upload") }
             }
         }.interactiveDismissDisabled(busy).onDisappear { cleanup() }
     }

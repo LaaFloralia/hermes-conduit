@@ -28,8 +28,8 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
         XCTAssertTrue(LAAEmployeeWidgetView.isPast(meter, entryDate: observed.addingTimeInterval(600), renderedAt: observed))
         XCTAssertTrue(meter.hasRecordedValue(at: observed.addingTimeInterval(86400)))
         XCTAssertEqual(LAAEmployeeWidgetView.displayValue(meter, entryDate: observed, renderedAt: observed.addingTimeInterval(599)), "42%")
-        XCTAssertEqual(LAAEmployeeWidgetView.displayValue(meter, entryDate: observed, renderedAt: observed.addingTimeInterval(600)), "42% · 10分前")
-        XCTAssertEqual(LAAEmployeeWidgetView.displayValue(meter.lastKnown(label: meter.label), entryDate: observed, renderedAt: observed), "42% · たった今")
+        XCTAssertEqual(LAAEmployeeWidgetView.displayValue(meter, entryDate: observed, renderedAt: observed.addingTimeInterval(600)), "42% · 10m Ago")
+        XCTAssertEqual(LAAEmployeeWidgetView.displayValue(meter.lastKnown(label: meter.label), entryDate: observed, renderedAt: observed), "42% · Just Now")
         XCTAssertTrue(LAAEmployeeWidgetView.timeText(observed, at: observed.addingTimeInterval(86400)).contains("時点"))
         let future = WidgetUsageMeter(id: "future", label: "Claude Weekly", unit: .percent, amount: 42,
             observedAt: observed.addingTimeInterval(121), freshUntil: nil, resetsAt: nil, stale: false, retained: false)
@@ -41,9 +41,9 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
         let observed = Date(timeIntervalSince1970: 1000)
         let stale = WidgetUsageMeter(id: "provider.claude.quota.weekly", label: "Claude", unit: .percent, amount: 42,
             observedAt: observed, freshUntil: observed.addingTimeInterval(600), resetsAt: observed.addingTimeInterval(2000), stale: false, retained: false)
-        XCTAssertEqual(LAAEmployeeWidgetView.displayValue(stale, entryDate: observed, renderedAt: observed.addingTimeInterval(1800)), "42% · 30分前")
-        XCTAssertEqual(LAAEmployeeWidgetView.displayValue(stale, entryDate: observed, renderedAt: observed.addingTimeInterval(2000)), "42% · 33分前・リセット済み")
-        XCTAssertEqual(LAAEmployeeWidgetView.displayValue(.missing(id: "missing", label: "Missing"), entryDate: observed, renderedAt: observed), "未取得")
+        XCTAssertEqual(LAAEmployeeWidgetView.displayValue(stale, entryDate: observed, renderedAt: observed.addingTimeInterval(1800)), "42% · 30m Ago")
+        XCTAssertEqual(LAAEmployeeWidgetView.displayValue(stale, entryDate: observed, renderedAt: observed.addingTimeInterval(2000)), "42% · 33m Ago · Reset")
+        XCTAssertEqual(LAAEmployeeWidgetView.displayValue(.missing(id: "missing", label: "Missing"), entryDate: observed, renderedAt: observed), "Unknown")
         for style in [UIUserInterfaceStyle.light, .dark] {
             try capture(style: style, mode: .fullColor, name: "medium-outage-30m-\(style == .dark ? "dark" : "light")",
                         now: observed, renderedAtOffset: 1800)
