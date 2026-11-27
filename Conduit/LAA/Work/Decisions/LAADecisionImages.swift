@@ -329,6 +329,9 @@ struct LAADecisionImageViewer: View {
         .overlay(alignment: .bottom) { caption }
         .onAppear { index = images.firstIndex(of: request.start) ?? 0 }
         .environment(\.colorScheme, .dark)
+        // The clock and battery would read dark on the dark ground; a picture
+        // viewer gives the whole screen to the picture instead.
+        .statusBarHidden(true)
     }
 
     private var indexDisplay: PageTabViewStyle.IndexDisplayMode { images.count > 1 ? .automatic : .never }
