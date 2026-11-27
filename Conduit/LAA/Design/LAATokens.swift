@@ -149,6 +149,7 @@ enum LAAType {
         // Inline names are operating text. Do not let the display face's minimum enlarge a row or chip.
         size >= LAAFontFamily.displayMinSize ? display(size) : .system(style)
     }
+    static func chatListName(_ value: String, japaneseSize: CGFloat) -> Font { .system(size: japaneseSize) }
     static var employeeName: Font { .system(size: bodySize) }
     static var usageValue: Font { display(canvas.number * platformScale).monospacedDigit() }
 

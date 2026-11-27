@@ -3,6 +3,7 @@ import SwiftUI
 import UIKit
 
 struct LAAChatsContent: View {
+    @ScaledMetric(relativeTo: .body) private var japaneseNameSize: CGFloat = 16
     let snapshot: LAAChatsSnapshot
     var settingsAvailable: Bool
     /// The Mac's split list: the highlighted row and the menu bar's requests.
