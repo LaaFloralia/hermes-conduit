@@ -25,33 +25,33 @@ struct LAAHabitsView: View {
                 .toolbar { ToolbarItem(placement: .confirmationAction) { LAACloseButton { showHistory = false }.accessibilityIdentifier("laa.habits.history.close") } } }.environmentObject(bridge).laaSheetSize(.page)
         }
         .task(id: model.selectedWeek) { if automaticallyRefresh { await model.refresh(bridge) } }
-        .laaMacSectionCommands(LAAMacSectionCommands(newTitle: "習慣を追加", newShortcut: "n", newModifiers: [.command, .shift], canCreate: bridge.status == .paired, create: { showCreate = true }, canReload: true, reload: { Task { await model.refresh(bridge); await model.loadHistory(bridge) } }))
+        .laaMacSectionCommands(LAAMacSectionCommands(newTitle: "Add Habit", newShortcut: "n", newModifiers: [.command, .shift], canCreate: bridge.status == .paired, create: { showCreate = true }, canReload: true, reload: { Task { await model.refresh(bridge); await model.loadHistory(bridge) } }))
     }
     private var list: some View {
         VStack(alignment: .leading, spacing: LAASpacing.section) {
             HStack(spacing: LAASpacing.x1) {
                 Button { model.selectedWeek = LAAHabitDates.move(model.selectedWeek, by: -1) } label: { Image(systemName: "chevron.left").frame(width: 44, height: 44).contentShape(Rectangle()) }
-                    .accessibilityLabel(Text(verbatim: "前の週")).accessibilityIdentifier("laa.habits.previous")
+                    .accessibilityLabel(Text(verbatim: "Previous Week")).accessibilityIdentifier("laa.habits.previous")
                 Spacer(minLength: 0)
                 let end = LAAHabitDates.day(LAAHabitDates.calendar.date(byAdding: .day, value: 6, to: LAAHabitDates.date(model.selectedWeek))!)
                 Text(verbatim: LAAHabitDates.range(model.selectedWeek, end)).laaTextStyle(.secondary)
                 Spacer(minLength: 0)
                 Button { model.selectedWeek = LAAHabitDates.move(model.selectedWeek, by: 1) } label: { Image(systemName: "chevron.right").frame(width: 44, height: 44).contentShape(Rectangle()) }
-                    .accessibilityLabel(Text(verbatim: "次の週")).accessibilityIdentifier("laa.habits.next")
+                    .accessibilityLabel(Text(verbatim: "Next Week")).accessibilityIdentifier("laa.habits.next")
             }.buttonStyle(.plain)
             if model.selectedWeek != LAAHabitDates.monday(Date()) {
-                Button { model.selectedWeek = LAAHabitDates.monday(Date()) } label: { Text(verbatim: "今週") }.laaButton(.secondary)
+                Button { model.selectedWeek = LAAHabitDates.monday(Date()) } label: { Text(verbatim: "This Week") }.laaButton(.secondary)
             }
             if let error = model.error { LAAInlineFailure(reason: error) { Task { await model.refresh(bridge) } }.accessibilityIdentifier("laa.habits.error") }
-            if bridge.status != .paired { Button(action: connect) { Text(verbatim: "Macに接続") }.laaButton(.secondary) }
+            if bridge.status != .paired { Button(action: connect) { Text(verbatim: "Connect to Mac") }.laaButton(.secondary) }
             if model.loading && model.value == nil { LAALoadingDots() }
             if let week = model.value {
-                if week.items.isEmpty { LAAEmptyState(message: "習慣はまだありません") }
+                if week.items.isEmpty { LAAEmptyState(message: "No Habits") }
                 ForEach(["do", "avoid"], id: \.self) { kind in
                     let items = week.items.filter { $0.kind == kind }
                     if !items.isEmpty {
                         VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                            LAASectionHeader(kind == "do" ? "習慣" : "禁止習慣")
+                            LAASectionHeader(kind == "do" ? "Habit" : "Avoidance")
                             LAAListSurface {
                                 ForEach(items) { item in
                                     if item.id != items.first?.id { LAAListDivider() }
@@ -103,7 +103,7 @@ struct LAAHabitsHistoryView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: LAASpacing.section) {
             if let error = model.historyError { LAAInlineFailure(reason: error) { Task { await model.loadHistory(bridge) } } }
-            LAASectionHeader("過去の週")
+            LAASectionHeader("Previous Weeks")
             ForEach(model.history) { week in
                 VStack(alignment: .leading, spacing: LAASpacing.x2) {
                     Text(verbatim: LAAHabitDates.range(week.start, week.end)).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
@@ -122,12 +122,12 @@ struct LAAHabitsHistoryView: View {
                 }
             }
             if !model.archived.isEmpty {
-                LAASectionHeader("やめた習慣")
+                LAASectionHeader("Retired Habits")
                 ForEach(model.archived) { habit in
                     HStack { Text(verbatim: habit.title); Spacer(); Button { Task { await model.restore(habit, bridge: bridge) } } label: { Text(verbatim: "Restore") }.accessibilityIdentifier("laa.habits.restore.\(habit.id)") }
                 }
             }
-            LAASectionHeader("変更の記録")
+            LAASectionHeader("Change History")
             ForEach(model.events) { event in
                 VStack(alignment: .leading, spacing: LAASpacing.x1) {
                     Text(verbatim: LAAHabitEventText.timestamp(event.at)).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)

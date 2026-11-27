@@ -27,7 +27,7 @@ struct LAAWorkNotificationPreferences: Codable, Equatable {
         .init(id: "decision", title: "判断", detail: "判断ボードに届いた判断。通知のボタンで回答できます", canTurnOff: false),
         .init(id: "question", title: "質問", detail: "会話が質問の回答を待っている時", canTurnOff: false),
         .init(id: "approval", title: "承認", detail: "会話が操作の許可を待っている時", canTurnOff: false),
-        .init(id: "error", title: "エラー", detail: "会話がエラーで止まった時", canTurnOff: true),
+        .init(id: "error", title: "Error", detail: "会話がエラーで止まった時", canTurnOff: true),
         .init(id: "report", title: "Monetの報告", detail: "依頼ごとに1回、Monetが確かめた完了の報告", canTurnOff: true, needsMacSupport: true),
         .init(id: "finished", title: "手番の終了", detail: "エージェントの手番が終わった時", canTurnOff: true),
         .init(id: "task", title: "タスク", detail: "Linearの通知", canTurnOff: true),
@@ -151,7 +151,7 @@ struct LAAWorkNotificationSettingsRows: View {
                         ) { Text(verbatim: kind.title) }
                         .disabled(model.saving != nil)
                         .accessibilityIdentifier("notifications.work.\(kind.id)")
-                        Text(verbatim: kind.detail).font(.caption).foregroundStyle(.secondary)
+                        Text(verbatim: kind.detail).laaTextStyle(.note).foregroundStyle(.secondary)
                     }
                 }
                 if model.preferences.shownKinds.count < LAAWorkNotificationPreferences.kinds.count {
@@ -163,7 +163,7 @@ struct LAAWorkNotificationSettingsRows: View {
     }
 
     private func caption(_ text: String) -> some View {
-        Text(verbatim: text).font(.footnote).foregroundStyle(.secondary)
+        Text(verbatim: text).laaTextStyle(.secondary).foregroundStyle(.secondary)
     }
 }
 #endif

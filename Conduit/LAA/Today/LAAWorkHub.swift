@@ -218,7 +218,7 @@ struct LAAWorkHub: View {
                      bridge.status == .unauthorized ? "この端末の接続を確認できません。もう一度接続してください。" :
                      "接続するとタスクやセッションを確認できます。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                Button { showPairing = true } label: { Text(verbatim: "Macに接続") }
+                Button { showPairing = true } label: { Text(verbatim: "Connect to Mac") }
                     .laaGlassButton(prominent: true)
                     .accessibilityIdentifier("work.connect")
             }

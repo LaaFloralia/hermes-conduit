@@ -49,12 +49,12 @@ struct LAANotificationPairAllControls: View {
         .accessibilityIdentifier("notifications.pair-all")
 
         Text(verbatim: "元に戻すには、以前に通知を受け取っていたアプリの「設定」>「通知」で対象のAI社員を選び直します。")
-            .font(.footnote)
+            .laaTextStyle(.secondary)
             .foregroundStyle(LAAColors.muted)
 
         if let error = model.error {
             Label { Text(verbatim: error) } icon: { Image(systemName: "exclamationmark.triangle.fill") }
-                .font(.footnote)
+                .laaTextStyle(.secondary)
                 .foregroundStyle(LAAColors.plum)
                 .accessibilityIdentifier("notifications.pair-all.error")
         }
@@ -66,7 +66,7 @@ struct LAANotificationPairAllControls: View {
                     .foregroundStyle(isFailure(item.status) ? LAAColors.plum : LAAColors.muted)
                     .multilineTextAlignment(.trailing)
             }
-            .font(.footnote)
+            .laaTextStyle(.secondary)
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("notifications.pair-all.result.\(item.id)")
         }
@@ -85,11 +85,11 @@ struct LAANotificationPairAllControls: View {
 
     private func statusText(_ status: LAANotificationPairAll.Status) -> String {
         switch status {
-        case .waiting: return "待機中"
-        case .checking: return "確認中"
+        case .waiting: return "Waiting"
+        case .checking: return "Checking"
         case .pairing: return "設定中"
-        case .done: return "完了"
-        case .already: return "登録済み"
+        case .done: return "Done"
+        case .already: return "Registered"
         case .failed(let reason): return "失敗：\(reason)"
         }
     }

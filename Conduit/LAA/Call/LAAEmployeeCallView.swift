@@ -24,7 +24,7 @@ struct LAAEmployeeCallView: View {
                                     .font(LAAType.screenTitle)
                                     .accessibilityIdentifier("laa.call.name")
                                 status(snapshot)
-                                    .font(.subheadline)
+                                    .laaTextStyle(.secondary)
                                     .foregroundStyle(LAAColor.secondaryText)
                                     .accessibilityIdentifier("laa.call.status")
                                 if snapshot.voiceNote != nil {
@@ -83,7 +83,7 @@ struct LAAEmployeeCallView: View {
             Text(verbatim: Self.statusText(snapshot))
             if case .failed(let message) = snapshot.phase {
                 Text(verbatim: message)
-                    .font(.caption)
+                    .laaTextStyle(.note)
                     .multilineTextAlignment(.center)
             }
         }
@@ -91,21 +91,21 @@ struct LAAEmployeeCallView: View {
 
     static func statusText(_ snapshot: LAAEmployeeCallSnapshot) -> String {
         switch snapshot.phase {
-        case .connecting: return "接続中…"
-        case .reconnecting: return "再接続中…"
+        case .connecting: return "Connecting"
+        case .reconnecting: return "Reconnecting"
         case .connected:
             switch snapshot.activity {
-            case .ready: return "話せます"
-            case .listening: return "聞いています"
-            case .thinking: return "考えています"
+            case .ready: return "Ready"
+            case .listening: return "Listening"
+            case .thinking: return "Thinking"
             }
-        case .ending: return "終了中…"
-        case .ended, .failed: return "切れました"
+        case .ending: return "Ending"
+        case .ended, .failed: return "Disconnected"
         }
     }
 
     // DESIGN-V3 §9 keeps these four visible labels stable when toggled.
-    static let controlTitles = ["消音", "スピーカー", "チャット", "終了"]
+    static let controlTitles = ["Mute", "Speaker", "Chat", "End"]
 
     static func elapsed(since start: Date, now: Date) -> String {
         let seconds = max(0, Int(now.timeIntervalSince(start)))
@@ -118,7 +118,7 @@ struct LAAEmployeeCallView: View {
             HStack(alignment: .top, spacing: 16) {
                 CallGlassButton(title: Self.controlTitles[0],
                                 symbol: snapshot.muted ? "mic.slash.fill" : "mic.fill",
-                                identifier: "laa.call.mute", accessibilityTitle: snapshot.muted ? "消音を解除" : "消音", selected: snapshot.muted,
+                                identifier: "laa.call.mute", accessibilityTitle: snapshot.muted ? "Unmute" : "Mute", selected: snapshot.muted,
                                 action: calls.toggleMute)
                     .disabled(!snapshot.phase.isOngoing)
                 if snapshot.usesSystemRoutePicker {
@@ -126,7 +126,7 @@ struct LAAEmployeeCallView: View {
                         LAAAudioRoutePicker()
                             .frame(width: 60, height: 60)
                             .modifier(CallGlassCircle(selected: false, destructive: false))
-                        Text(verbatim: Self.controlTitles[1]).font(.caption).foregroundStyle(LAAColor.secondaryText)
+                        Text(verbatim: Self.controlTitles[1]).laaTextStyle(.note).foregroundStyle(LAAColor.secondaryText)
                             .lineLimit(1).minimumScaleFactor(0.8)
                     }
                     .frame(maxWidth: .infinity)
@@ -134,7 +134,7 @@ struct LAAEmployeeCallView: View {
                 } else {
                     CallGlassButton(title: Self.controlTitles[1],
                                     symbol: snapshot.speaker ? "speaker.wave.2.fill" : "speaker.fill",
-                                    identifier: "laa.call.speaker", accessibilityTitle: "スピーカー、\(routeLabel)",
+                                    identifier: "laa.call.speaker", accessibilityTitle: "Speaker, \(routeLabel)",
                                     selected: snapshot.speaker, action: calls.toggleSpeaker)
                         .disabled(!snapshot.phase.isOngoing)
                 }
@@ -165,7 +165,7 @@ private struct CallGlassButton: View {
                     .font(.system(size: 20, weight: .semibold))
                     .frame(width: 52, height: 52)
                     .modifier(CallGlassCircle(selected: selected, destructive: destructive))
-                Text(title).font(.caption).foregroundStyle(LAAColor.secondaryText)
+                Text(title).laaTextStyle(.note).foregroundStyle(LAAColor.secondaryText)
                     .lineLimit(1).minimumScaleFactor(0.8)
             }
             .frame(maxWidth: .infinity)
@@ -205,7 +205,7 @@ private struct LAAAudioRoutePicker: UIViewRepresentable {
         picker.tintColor = UIColor(LAAColor.link)
         picker.activeTintColor = UIColor(LAAColor.link)
         picker.prioritizesVideoDevices = false
-        picker.accessibilityLabel = "スピーカー、音声の出力先"
+        picker.accessibilityLabel = "Speaker, Audio Output"
         picker.accessibilityIdentifier = "laa.call.audio-route"
         return picker
     }
@@ -311,7 +311,7 @@ struct LAAInCallBar: View {
                     Text(verbatim: LAACopy.callReturn)
                     Image(systemName: "chevron.right")
                 }
-                .font(.footnote.weight(.semibold))
+                .laaTextStyle(.secondary).fontWeight(.semibold)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
                 .foregroundStyle(LAAColors.ink)

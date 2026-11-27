@@ -202,7 +202,7 @@ enum LAADateText {
         case ..<604_800: amount = "\(Int(seconds / 86_400))日"
         default: return string(date, .day)
         }
-        return amount + (interval >= 0 ? "前" : "後")
+        return amount + (interval >= 0 ? "Previous" : "Next")
     }
 }
 

@@ -271,16 +271,16 @@ enum LAAUsageLabel {
         ["session", "5時間", "5h", "5-hour", "5 hours"].contains(label.lowercased())
     }
 
-    /// Display name for one window. A duration the feed reports wins, so a 7-day
-    /// pool reads 週間 whatever the proxy calls it.
+    /// A duration the feed reports wins over the proxy's display name.
     static func window(_ window: LAAUsageItem.Window) -> String {
         if let minutes = window.windowMinutes {
-            if minutes == 10_080 { return "週間" }
-            if minutes == 43_200 { return "月間" }
+            if minutes == 10_080 { return "Weekly" }
+            if minutes == 43_200 { return "Monthly" }
         }
-        if isWeekly(window.label) { return "週間" }
+        if isFiveHour(window.label) { return "5h" }
+        if isWeekly(window.label) { return "Weekly" }
         if ["monthly", "月間", "マンスリー"].contains(window.label.lowercased()) {
-            return "月間"
+            return "Monthly"
         }
         return window.label
     }
@@ -297,10 +297,10 @@ enum LAAUsageLabel {
 enum LAAUsageAge {
     static func text(_ observed: Date, at now: Date) -> String {
         let minutes = max(0, Int(now.timeIntervalSince(observed) / 60))
-        if minutes == 0 { return "たった今" }
-        if minutes < 60 { return "\(minutes)分前" }
-        if minutes < 1440 { return "\(minutes / 60)時間前" }
-        return "\(minutes / 1440)日前"
+        if minutes == 0 { return "Just Now" }
+        if minutes < 60 { return "\(minutes)m Ago" }
+        if minutes < 1440 { return "\(minutes / 60)h Ago" }
+        return "\(minutes / 1440)d Ago"
     }
 }
 #endif

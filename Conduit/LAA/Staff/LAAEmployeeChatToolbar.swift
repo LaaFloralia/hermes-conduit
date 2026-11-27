@@ -62,8 +62,8 @@ struct LAAEmployeeConversationHeader: View {
     }
     private var status: String {
         if sameCall {
-            if case .failed = calls.snapshot?.phase { return "通話を確認" }
-            return "通話中"
+            if case .failed = calls.snapshot?.phase { return "Check Call" }
+            return "On Call"
         }
         return appState.isConnected ? "" : "接続中…"
     }

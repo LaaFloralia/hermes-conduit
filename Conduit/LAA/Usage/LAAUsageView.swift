@@ -128,7 +128,7 @@ struct LAAUsageView: View {
     }
 
     private var usageTitle: some View {
-        Text(verbatim: "Usage").font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
+        Text(verbatim: "Usage").laaTextStyle(.title).foregroundStyle(LAAColor.text)
             .accessibilityAddTraits(.isHeader)
             .accessibilityValue(state.updatedAt == nil ? "" : LAACopy.Usage.updated)
             .accessibilityIdentifier("laa.usage.updated")
@@ -138,7 +138,7 @@ struct LAAUsageView: View {
         Button { Task { await refresh() } } label: {
             HStack(spacing: LAASpace.s4) {
                 if state.isRefreshing { LAARefreshGlyph(spinning: true) }
-                Text(verbatim: "Sync").font(.callout.weight(.medium))
+                Text(verbatim: "Sync").laaTextStyle(.body).fontWeight(.medium)
             }
             .foregroundStyle(state.isRefreshing || bridge.status != .paired ? LAAColor.secondaryText : LAAColor.link)
             .frame(minWidth: LAASpacing.minimumTouchTarget, minHeight: LAASpacing.minimumTouchTarget)
@@ -231,7 +231,7 @@ struct LAAUsageView: View {
             if !accounts.isEmpty {
                 Button { toggle(id) } label: {
                     Image(systemName: "chevron.down")
-                        .font(.caption.weight(.semibold)).foregroundStyle(LAAColor.secondaryText)
+                        .laaTextStyle(.note).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
                         .rotationEffect(.degrees(open ? 180 : 0))
                         .frame(width: 32, height: 24)
                         .contentShape(Rectangle())
@@ -248,13 +248,13 @@ struct LAAUsageView: View {
                         Rectangle().fill(LAAColor.separator).frame(height: 1)
                         HStack(spacing: LAASpacing.x2) {
                             Text(verbatim: LAAUsageCardModel.accountName(account))
-                                .font(.footnote.weight(.medium)).foregroundStyle(LAAColor.text)
+                                .laaTextStyle(.body).fontWeight(.medium).foregroundStyle(LAAColor.text)
                             if account.active == true {
-                                Text(verbatim: LAACopy.Usage.inUse).font(.caption).foregroundStyle(LAAColor.link)
+                                Text(verbatim: LAACopy.Usage.inUse).laaTextStyle(.note).foregroundStyle(LAAColor.link)
                             }
                             Spacer(minLength: 0)
                             if let age = age(account) {
-                                Text(verbatim: age).font(.caption).foregroundStyle(LAAColor.secondaryText)
+                                Text(verbatim: age).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                             }
                         }
                         LAAUsageWindowGrid(windows: LAAUsageCardModel.windows(provider: slot.provider, item: account, now: evaluatedAt),
@@ -276,13 +276,13 @@ struct LAAUsageView: View {
         VStack(alignment: .leading, spacing: 0) {
             Button { toggle("others") } label: {
                 HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
-                    Text(verbatim: LAACopy.Usage.others).font(.body).foregroundStyle(LAAColor.text)
+                    Text(verbatim: LAACopy.Usage.others).laaTextStyle(.body).foregroundStyle(LAAColor.text)
                     if !open, groups.contains(where: needsLook) {
-                        LAAUsageMeterMark(level: .caution).font(.caption)
+                        LAAUsageMeterMark(level: .caution).laaTextStyle(.note)
                     }
                     Spacer(minLength: LAASpacing.x2)
                     Image(systemName: "chevron.down")
-                        .font(.caption.weight(.semibold)).foregroundStyle(LAAColor.secondaryText)
+                        .laaTextStyle(.note).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
                         .rotationEffect(.degrees(open ? 180 : 0))
                         .accessibilityHidden(true)
                 }
@@ -387,7 +387,7 @@ struct LAAUsageView: View {
                 }
                 ForEach(items) { item in
                     let reading = LAACapacity.reading(item, at: evaluatedAt, allowHistorical: true)
-                    let result = reading.map { "Free " + LAACapacity.bytes($0.availableBytes, locale: locale) }
+                    let result = reading.map { LAACapacity.bytes($0.availableBytes, locale: locale) }
                     let note = reading.map {
                         "Used " + LAACapacity.bytes($0.usedBytes, locale: locale) + " / " + LAACapacity.bytes($0.totalBytes, locale: locale)
                     }
@@ -398,7 +398,7 @@ struct LAAUsageView: View {
                                    case .warning: .caution
                                    default: LAAMeterLevel(remaining: 1 - $0.usedFraction)
                                    }
-                               }, note: note)
+                               }, note: note, valueLabel: "Free")
                         .accessibilityIdentifier("laa.capacity.\(item.id)")
                 }
             }
@@ -422,18 +422,19 @@ struct LAAUsageView: View {
     }
 
     private func readingRow(name: String, result: String?, age: String?, fraction: Double?,
-                            level: LAAMeterLevel? = nil, note: String?, nameLink: URL? = nil) -> some View {
+                            level: LAAMeterLevel? = nil, note: String?, nameLink: URL? = nil,
+                            valueLabel: String? = nil) -> some View {
         let status = level ?? LAAMeterLevel(remaining: fraction)
         return VStack(alignment: .leading, spacing: LAASpace.s8) {
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .firstTextBaseline, spacing: LAASpace.s8) {
                     readingName(name, link: nameLink).fixedSize(horizontal: true, vertical: false)
                     Spacer(minLength: LAASpace.s8)
-                    readingValue(result, age: age, level: status).fixedSize()
+                    readingValue(result, label: valueLabel, age: age, level: status).fixedSize()
                 }
                 VStack(alignment: .leading, spacing: LAASpace.s4) {
                     readingName(name, link: nameLink)
-                    readingValue(result, age: age, level: status)
+                    readingValue(result, label: valueLabel, age: age, level: status)
                 }
             }
             LAAUsageMeterTrack(fraction: fraction, level: level)
@@ -449,7 +450,7 @@ struct LAAUsageView: View {
     @ViewBuilder private func readingName(_ name: String, link: URL?) -> some View {
         if let link {
             Link(destination: link) {
-                Label { Text(verbatim: name) } icon: { Image(systemName: "arrow.up.right").font(.caption2) }
+                Label { Text(verbatim: name).laaTextStyle(.body) } icon: { Image(systemName: "arrow.up.right").font(.caption2) }
                     .foregroundStyle(LAAColor.link)
                     .frame(minHeight: LAASpacing.minimumTouchTarget, alignment: .leading)
                     .contentShape(Rectangle())
@@ -457,18 +458,48 @@ struct LAAUsageView: View {
             .buttonStyle(.plain)
             .accessibilityIdentifier("laa.usage.billing")
         } else {
-            Text(verbatim: name).font(.body).foregroundStyle(LAAColor.text)
+            Text(verbatim: name).laaTextStyle(.body).foregroundStyle(LAAColor.text)
         }
     }
 
-    private func readingValue(_ result: String?, age: String?, level: LAAMeterLevel) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: LAASpace.s4) {
-            if result == nil || level != .unknown { LAAUsageMeterMark(level: level).font(.caption2) }
-            if let result {
-                Text(verbatim: result).font(LAAType.usageRowValue).foregroundStyle(LAAColor.text)
-                if let age { Text(verbatim: age).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
+    private func readingValue(_ result: String?, label: String?, age: String?, level: LAAMeterLevel) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .firstTextBaseline, spacing: LAASpace.s4) {
+                readingAmount(result, label: label, level: level)
+                if result != nil, let age {
+                    Text(verbatim: age).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                }
+            }.fixedSize(horizontal: true, vertical: false)
+            VStack(alignment: .leading, spacing: LAASpace.s4) {
+                readingAmount(result, label: label, level: level)
+                if result != nil, let age {
+                    Text(verbatim: age).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                }
             }
         }
+    }
+
+    private func readingAmount(_ result: String?, label: String?, level: LAAMeterLevel) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: LAASpace.s4) {
+            if result == nil || level != .unknown { LAAUsageMeterMark(level: level).laaTextStyle(.note) }
+            if let result {
+                if let label {
+                    HStack(alignment: .firstTextBaseline, spacing: LAASpace.s4) {
+                        Text(verbatim: label).laaTextStyle(.note).foregroundStyle(LAAColor.secondaryText)
+                        amountText(result)
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(Text(verbatim: "\(label) \(result)"))
+                    .accessibilityIdentifier("laa.usage.capacity.free")
+                } else {
+                    amountText(result)
+                }
+            }
+        }
+    }
+
+    private func amountText(_ amount: String) -> some View {
+        Text(verbatim: amount).laaTextStyle(.secondary).monospacedDigit().foregroundStyle(LAAColor.text)
     }
 
     private func age(_ item: LAAUsageItem) -> String? {

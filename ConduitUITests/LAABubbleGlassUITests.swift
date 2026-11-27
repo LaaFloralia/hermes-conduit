@@ -37,11 +37,11 @@ final class LAABubbleGlassUITests: XCTestCase {
         background.tap()
         let standard = app.buttons["bubble.choice.standard"], glass = app.buttons["bubble.choice.glass"]
         XCTAssertTrue(standard.waitForExistence(timeout: 5))
-        XCTAssertEqual(standard.value as? String, "選択中")
-        XCTAssertNotEqual(glass.value as? String, "選択中")
+        XCTAssertEqual(standard.value as? String, "Selected")
+        XCTAssertNotEqual(glass.value as? String, "Selected")
         glass.tap()
-        XCTAssertEqual(glass.value as? String, "選択中")
-        XCTAssertNotEqual(standard.value as? String, "選択中")
+        XCTAssertEqual(glass.value as? String, "Selected")
+        XCTAssertNotEqual(standard.value as? String, "Selected")
         capture(app, "picker-glass-light")
         app.buttons["laa.background.close"].tap()
 
@@ -59,9 +59,9 @@ final class LAABubbleGlassUITests: XCTestCase {
         app.buttons["composer.reply-reference.remove"].tap()
         background.tap()
         XCTAssertTrue(glass.waitForExistence(timeout: 5))
-        XCTAssertEqual(glass.value as? String, "選択中")
+        XCTAssertEqual(glass.value as? String, "Selected")
         standard.tap()
-        XCTAssertEqual(standard.value as? String, "選択中")
+        XCTAssertEqual(standard.value as? String, "Selected")
         app.buttons["laa.background.close"].tap()
     }
 
@@ -75,13 +75,13 @@ final class LAABubbleGlassUITests: XCTestCase {
         background.tap()
         let standard = app.buttons["bubble.choice.standard"], glass = app.buttons["bubble.choice.glass"]
         XCTAssertTrue(glass.waitForExistence(timeout: 5))
-        XCTAssertEqual(glass.value as? String, "選択中")
+        XCTAssertEqual(glass.value as? String, "Selected")
         standard.tap()
-        XCTAssertEqual(standard.value as? String, "選択中")
+        XCTAssertEqual(standard.value as? String, "Selected")
         app.buttons["laa.background.close"].tap()
         background.tap()
         XCTAssertTrue(standard.waitForExistence(timeout: 5))
-        XCTAssertEqual(standard.value as? String, "選択中")
+        XCTAssertEqual(standard.value as? String, "Selected")
         app.buttons["laa.background.close"].tap()
     }
 

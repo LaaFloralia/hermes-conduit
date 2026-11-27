@@ -820,7 +820,7 @@ final class LAABrainUITests: XCTestCase {
         let raw = app.staticTexts["laa.brain.raw"].label
         XCTAssertTrue(raw.hasPrefix("---\r\ncustom: [keep, exact]\r\nunknown: |\r\n  untouched\r\n---\r\n"))
         XCTAssertTrue(raw.contains(":::custom unsupported"))
-        XCTAssertTrue(raw.contains("追加"))
+        XCTAssertTrue(raw.contains("Add"))
         app.buttons["laa.brain.raw.close"].tap()
         let link = app.buttons["laa.brain.embed.note"].firstMatch
         for _ in 0..<14 {

@@ -328,7 +328,8 @@ private struct LAAWorkPaneHeader: View {
             Button { showingInitialInstruction = true } label: { identity }
                 .buttonStyle(.plain)
                 .disabled(session == nil)
-                .accessibilityLabel(Text(verbatim: (session?.name ?? "") + "、名前と最初の指示を表示"))
+                .accessibilityLabel(Text(verbatim: session?.name ?? ""))
+                .accessibilityHint(Text(verbatim: "Show First Prompt"))
                 .accessibilityIdentifier("work.pane.initialInstruction")
                 .frame(maxWidth: .infinity, alignment: .leading)
             if canSplitRight || canSplitDown || many || sessionID != nil { controls }
@@ -443,7 +444,7 @@ private struct LAAWorkPaneHeader: View {
                          action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 14, weight: .regular))
+                .laaTextStyle(.body)
                 .foregroundStyle(LAAColor.text)
                 .frame(width: 36, height: 36)
                 .contentShape(Rectangle())
@@ -682,26 +683,26 @@ struct LAAWorkPaneMenu: Commands {
 
 extension LAACopy {
     static let paneMenu = "ペイン"
-    static let paneSplitRight = "右に分割"
-    static let paneSplitDown = "下に分割"
-    static let paneNext = "次のペイン"
-    static let panePrevious = "前のペイン"
-    static let paneFocusLeft = "左のペインへ"
-    static let paneFocusRight = "右のペインへ"
-    static let paneFocusUp = "上のペインへ"
-    static let paneFocusDown = "下のペインへ"
-    static let paneZoom = "ペインを拡大"
-    static let paneUnzoom = "拡大を戻す"
-    static let paneEqualize = "ペインの大きさを揃える"
-    static let paneClose = "ペインを閉じる"
-    static let paneClear = "セッションを閉じる"
-    static let paneDivider = "ペインの境界"
+    static let paneSplitRight = "Split Right"
+    static let paneSplitDown = "Split Down"
+    static let paneNext = "Next Pane"
+    static let panePrevious = "Previous Pane"
+    static let paneFocusLeft = "Left Pane"
+    static let paneFocusRight = "Right Pane"
+    static let paneFocusUp = "Upper Pane"
+    static let paneFocusDown = "Lower Pane"
+    static let paneZoom = "Expand Pane"
+    static let paneUnzoom = "Restore Pane"
+    static let paneEqualize = "Equalize Panes"
+    static let paneClose = "Close Pane"
+    static let paneClear = "Close Session"
+    static let paneDivider = "Pane Divider"
     static let paneDividerHelp = "ドラッグで大きさを変更・ダブルクリックで等分"
     static let paneEmptyTitle = "セッションを選んでください。"
     static let paneEmptyMessage = "左の一覧から選ぶか、ここへドラッグします。"
-    static let paneEmptyHeading = "空のペイン"
-    static let paneNewSession = "新しいセッション"
-    static let paneFocusedValue = "選択中"
+    static let paneEmptyHeading = "Empty Pane"
+    static let paneNewSession = "New Session"
+    static let paneFocusedValue = "Selected"
     static let paneOpenRight = "Split Right"
     static let paneOpenBelow = "Split Below"
 }

@@ -257,7 +257,7 @@ enum LAACampaignSchedule {
 enum LAACampaignCopy {
     static let section = "Campaigns"
     static let heading = "応募の判断"
-    static let decided = "判断済み"
+    static let decided = "Decided"
     static let applied = "応募済み"
     static let appliedFilter = "応募済"
     static let decline = "見送る"
@@ -560,7 +560,7 @@ struct LAACampaignBoardView: View {
                         ForEach(board.categories, id: \.self) { category in
                             Text(verbatim: categoryName(category)).tag(category.rawValue)
                         }
-                    } label: { Text(verbatim: "種類") }
+                    } label: { Text(verbatim: "Type") }
                     .pickerStyle(.inline)
                 } label: {
                     menuLabel(selectedCategory.map(categoryName) ?? "すべての種類")
@@ -576,7 +576,7 @@ struct LAACampaignBoardView: View {
                     Divider()
                     Picker(selection: $orderRaw) {
                         ForEach(LAACampaignSchedule.Order.allCases) { Text(verbatim: LAACampaignCopy.order($0)).tag($0.rawValue) }
-                    } label: { Text(verbatim: "表示順") }
+                    } label: { Text(verbatim: "Sort Order") }
                     .pickerStyle(.inline)
                 } label: {
                     Image(systemName: appliedOnly ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease")

@@ -75,16 +75,16 @@ struct LAAChairedVoiceActions {
 /// Visible text and VoiceOver strings, kept here so tests read the same
 /// words the bar draws.
 enum LAAChairedVoiceCopy {
-    static let voice = "会議を音声で聞く"
+    static let voice = "Listen to Meeting"
     static let voiceHint = "押すと、これ以降の社員の発言を読み上げます。今までの発言は読み上げません。"
-    static let talk = "話す"
+    static let talk = "Speak"
     static let talkHint = "読み上げを止めて、あなたが話す番にします。"
-    static let listen = "聞くに戻る"
+    static let listen = "Resume Listening"
     static let listenHint = "保留していた次の発言から読み上げを再開します。"
-    static let stop = "停止"
+    static let stop = "Stop"
     static let stopHint = "読み上げを止め、音声を解放します。もう一度聞くまで無音です。"
-    static let listening = "読み上げ中"
-    static let talking = "あなたの番"
+    static let listening = "Speaking"
+    static let talking = "Your Turn"
     static let staffCall = "社員との通話中は、会議の読み上げは使えません。"
     static let notBound = "この会議ではまだ読み上げを始められません。"
 

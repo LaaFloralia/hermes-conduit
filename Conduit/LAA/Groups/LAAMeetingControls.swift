@@ -95,7 +95,7 @@ struct LAAMeetingControls: View {
     private func buttons(_ queue: LAAChairedVoicePlayback) -> some View {
         let engaged = queue.phase != .silent
         let talking = meeting.turn.ownerTalking
-        let talkButton = button(meeting.claiming ? "接続を中止" : talking ? "話し終える" : "話す",
+        let talkButton = button(meeting.claiming ? "Cancel Connection" : talking ? "Finish Speaking" : "Speak",
                                 symbol: talking ? "mic.fill" : "mic", id: "talk") {
             if talking || meeting.claiming { releaseTalk() } else { Task { await talk() } }
         }
@@ -114,10 +114,10 @@ struct LAAMeetingControls: View {
         #else
         talkButton.disabled(hasCompetingAudio())
         #endif
-        button(queue.muted ? "消音解除" : "消音", symbol: queue.muted ? "speaker.slash.fill" : "speaker.slash",
+        button(queue.muted ? "Unmute" : "Mute", symbol: queue.muted ? "speaker.slash.fill" : "speaker.slash",
                id: "stop", action: mute).disabled(!engaged)
-        button("次へ", symbol: "forward.end", id: "skip", action: skip).disabled(queue.current == nil)
-        button("終了", symbol: "stop", id: "end", action: end).disabled(!engaged)
+        button("Next", symbol: "forward.end", id: "skip", action: skip).disabled(queue.current == nil)
+        button("End", symbol: "stop", id: "end", action: end).disabled(!engaged)
     }
 
     private func button(_ title: String, symbol: String, id: String, action: @escaping () -> Void) -> some View {
@@ -133,14 +133,14 @@ struct LAAMeetingControls: View {
     }
 
     private func status(speaking: Bool) -> String {
-        if speaking { return "発言中" }
-        if meeting.claiming { return "音声に接続中" }
-        if meeting.turn.ownerTalking { return "あなたの番" }
+        if speaking { return "Speaking" }
+        if meeting.claiming { return "Connecting" }
+        if meeting.turn.ownerTalking { return "Your Turn" }
         switch meeting.turn.phase {
-        case .idle: return "壁打ち Voice"
-        case .listening: return "聞く"
+        case .idle: return "Voice"
+        case .listening: return "Listen"
         case .sending: return "発言を確認して送信"
-        case .waiting, .speaking: return "応答を待っています"
+        case .waiting, .speaking: return "Waiting"
         }
     }
 }

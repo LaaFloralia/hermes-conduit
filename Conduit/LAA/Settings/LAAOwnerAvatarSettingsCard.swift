@@ -3,9 +3,9 @@ import PhotosUI
 import SwiftUI
 
 extension LAACopy {
-    static let ownerIcon = "アイコン"
-    static let ownerIconChoose = "写真を選ぶ"
-    static let ownerIconRemove = "写真を外す"
+    static let ownerIcon = "Icon"
+    static let ownerIconChoose = "Choose Photo"
+    static let ownerIconRemove = "Remove Photo"
     static let ownerIconSaveFailed = "アイコンを保存できません"
     static let ownerIconRemoveFailed = "アイコンを外せません"
     static let ownerIconUnreadable = "写真を読み込めません"
@@ -38,7 +38,7 @@ struct LAAOwnerAvatarSettingsCard: View {
             }
             HStack(spacing: LAASpacing.x4) {
                 PhotosPicker(selection: $photo, matching: .images) {
-                    Text(verbatim: "写真を変更")
+                    Text(verbatim: "Change Photo")
                         .frame(minHeight: LAASpacing.minimumTouchTarget).contentShape(Rectangle())
                 }
                 .accessibilityIdentifier("laa.settings.ownerIcon.choose")

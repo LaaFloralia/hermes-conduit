@@ -161,17 +161,17 @@ private struct LAAWatchRecording: View {
                         Image(systemName: "mic.fill").font(.title)
                             .frame(width: 64, height: 64).background(accent, in: Circle())
                             .scaleEffect(reduced ? 1 : 1 + CGFloat(min(voice.level, 0.3)))
-                            .accessibilityLabel(Text(verbatim: "録音中"))
+                            .accessibilityLabel(Text(verbatim: "Recording"))
                         Text(verbatim: "0:\(String(format: "%02d", voice.elapsed)) / 0:\(LAAWatchAsk.maxSeconds)").font(.caption.monospacedDigit())
                         Button("Done") { voice.done() }.tint(accent).laaPrimaryAction()
-                        Button { voice.showTextEntry() } label: { Text(verbatim: "Aa") }.accessibilityLabel(Text(verbatim: "文字入力"))
+                        Button { voice.showTextEntry() } label: { Text(verbatim: "Aa") }.accessibilityLabel(Text(verbatim: "Text Input"))
                     } else if let state = voice.state {
                         if state.phase == .answered, let transcript = state.transcript, !transcript.isEmpty {
                             Text(transcript).font(.caption).foregroundStyle(.secondary).lineLimit(2)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         Text(message(state)).font(.body).frame(maxWidth: .infinity, alignment: .leading)
-                        if state.phase.isFinal { Button { Task { await voice.start() } } label: { Text(verbatim: "もう一度") }.tint(accent) }
+                        if state.phase.isFinal { Button { Task { await voice.start() } } label: { Text(verbatim: "Retry") }.tint(accent) }
                     } else { ProgressView() }
                 }
             }
@@ -181,7 +181,7 @@ private struct LAAWatchRecording: View {
                 if voice.showing && !voice.recording && voice.state == nil { Task { await voice.start() } }
             }) {
                 VStack {
-                    TextField(text: $voice.typed) { Text(verbatim: "メッセージ") }
+                    TextField(text: $voice.typed) { Text(verbatim: "Message") }
                     Button("Done") { voice.sendText() }.disabled(voice.typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || voice.typed.count > LAAWatchAsk.maxTextLength)
                 }.padding()
             }
@@ -190,9 +190,9 @@ private struct LAAWatchRecording: View {
     }
     private func message(_ state: LAAWatchAsk.State) -> String {
         switch state.phase {
-        case .received, .transcribing: return "文字にしています"
-        case .sending: return "送っています"
-        case .answered: return state.reply ?? "返事がありません"
+        case .received, .transcribing: return "Transcribing"
+        case .sending: return "Sending"
+        case .answered: return state.reply ?? "No Reply"
         case .stillWorking, .queued: return LAAWatchCopy.stillWorking
         case .needsInput: return "iPhoneのChatで返事を待っています"
         case .silent: return "音声がありません"

@@ -121,7 +121,7 @@ final class LAALinearTaskTests: XCTestCase {
         row.notificationStatus = "pending"; row.businessStatus = "success"
         XCTAssertEqual(row.previousRunSummary(timeZone: japan), "11月2日 7:30 · 完了")
         let missing = try JSONDecoder().decode(LAAWorkRoutine.self, from: Data(#"{"id":"missing","name":"未確認"}"#.utf8))
-        XCTAssertEqual(missing.previousRunSummary(timeZone: japan), "未確認")
+        XCTAssertEqual(missing.previousRunSummary(timeZone: japan), "Unknown")
     }
 }
 #endif

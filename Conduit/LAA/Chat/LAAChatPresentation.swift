@@ -60,7 +60,7 @@ struct LAATypingDots: View {
                 if let phrase {
                     Text(verbatim: phrase)
                         .id(phrase)
-                        .font(.subheadline).foregroundStyle(LAAColor.text)
+                        .laaTextStyle(.secondary).foregroundStyle(LAAColor.text)
                         .lineLimit(1)
                         .contentTransition(.opacity)
                         .animation(.easeOut(duration: 0.22), value: phrase)
@@ -69,13 +69,13 @@ struct LAATypingDots: View {
                     Spacer(minLength: LAASpacing.x2)
                     // Counts on its own; the row does not re-render each second.
                     Text(timerInterval: startedAt...Date.distantFuture, countsDown: false)
-                        .font(.caption.weight(.medium)).monospacedDigit()
+                        .laaTextStyle(.note).fontWeight(.medium).monospacedDigit()
                         .foregroundStyle(LAAColor.text)
                         .fixedSize()
                 }
             }.frame(minHeight: 44).contentShape(Rectangle())
         }.buttonStyle(.plain)
-            .accessibilityLabel(String("入力中、作業の記録を表示"))
+            .accessibilityLabel(String("Show Activity Log"))
             .accessibilityValue(phrase ?? "")
             .accessibilityIdentifier("chat.typing")
             .sheet(isPresented: $showingRecords) { LAAWorkRecordsSheet(records: records) { showingRecords = false } }
@@ -89,14 +89,14 @@ struct LAAWorkRecordsSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                if records.isEmpty { Text(verbatim: "記録はありません").foregroundStyle(LAAColor.secondaryText) }
+                if records.isEmpty { Text(verbatim: "No Activity").foregroundStyle(LAAColor.secondaryText) }
                 ForEach(records) { record in
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(verbatim: record.role == .reasoning ? "Thinking" : "Running tool").font(.caption).foregroundStyle(LAAColor.secondaryText)
-                        Text(verbatim: record.content).font(.body).textSelection(.enabled)
+                        Text(verbatim: record.role == .reasoning ? "Thinking" : "Running tool").laaTextStyle(.note).foregroundStyle(LAAColor.secondaryText)
+                        Text(verbatim: record.content).laaTextStyle(.body).textSelection(.enabled)
                     }
                 }
-            }.navigationTitle(String("作業の記録")).navigationBarTitleDisplayMode(.inline)
+            }.navigationTitle(String("Activity Log")).navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .confirmationAction) {
                     LAACloseButton(action: done).accessibilityIdentifier("laa.chat.records.close")
                 } }
@@ -132,7 +132,7 @@ struct LAAChatDelivery: View {
 }
 private struct LAAChatReadMark: View {
     var body: some View {
-        Text(verbatim: "既読").font(.system(size: 11)).foregroundStyle(LAAColor.secondaryText)
+        Text(verbatim: "Read").laaTextStyle(.note).foregroundStyle(LAAColor.secondaryText)
             .accessibilityIdentifier("chat.delivery.read")
     }
 }
@@ -184,7 +184,7 @@ struct LAAChatTypingRow: View {
         .buttonStyle(.plain)
         .frame(minHeight: LAASpacing.minimumTouchTarget)
         .padding(.top, LAATranscriptMetrics.turnGap - LAATranscriptMetrics.rowGap)
-        .accessibilityLabel(String("入力中、作業の記録を表示"))
+        .accessibilityLabel(String("Show Activity Log"))
         .accessibilityValue(LAAChatLiveThoughtRow.liveLine(repliesElsewhere ? nil : projection.reasoningSegment?.content) ?? spokenPhrase)
         .accessibilityIdentifier("chat.typing")
         .sheet(isPresented: $showingRecords) { LAAWorkRecordsSheet(records: records) { showingRecords = false } }
@@ -235,7 +235,7 @@ struct LAAConversationSearchView: View {
                     Text(verbatim: message.content).textSelection(.enabled)
                 }
             }
-        }.searchable(text: $query, prompt: "検索").navigationTitle(String("会話内を検索"))
+        }.searchable(text: $query, prompt: "Search").navigationTitle(String("Find in Chat"))
     }
 }
 struct LAAConversationHistoryView: View {
@@ -246,7 +246,7 @@ struct LAAConversationHistoryView: View {
             Button { dismissInfo(); appState.requestOpenSession(session.id) } label: {
                 Text(verbatim: session.title).foregroundStyle(LAAColor.text)
             }
-        }.navigationTitle(String("これまでの会話"))
+        }.navigationTitle(String("Chat History"))
     }
 }
 #endif
@@ -309,8 +309,8 @@ struct LAAReplyReferenceCard: View {
         HStack(spacing: 8) {
             Rectangle().fill(onAccent ? Color.white.opacity(0.7) : LAAColor.link).frame(width: 3)
             VStack(alignment: .leading, spacing: 3) {
-                Text(verbatim: author.map(LAAChatPerson.name) ?? "返信").font(.caption.weight(.semibold))
-                Text(verbatim: excerpt).font(.footnote).lineLimit(1)
+                Text(verbatim: author.map(LAAChatPerson.name) ?? "Reply").laaTextStyle(.secondary).fontWeight(.semibold)
+                Text(verbatim: excerpt).laaTextStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 0)
         }.foregroundStyle(onAccent ? Color.white : LAAColor.text)
@@ -331,7 +331,7 @@ struct LAAComposerReplyReference: View {
                 Image(systemName: "xmark").font(.system(size: 13, weight: .semibold))
                     .frame(width: 44, height: 44)
             }.buttonStyle(.plain).foregroundStyle(LAAColor.secondaryText)
-                .accessibilityLabel(String("返信を取り消す"))
+                .accessibilityLabel(String("Cancel Reply"))
                 .accessibilityIdentifier("composer.reply-reference.remove")
         }.padding(.leading, 12)
     }
@@ -347,7 +347,7 @@ struct LAAGroupDelivery: View {
         if events.last(where: \.isUserMessage)?.id == eventID,
            let index = events.firstIndex(where: { $0.id == eventID }),
            events.dropFirst(index + 1).contains(where: { $0.isMemberMessage || $0.kind == "turn.started" }) {
-            Text(verbatim: "既読").font(.system(size: 11)).foregroundStyle(LAAColor.secondaryText)
+            Text(verbatim: "Read").laaTextStyle(.note).foregroundStyle(LAAColor.secondaryText)
                 .accessibilityIdentifier("chat.delivery.read")
         }
     }

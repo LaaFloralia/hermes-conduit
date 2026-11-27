@@ -68,7 +68,7 @@ struct LAABrainNoteView: View {
                                 .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                         }
                         if LAABrainSaveCoordinator.isConflictCopy(reference.path) {
-                            Text(verbatim: "競合コピー").foregroundStyle(LAAColor.attention)
+                            Text(verbatim: "Conflict Copy").foregroundStyle(LAAColor.attention)
                                 .accessibilityIdentifier("laa.brain.conflictCopy")
                             if let original = LAABrainSaveCoordinator.conflictOriginalPath(reference.path),
                                let other = files.first(where: { $0.path == original }) {
@@ -135,7 +135,7 @@ struct LAABrainNoteView: View {
                             Button(raw ? String("Preview") : String("Markdown")) { raw.toggle() }.accessibilityIdentifier("laa.brain.rawToggle")
                             Button(String("Info")) { showInfo = true }
                         } label: { Image(systemName: "ellipsis") }
-                            .accessibilityLabel(String("ノートのメニュー")).accessibilityIdentifier("laa.brain.menu")
+                            .accessibilityLabel(String("Note Menu")).accessibilityIdentifier("laa.brain.menu")
                     }
                 }
             }
@@ -193,11 +193,11 @@ struct LAABrainNoteView: View {
             }
             .sheet(isPresented: $showInfo) {
                 NavigationStack {
-                    List { LabeledContent(String("場所"), value: reference.path)
+                    List { LabeledContent(String("Location"), value: reference.path)
                         if let metadata = note.map({ LAABrainDocument($0.text).frontmatter }) ?? nil {
                             Text(verbatim: metadata).textSelection(.enabled)
                         }
-                    }.navigationTitle(String("情報"))
+                    }.navigationTitle(String("Info"))
                         .toolbar { ToolbarItem(placement: .confirmationAction) { LAACloseButton { showInfo = false }.accessibilityIdentifier("laa.brain.note.info.close") } }
                 }
             }
@@ -300,7 +300,7 @@ private struct LAABrainQuickSwitch: View {
                 }.accessibilityIdentifier("laa.brain.quickSwitch.note")
             }
             .searchable(text: $query, prompt: "ノートを検索")
-            .navigationTitle(String("ノートを切り替える"))
+            .navigationTitle(String("Switch Notes"))
             .toolbar { ToolbarItem(placement: .cancellationAction) { LAACloseButton { dismiss() }.accessibilityIdentifier("laa.brain.note.local.close") } }
         }
     }

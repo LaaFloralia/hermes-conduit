@@ -37,7 +37,7 @@ enum LAAChatFastControl {
 
     static func name(_ speed: ModelSpeed) -> String {
         switch speed {
-        case .normal: return "通常"
+        case .normal: return "Standard"
         case .fast: return "Fast"
         case .ultrafast: return "Ultrafast"
         }
@@ -67,7 +67,7 @@ struct LAAFastCapsuleLabel: View {
 
     var body: some View {
         HStack(spacing: LAASpacing.x1) {
-            if changing { Text(verbatim: "変更中").font(.caption) }
+            if changing { Text(verbatim: "Changing").laaTextStyle(.note) }
             Image(systemName: on ? "bolt.fill" : "bolt")
                 .font(.system(size: 13, weight: .semibold))
             Text(verbatim: word)
@@ -123,9 +123,9 @@ struct LAAChatFastCapsule: View {
             }
         }
         .fixedSize()
-        .accessibilityLabel(Text(verbatim: "Fastモード"))
+        .accessibilityLabel(Text(verbatim: "Fast Mode"))
         .accessibilityValue(Text(verbatim: LAAChatFastControl.name(display.speed)))
-        .accessibilityHint(Text(verbatim: display.lock ?? "この会話の応答速度を変更"))
+        .accessibilityHint(Text(verbatim: display.lock ?? "Change Speed"))
         .accessibilityIdentifier(identifier)
     }
 }

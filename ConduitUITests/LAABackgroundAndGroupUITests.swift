@@ -31,7 +31,7 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
         for kind in ["paper", "tealNight", "ink"] {
             let choice = app.buttons["background.choice.\(kind)"]
             choice.tap()
-            XCTAssertEqual(choice.value as? String, "選択中")
+            XCTAssertEqual(choice.value as? String, "Selected")
         }
         app.buttons["background.fixture.photo"].tap()
         let dim = app.sliders["background.photo.dim"]
@@ -76,7 +76,7 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
         app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_UI_TEST_REAL_BRIDGE", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
         app.launchInLab()
         XCTAssertTrue(app.staticTexts["fixture.bridge.status"].waitForExistence(timeout: 20))
-        XCTAssertEqual(app.staticTexts["fixture.bridge.status"].label, "未接続")
+        XCTAssertEqual(app.staticTexts["fixture.bridge.status"].label, "Disconnected")
         app.buttons["fixture.bridge"].tap()
         let pair = app.buttons["laa.bridge.pair"]
         XCTAssertTrue(pair.waitForExistence(timeout: 5))
@@ -134,7 +134,7 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["room.meeting.conclusion"].waitForExistence(timeout: 20))
         let staff = app.buttons["room.meeting.staff"]
         XCTAssertTrue(staff.waitForExistence(timeout: 5))
-        XCTAssertEqual(staff.value as? String, "折りたたみ中")
+        XCTAssertEqual(staff.value as? String, "Collapsed")
         let firstTurn = app.descendants(matching: .any)["room.meeting.staff.fixture-meeting-1"].firstMatch
         XCTAssertFalse(firstTurn.exists)
         let screenshot = XCTAttachment(screenshot: app.screenshot())
@@ -142,7 +142,7 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
         screenshot.lifetime = .keepAlways
         add(screenshot)
         staff.tap()
-        XCTAssertEqual(staff.value as? String, "展開中")
+        XCTAssertEqual(staff.value as? String, "Expanded")
         XCTAssertTrue(firstTurn.waitForExistence(timeout: 5))
     }
 

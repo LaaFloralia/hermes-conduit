@@ -112,7 +112,7 @@ final class LAADesignTokensTests: XCTestCase {
         XCTAssertEqual(LAAModelDisplay.name("gpt-6.1-sol"), "GPT-6.1 Sol")
         XCTAssertEqual(LAAModelDisplay.name("[\"openai\",\"gpt-6.1-sol\"]", label: "gpt-6.1-sol"), "GPT-6.1 Sol")
         XCTAssertEqual(LAAModelDisplay.name("private/model", label: "Human name"), "Human name")
-        XCTAssertEqual(LAAModelDisplay.name("/Users/example/private"), "その他のモデル")
+        XCTAssertEqual(LAAModelDisplay.name("/Users/example/private"), "Other Models")
         XCTAssertEqual(LAAModelDisplay.reasoning("xhigh"), "XHigh")
     }
 
@@ -144,9 +144,9 @@ final class LAATabModelTests: XCTestCase {
     }
 
     func testJapaneseOperationsAndEnglishStructureNames() {
-        XCTAssertEqual(LAACopy.pairingTitle, "Macに接続")
-        XCTAssertEqual(LAACopy.pairingAddress, "アドレス")
-        XCTAssertEqual(LAACopy.pairingCode, "接続コード")
+        XCTAssertEqual(LAACopy.pairingTitle, "Connect to Mac")
+        XCTAssertEqual(LAACopy.pairingAddress, "Address")
+        XCTAssertEqual(LAACopy.pairingCode, "Pairing Code")
         XCTAssertEqual(LAACopy.pairingConnect, "Connect")
         XCTAssertEqual([LAACopy.call, LAACopy.callMute, LAACopy.callUnmute, LAACopy.callSpeaker,
                         LAACopy.callChat, LAACopy.callEnd, LAACopy.callAudioRoute],

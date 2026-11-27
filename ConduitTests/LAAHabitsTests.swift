@@ -41,8 +41,8 @@ private final class HabitProtocol: URLProtocol {
             .init(id: "event", at: "2026-11-14T10:41:00.000Z", actor: "agent", agent: "Monet", type: type, title: "散歩", changes: changes, date: "2026-11-14", reason: "社長の依頼で週の目標を変更")
         }
         let changes: [String: LAABridgeJSONValue] = ["note": .object(["fromLength": .number(1), "toLength": .number(2)]), "kind": .string("do"), "archived": .bool(true)]
-        XCTAssertEqual(LAAHabitEventText.content(event("habit.created", changes)), "追加")
-        XCTAssertEqual(LAAHabitEventText.content(event("habit.updated", changes)), "メモ")
+        XCTAssertEqual(LAAHabitEventText.content(event("habit.created", changes)), "Add")
+        XCTAssertEqual(LAAHabitEventText.content(event("habit.updated", changes)), "Notes")
         XCTAssertEqual(LAAHabitEventText.content(event("checkin.set", changes)), "した · 11/14")
         XCTAssertEqual(LAAHabitEventText.content(event("checkin.cleared", changes)), "記録を外した · 11/14")
         XCTAssertEqual(LAAHabitEventText.timestamp(event("habit.created").at, timeZone: TimeZone(identifier: "Asia/Tokyo")!), "11/14 19:41")

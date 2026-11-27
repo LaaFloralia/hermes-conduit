@@ -43,7 +43,7 @@ struct LAATaskSelectBox: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(verbatim: "Select"))
-        .accessibilityValue(Text(verbatim: state == .picked ? "選択中" : ""))
+        .accessibilityValue(Text(verbatim: state == .picked ? "Selected" : ""))
         .accessibilityAddTraits(state == .picked ? .isSelected : [])
         .accessibilityHint(Text(verbatim: state == .blocked ? LAATaskRunCopy.runningReason : ""))
     }
@@ -76,7 +76,7 @@ struct LAATaskBatchBar: View {
             .buttonStyle(.plain)
             .disabled(progress != nil)
             .padding(.leading, -6)
-            .accessibilityLabel(Text(verbatim: "選択を解除"))
+            .accessibilityLabel(Text(verbatim: "Clear Selection"))
             .accessibilityIdentifier("work.tasks.clearSelection")
             Text(verbatim: "\(count)件を選択中")
                 .laaTextStyle(.secondary).monospacedDigit()
@@ -385,7 +385,7 @@ struct LAATaskControls: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(lit ? .isSelected : [])
-        .accessibilityValue(Text(verbatim: lit ? "オン" : "オフ"))
+        .accessibilityValue(Text(verbatim: lit ? "On" : "Off"))
         .accessibilityIdentifier("work.tasks.filter.\(option.rawValue)")
     }
 

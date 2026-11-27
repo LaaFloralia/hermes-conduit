@@ -2,7 +2,7 @@
 import XCTest
 
 /// The composer's model and effort pickers show what Hermes reports for each
-/// employee's running agent, and 「不明」 for what it does not report; each
+/// employee's running agent, and a hollow mark for what it does not report; each
 /// opens its own menu and changes this chat only (owner, 2026-11-12).
 final class LAAChatRuntimeChipUITests: XCTestCase {
     private func launch(profile: String, runtime: String?, dark: Bool = false, models: String? = nil, offline: Bool = false) -> XCUIApplication {
@@ -67,7 +67,7 @@ final class LAAChatRuntimeChipUITests: XCTestCase {
             XCTAssertTrue(harness.waitForExistence(timeout: 10))
             waitValue(harness, "Antigravity")
             waitValue(model, "Gemini 4 Neon")
-            XCTAssertEqual(harness.label, "実行基盤")
+            XCTAssertEqual(harness.label, "Harness")
             XCTAssertEqual(harness.frame.midY, model.frame.midY, accuracy: 1, "the harness sits on the model's line")
             XCTAssertEqual(harness.frame.height, model.frame.height, accuracy: 1, "at the model's height")
             XCTAssertLessThanOrEqual(harness.frame.maxX, model.frame.minX, "and leads it")
@@ -342,13 +342,16 @@ final class LAAChatRuntimeChipUITests: XCTestCase {
         let cases: [(profile: String, runtime: String?, expected: String)] = [
             ("laa-monet", "claude-opus-5-5,claude,high", "Claude Opus 5.5 · High"),
             ("laa-cto", "deepseek-v4.1-flash,laa-dsh,xhigh", "DeepSeek V4.1 Flash · XHigh"),
-            ("laa-cfo", "deepseek-v4.1-flash,laa-dsh,", "DeepSeek V4.1 Flash · 不明"),
-            ("laa-cso", nil, "不明 · 不明"),
+            ("laa-cfo", "deepseek-v4.1-flash,laa-dsh,", "DeepSeek V4.1 Flash · Unknown"),
+            ("laa-cso", nil, "Unknown · Unknown"),
         ]
         for (profile, runtime, expected) in cases {
             for dark in [false, true] {
                 let app = launch(profile: profile, runtime: runtime, dark: dark)
                 XCTAssertEqual(chipValue(app), expected, profile)
+                let placeholder = app.staticTexts["composer.placeholder"]
+                XCTAssertTrue(placeholder.exists, profile)
+                XCTAssertEqual(placeholder.label, "Message")
                 capture(app, "chip-\(profile)-\(dark ? "dark" : "light")")
                 app.terminate()
             }

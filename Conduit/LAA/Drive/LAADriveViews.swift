@@ -274,7 +274,7 @@ struct LAADrivePreviewView: View {
                         let siblings = media.filter { $0.id != currentMedia.id }
                         if !siblings.isEmpty {
                             VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                                Text(verbatim: "同じフォルダ").laaTextStyle(.section).foregroundStyle(LAAColor.text)
+                                Text(verbatim: "Same Folder").laaTextStyle(.section).foregroundStyle(LAAColor.text)
                                 ForEach(siblings) { file in
                                     Button { currentMediaID = file.id } label: {
                                         Label { Text(verbatim: file.name) } icon: { Image(systemName: file.symbol) }
@@ -308,7 +308,7 @@ struct LAADrivePreviewView: View {
             if localFile != nil {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showShare = true } label: { Image(systemName: "square.and.arrow.up") }
-                        .accessibilityLabel(Text(verbatim: "共有・ファイルに保存"))
+                        .accessibilityLabel(Text(verbatim: "Share or Save"))
                 }
             }
         }

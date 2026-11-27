@@ -85,7 +85,7 @@ struct LAACalendarResponse: Codable {
     private var generation = 0
     private var currentDay = Calendar.current.startOfDay(for: Date())
     // LAA personal copy is rendered with Text(verbatim:).
-    private static let connectMessage = "Macに未接続"
+    private static let connectMessage = "Disconnected"
 
     /// Preserve deliberately browsed weeks/months; the agenda always follows today.
     @discardableResult func updateToday(now: Date = Date(), calendar: Calendar = .current) -> Bool {

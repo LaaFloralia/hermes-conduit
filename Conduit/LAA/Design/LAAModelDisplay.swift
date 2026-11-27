@@ -35,12 +35,12 @@ enum LAAModelDisplay {
                 }
             }
         }
-        return "その他のモデル"
+        return "Other Models"
     }
 
     static func reasoning(_ value: String) -> String {
-        ["none": "なし", "minimal": "Minimal", "low": "Low", "medium": "Medium", "high": "High",
-         "xhigh": "XHigh", "max": "Max", "ultra": "Ultra"][value] ?? "既定"
+        ["none": "None", "minimal": "Minimal", "low": "Low", "medium": "Medium", "high": "High",
+         "xhigh": "XHigh", "max": "Max", "ultra": "Ultra"][value] ?? "Default"
     }
 
     private static func isDisplayLabel(_ value: String) -> Bool {

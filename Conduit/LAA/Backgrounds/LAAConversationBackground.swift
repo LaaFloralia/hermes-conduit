@@ -258,7 +258,7 @@ struct LAABackgroundPicker: View {
                         Text(verbatim: "\(LAACopy.chatPhotoBlur) \(Int(value.blur.rounded())) pt")
                         if value.safeDim > value.dim + 0.005 {
                             Text(verbatim: "読みやすさのため減光を自動で追加します。")
-                                .font(.footnote).foregroundStyle(.secondary)
+                                .laaTextStyle(.secondary).foregroundStyle(.secondary)
                         }
                     } header: { Text(verbatim: LAACopy.chatPhotoAdjustments) }
                 }

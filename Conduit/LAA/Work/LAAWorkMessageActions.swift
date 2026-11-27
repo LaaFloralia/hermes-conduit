@@ -84,7 +84,7 @@ struct LAAMessageActionBar: View {
                 action(copied ? "checkmark" : "doc.on.doc", label: copied ? "Copied" : "Copy",
                        id: "copy", tint: copied ? LAAColor.link : LAAColor.secondaryText) { copy() }
                 if let onReply {
-                    action("arrowshape.turn.up.left", label: "返信", id: "reply", tint: LAAColor.secondaryText, perform: onReply)
+                    action("arrowshape.turn.up.left", label: "Reply", id: "reply", tint: LAAColor.secondaryText, perform: onReply)
                 }
                 if let onQuote {
                     action("text.quote", label: "引用", id: "quote", tint: LAAColor.secondaryText, perform: onQuote)
@@ -110,7 +110,7 @@ struct LAAMessageActionBar: View {
                        tint: liked ? LAAColor.link : LAAColor.secondaryText) {
                     withAnimation(.spring(response: 0.28, dampingFraction: 0.55)) { onLike() }
                 }
-                .accessibilityValue(Text(verbatim: liked ? "オン" : "オフ"))
+                .accessibilityValue(Text(verbatim: liked ? "On" : "Off"))
                 .accessibilityAddTraits(liked ? .isSelected : [])
                 .scaleEffect(liked ? 1.06 : 1)
                 .sensoryFeedback(.selection, trigger: liked)
@@ -147,7 +147,7 @@ struct LAAMessageActionBar: View {
     private func copy() {
         UIPasteboard.general.string = text
         withAnimation(.easeOut(duration: 0.15)) { copied = true }
-        UIAccessibility.post(notification: .announcement, argument: "コピーしました")
+        UIAccessibility.post(notification: .announcement, argument: "Copied")
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(1.4))
             withAnimation(.easeOut(duration: 0.2)) { copied = false }

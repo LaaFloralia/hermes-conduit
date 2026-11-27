@@ -2,7 +2,7 @@
 import Foundation
 
 extension LAACopy {
-    static let chatThinking = "考え中"
+    static let chatThinking = "Thinking"
 }
 
 /// The pending envelope's UUID survives the preview → live admission.

@@ -83,7 +83,7 @@ struct LAAWorkRoutine: Codable, Identifiable {
     var ref: String? = nil
 
     static func recordedTime(_ value: String?) -> String {
-        guard let date = LAAWorkFreshness.date(value) else { return "未確認" }
+        guard let date = LAAWorkFreshness.date(value) else { return "Unknown" }
         return LAADateText.string(date, .monthDayTime)
     }
 
@@ -94,7 +94,7 @@ struct LAAWorkRoutine: Codable, Identifiable {
         case "read_back": "端末受信確認済み"
         case "not_received": "通知未到達"
         case "failed", "error", "partial", "timeout": "配信失敗"
-        case "suppressed": "通知なし"
+        case "suppressed": "No Notifications"
         default: nil
         }
     }
@@ -107,18 +107,18 @@ struct LAAWorkRoutine: Codable, Identifiable {
         case "read_unavailable": outcome = "取得不能"
         default:
         switch status {
-        case "success", "ok", "succeeded", "completed": outcome = "完了"
-        case "running": outcome = "実行中"
-        case "pending": outcome = "待機中"
+        case "success", "ok", "succeeded", "completed": outcome = "Done"
+        case "running": outcome = "Running"
+        case "pending": outcome = "Waiting"
         case "failed", "error": outcome = "業務エラー"
         case "partial": outcome = "業務一部未完了"
         case "timeout": outcome = "業務時間切れ"
-        default: outcome = "未確認"
+        default: outcome = "Unknown"
         }
         }
         var results = [outcome]
         if let notification = notificationSummary { results.append(notification) }
-        guard let lastRunAt else { return results == ["未確認"] ? "未確認" : (["時刻未確認"] + results).joined(separator: " · ") }
+        guard let lastRunAt else { return results == ["Unknown"] ? "Unknown" : (["Unknown Time"] + results).joined(separator: " · ") }
         let fractional = ISO8601DateFormatter()
         fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let plain = ISO8601DateFormatter()
@@ -304,7 +304,7 @@ struct LAAWorkModel: Codable, Hashable {
     let sources: [String: String]?
 
     var display: String {
-        [provider, model, effort].map { $0?.isEmpty == false ? $0! : "未確認" }.joined(separator: " / ")
+        [provider, model, effort].map { $0?.isEmpty == false ? $0! : "Unknown" }.joined(separator: " / ")
     }
 }
 
@@ -461,16 +461,15 @@ struct LAAWorkTask: Decodable, Identifiable, Hashable {
 enum LAAWorkPresentation {
     static func japanese(_ text: String) -> String { text }
 
+    static let compacting = "Compacting"
+
     static func phase(_ raw: String) -> String {
         switch raw {
-        case "created": return "開始中"
-        case "running": return "実行中"
-        case "awaiting_decision": return "判断待ち"
-        case "awaiting_review": return "確認待ち"
-        case "stopped": return "停止済み"
-        case "stop_unconfirmed": return "停止未確認"
-        case "closed": return "終了"
-        case "error": return "エラー"
+        case "running": return "Running"
+        case "awaiting_decision", "stop_unconfirmed": return "Decision"
+        case "created", "awaiting_review", "idle": return "Waiting"
+        case "error": return "Failed"
+        case "closed", "stopped": return "Done"
         default: return raw
         }
     }
@@ -497,13 +496,13 @@ enum LAAWorkPresentation {
         case "session.message.sent": return "追加指示を送信"
         case "session.stopped": return "停止を確認"
         case "session.stop_unconfirmed": return "停止を確認できません"
-        case "session.resumed": return "後継セッションを開始"
+        case "session.resumed": return "Follow-up Started"
         default: return raw
         }
     }
 
     static func date(_ text: String?) -> String {
-        guard let text else { return "未確認" }
+        guard let text else { return "Unknown" }
         let fractional = ISO8601DateFormatter()
         fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let plain = ISO8601DateFormatter()

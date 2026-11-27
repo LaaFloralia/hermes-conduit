@@ -113,7 +113,7 @@ final class LAATaskBoardTests: XCTestCase {
             task("e", id: 5, due: "2026-12-14"),
             task("f", id: 6),
         ], grouping: .due), now: now)
-        XCTAssertEqual(board.sections.map(\.title), ["期限切れ", "今日", "明日", "7日以内", "それ以降", "期限なし"])
+        XCTAssertEqual(board.sections.map(\.title), ["期限切れ", "今日", "明日", "7日以内", "それ以降", "No Due Date"])
         XCTAssertEqual(LAATaskDue.make("2026-11-11", now: now)?.label, "今日")
         XCTAssertEqual(LAATaskDue.make("2026-11-12", now: now)?.label, "明日")
         XCTAssertEqual(LAATaskDue.make("2026-11-14", now: now)?.label, "土曜")

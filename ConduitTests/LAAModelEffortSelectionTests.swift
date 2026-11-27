@@ -408,7 +408,13 @@ final class LAAModelEffortSelectionTests: XCTestCase {
                        "Claude Opus 5.5", "a short table label gets its maker")
         XCTAssertEqual(LAAModelCapsule.text(model: "gpt-6-astra", provider: "openai-codex", name: "GPT 6 Astra", current: true),
                        "GPT 6 Astra")
-        XCTAssertEqual(LAAModelCapsule.text(model: nil, provider: nil, name: nil, current: false), "最終確認 不明")
+        XCTAssertEqual(LAAModelCapsule.text(model: "claude-opus-5-5", provider: "claude", name: nil, current: false),
+                       "Last Verified: Claude Opus 5.5")
+        for current in [true, false] {
+            XCTAssertEqual(LAAModelCapsule.text(model: nil, provider: nil, name: nil, current: current), "○")
+            XCTAssertEqual(LAAModelCapsule.text(model: nil, provider: nil, name: nil, current: current,
+                                               missing: LAAModelCapsule.unknownSpokenValue), "Unknown")
+        }
         XCTAssertEqual(LAAModelCapsule.text(model: nil, provider: nil, name: "モデルを選択", current: true), "モデルを選択")
         XCTAssertEqual(LAAModelCapsule.displayName(model: "laa-monet-local", provider: "claude"), "Claude")
         XCTAssertEqual(LAAModelCapsule.displayName(model: "gpt-6.1-sol", provider: "codex"), "GPT 6.1 Sol")

@@ -81,38 +81,43 @@ struct LAAStudioCreateView: View {
             if !LAAStudioDraftStore.save(value, deviceID: device, draftID: draftID) { storageBlocked = true; error = LAACopy.Studio.saveFailed }
         }
     }
+    // Keep the saved draft value and UI test identifier stable; only the chip's label changes.
+    private static let kinds: [(key: String, label: String)] = [
+        ("画像", "Image"), ("動画", "Video"), ("資料", "Document"), ("その他", "Other")
+    ]
+
     private var form: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: LAASpacing.x6) {
                 TextField(String("何を作りますか"), text: $draft.prompt, axis: .vertical)
-                    .font(.title3).lineLimit(6...14).focused($promptFocused)
+                    .laaTextStyle(.body).lineLimit(6...14).focused($promptFocused)
                     .disabled(draft.pending || sending || storageBlocked)
                     .accessibilityIdentifier("laa.studio.composer.field")
                 HStack(spacing: LAASpacing.x2) {
-                    ForEach(["画像", "動画", "資料", "その他"], id: \.self) { kind in
+                    ForEach(Self.kinds.map(\.key), id: \.self) { kind in
                         Button { draft.kind = draft.kind == kind ? nil : kind } label: {
-                            Text(verbatim: kind).studioFilterChip(selected: draft.kind == kind)
+                            Text(verbatim: Self.kindLabel(kind)).studioFilterChip(selected: draft.kind == kind)
                         }.buttonStyle(.plain).disabled(draft.pending || sending || storageBlocked)
                             .accessibilityIdentifier("laa.studio.kind.\(kind)")
                     }
                 }
                 Menu {
-                    Button(String("写真から選ぶ"), systemImage: "photo") { upload = true }
-                    Button(String("Driveから選ぶ"), systemImage: "folder") { referencePicker = true }
-                } label: { Label(String("参考を添付"), systemImage: "paperclip").frame(minHeight: 44) }
+                    Button(String("Choose Photo"), systemImage: "photo") { upload = true }
+                    Button(String("Choose from Drive"), systemImage: "folder") { referencePicker = true }
+                } label: { Label(String("Attach Reference"), systemImage: "paperclip").frame(minHeight: 44) }
                     .disabled(draft.pending || sending || storageBlocked)
                 if let references = draft.references, !references.isEmpty {
                     ForEach(references, id: \.self) { reference in
                         HStack {
-                            Text(verbatim: reference.components(separatedBy: "\n").first ?? "参考").lineLimit(1)
+                            Text(verbatim: reference.components(separatedBy: "\n").first ?? "Reference").lineLimit(1)
                             Spacer()
-                            Button { draft.references?.removeAll { $0 == reference } } label: { Image(systemName: "xmark") .frame(width: 44, height: 44) }.accessibilityLabel(String("参考を外す"))
+                            Button { draft.references?.removeAll { $0 == reference } } label: { Image(systemName: "xmark") .frame(width: 44, height: 44) }.accessibilityLabel(String("Remove Reference"))
                                 .disabled(draft.pending || sending || storageBlocked)
                         }.laaTextStyle(.secondary)
                     }
                 }
-                LabeledContent(String("作品")) {
-                    Picker(String("作品"), selection: selection) {
+                LabeledContent(String("Projects")) {
+                    Picker(String("Projects"), selection: selection) {
                         Text(verbatim: "New").tag("")
                         ForEach(snapshot.projects) { project in Text(verbatim: project.title).tag(project.id) }
                     }.labelsHidden().frame(minHeight: 44).disabled(draft.pending || sending || storageBlocked)
@@ -124,14 +129,14 @@ struct LAAStudioCreateView: View {
                 if draft.pending {
                     Text(verbatim: draft.workBusy == true ? LAACopy.Studio.workBusy : LAACopy.Studio.uncertain)
                         .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
-                    Button(String("状態を確認")) { Task { await check() } }.frame(minHeight: 44).disabled(sending || storageBlocked)
+                    Button(String("Check Status")) { Task { await check() } }.frame(minHeight: 44).disabled(sending || storageBlocked)
                         .accessibilityIdentifier("laa.studio.check")
                     if canRetry {
                         Button(String("Retry")) { Task { await submit() } }.frame(minHeight: 44).disabled(sending || storageBlocked)
                             .accessibilityIdentifier("laa.studio.retry")
                     }
                 } else {
-                    Button(sending ? String("送信中") : String("依頼する")) { promptFocused = false; Task { await submit() } }
+                    Button(sending ? String("Sending") : String("Send Request")) { promptFocused = false; Task { await submit() } }
                         .laaGlassButton(prominent: true)
                         .disabled(sending || storageBlocked || draft.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || draft.prompt.utf16.count > 10000)
                         .accessibilityIdentifier("laa.studio.composer.send")
@@ -139,10 +144,12 @@ struct LAAStudioCreateView: View {
                 if let error { Text(verbatim: error).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
             }.padding(LAASpacing.horizontal).laaPageWidth()
         }
-        .background(LAAColor.background.ignoresSafeArea()).navigationTitle(String("制作を依頼"))
+        .background(LAAColor.background.ignoresSafeArea()).navigationTitle(String("Request Project"))
         .tint(LAAColor.link).navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .cancellationAction) { Button(String("Cancel")) { dismiss() } } }
     }
+
+    private static func kindLabel(_ key: String) -> String { kinds.first { $0.key == key }?.label ?? key }
 
     private var editingBlocked: Bool { draft.pending || sending || storageBlocked }
     private var canSend: Bool {
@@ -153,28 +160,28 @@ struct LAAStudioCreateView: View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
             TextField(initialProject == nil ? String("何を作りますか") : String("直してほしい点"),
                       text: $draft.prompt, axis: .vertical)
-                .font(.body).lineLimit(2...8).focused($promptFocused).disabled(editingBlocked)
+                .laaTextStyle(.body).lineLimit(2...8).focused($promptFocused).disabled(editingBlocked)
                 .accessibilityIdentifier("laa.studio.composer.field")
             if let references = draft.references {
                 ForEach(references, id: \.self) { reference in
                     HStack {
-                        Text(verbatim: reference.components(separatedBy: "\n").first ?? "参考").lineLimit(1)
+                        Text(verbatim: reference.components(separatedBy: "\n").first ?? "Reference").lineLimit(1)
                         Spacer()
                         Button { draft.references?.removeAll { $0 == reference } } label: {
                             Image(systemName: "xmark").frame(width: 44, height: 44)
-                        }.accessibilityLabel(Text(verbatim: "参考を外す")).disabled(editingBlocked)
+                        }.accessibilityLabel(Text(verbatim: "Remove Reference")).disabled(editingBlocked)
                     }.laaTextStyle(.secondary)
                 }
             }
             HStack(spacing: LAASpacing.x1) {
                 Menu {
-                    Button(String("写真から選ぶ"), systemImage: "photo") { upload = true }
-                    Button(String("Driveから選ぶ"), systemImage: "folder") { referencePicker = true }
+                    Button(String("Choose Photo"), systemImage: "photo") { upload = true }
+                    Button(String("Choose from Drive"), systemImage: "folder") { referencePicker = true }
                 } label: { Image(systemName: "plus").frame(width: 36, height: 44) }
-                .accessibilityLabel(Text(verbatim: "参考を添付")).disabled(editingBlocked)
-                ForEach(["画像", "動画", "資料"], id: \.self) { kind in
+                .accessibilityLabel(Text(verbatim: "Attach Reference")).disabled(editingBlocked)
+                ForEach(Self.kinds.dropLast().map(\.key), id: \.self) { kind in
                     Button { draft.kind = draft.kind == kind ? nil : kind } label: {
-                        Text(verbatim: kind).studioFilterChip(selected: draft.kind == kind)
+                        Text(verbatim: Self.kindLabel(kind)).studioFilterChip(selected: draft.kind == kind)
                     }.buttonStyle(.plain).disabled(editingBlocked)
                         .accessibilityIdentifier("laa.studio.kind.\(kind)")
                         .accessibilityAddTraits(draft.kind == kind ? .isSelected : [])
@@ -188,7 +195,7 @@ struct LAAStudioCreateView: View {
                         .frame(minWidth: 44, minHeight: 44)
                         .contentShape(Rectangle())
                 }.buttonStyle(.plain).disabled(!canSend)
-                    .accessibilityLabel(Text(verbatim: initialProject == nil ? "依頼する" : "直しを頼む"))
+                    .accessibilityLabel(Text(verbatim: initialProject == nil ? "Send Request" : "Request Revision"))
                     .accessibilityIdentifier("laa.studio.composer.send")
             }
             inlineFeedback
@@ -199,7 +206,7 @@ struct LAAStudioCreateView: View {
 
     private func reviewComposer(_ adoption: LAAStudioAdoptButton) -> some View {
         VStack(alignment: .leading, spacing: LAASpacing.x3) {
-            TextField(String("直してほしい点（任意）"), text: $draft.prompt, axis: .vertical)
+            TextField(String("Revision Notes (Optional)"), text: $draft.prompt, axis: .vertical)
                 .lineLimit(1...8).focused($promptFocused).disabled(editingBlocked)
                 .padding(.horizontal, LAASpacing.x4).frame(minHeight: 44)
                 .laaComposerGlass(in: Capsule())
@@ -212,7 +219,7 @@ struct LAAStudioCreateView: View {
                     promptFocused = false
                     Task { await submit() }
                 } label: {
-                    Text(verbatim: "直しを頼む").font(.system(size: 15, weight: .semibold))
+                    Text(verbatim: "Request Revision").laaTextStyle(.body).fontWeight(.semibold)
                         .frame(maxWidth: .infinity, minHeight: 50)
                         .laaComposerGlass(in: Capsule())
                 }.buttonStyle(.plain).disabled(editingBlocked || draft.prompt.utf16.count > 10000)
@@ -226,7 +233,7 @@ struct LAAStudioCreateView: View {
     @ViewBuilder private var inlineFeedback: some View {
         if draft.pending && !sending {
             HStack {
-                Button(String("状態を確認")) { Task { await check() } }.frame(minHeight: 44)
+                Button(String("Check Status")) { Task { await check() } }.frame(minHeight: 44)
                     .accessibilityIdentifier("laa.studio.check")
                 if canRetry {
                     Button(String("Retry")) { Task { await submit() } }.frame(minHeight: 44)

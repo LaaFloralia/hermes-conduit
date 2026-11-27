@@ -40,7 +40,7 @@ struct LAATodayView: View {
         .background(LAAColor.background)
         .environment(\.locale, LAADateText.locale)
         .toolbar {
-            LAAScreenToolbar(createLabel: calendar.mode == .habits ? "習慣を追加" : "予定を追加", createIdentifier: calendar.mode == .habits ? "laa.habits.create" : "laa.calendar.create",
+            LAAScreenToolbar(createLabel: calendar.mode == .habits ? "Add Habit" : "Add Event", createIdentifier: calendar.mode == .habits ? "laa.habits.create" : "laa.calendar.create",
                              canCreate: calendar.mode == .habits ? bridge.status == .paired : calendar.calendars.contains(where: \.writable),
                              create: { if calendar.mode == .habits { showNewHabit = true } else { showNewEvent = true } }, settings: onRequestSettings)
         }
@@ -98,9 +98,9 @@ struct LAATodayView: View {
                 if let message = calendar.errorMessage {
                     LAAInlineFailure(reason: message) { Task { await refresh() } }
                         .accessibilityIdentifier("laa.today.error")
-                    if bridge.status != .paired { Button { showPairing = true } label: { Text(verbatim: "Macに接続") }.laaButton(.secondary) }
+                    if bridge.status != .paired { Button { showPairing = true } label: { Text(verbatim: "Connect to Mac") }.laaButton(.secondary) }
                 }
-                if calendar.skippedCount > 0 { Text(verbatim: "読み取れない予定を\(calendar.skippedCount)件除外しました。").font(.caption).foregroundStyle(LAAColor.attention) }
+                if calendar.skippedCount > 0 { Text(verbatim: "読み取れない予定を\(calendar.skippedCount)件除外しました。").laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
                 if calendar.mode == .month { monthGrid }
                 if calendar.loaded {
                     let days = displayedDays
@@ -124,7 +124,7 @@ struct LAATodayView: View {
         } else if bridge.status != .paired {
             VStack(spacing: LAASpacing.x4) {
                 Image(systemName: "desktopcomputer").font(.largeTitle).foregroundStyle(LAAColor.secondaryText)
-                Text(verbatim: "Macに未接続").fontWeight(.semibold)
+                Text(verbatim: "Disconnected").fontWeight(.semibold)
                 Text(verbatim: "設定からMacに接続してください")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 Button { showPairing = true } label: { Text(verbatim: LAACopy.WorkTab.connect) }
@@ -168,21 +168,21 @@ struct LAATodayView: View {
         HStack {
             Button { move(-1) } label: {
                 Image(systemName: "chevron.left").frame(width: 44, height: 44)
-            }.accessibilityLabel(Text(verbatim: "前へ"))
+            }.accessibilityLabel(Text(verbatim: "Back"))
             Spacer(minLength: 4)
             if calendar.mode == .month {
                 Text(verbatim: LAADateText.string(calendar.selectedDate, .yearMonth))
                     .laaTextStyle(.section)
             } else {
                 DatePicker(selection: $calendar.selectedDate, displayedComponents: .date) {
-                    Text(verbatim: "日付")
+                    Text(verbatim: "Date")
                 }.labelsHidden()
-                Button { calendar.selectedDate = .now } label: { Text(verbatim: "今日") }
+                Button { calendar.selectedDate = .now } label: { Text(verbatim: "Today") }
             }
             Spacer(minLength: 4)
             Button { move(1) } label: {
                 Image(systemName: "chevron.right").frame(width: 44, height: 44)
-            }.accessibilityLabel(Text(verbatim: "次へ"))
+            }.accessibilityLabel(Text(verbatim: "Next"))
         }
         .buttonStyle(.plain)
         .foregroundStyle(LAAColor.text)
@@ -248,7 +248,7 @@ struct LAATodayView: View {
                 } label: {
                     Image(systemName: "ellipsis").frame(width: 44, height: 44)
                 }
-                .accessibilityLabel(Text(verbatim: "表示するカレンダー"))
+                .accessibilityLabel(Text(verbatim: "Visible Calendars"))
             }
         }
     }
@@ -266,14 +266,14 @@ private struct LAATodayDaySection<MenuContent: View>: View {
                 LAASectionHeader(Calendar.current.isDateInToday(date) ? "今日 · " + day : day)
                 menu
             }
-            if events.isEmpty { LAAEmptyState(message: "予定はありません") }
+            if events.isEmpty { LAAEmptyState(message: "No Events") }
             else {
                 LAAListSurface {
                     ForEach(events) { event in
                         if event.id != events.first?.id { LAAListDivider() }
                         LAAListRow(action: { select(event) }) {
                             HStack(alignment: .top, spacing: 12) {
-                                Text(verbatim: event.allDay ? "終日" : LAADateText.string(event.start, .time))
+                                Text(verbatim: event.allDay ? "All Day" : LAADateText.string(event.start, .time))
                                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText).frame(minWidth: 48, alignment: .leading)
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(verbatim: event.title).laaTextStyle(.rowTitle)

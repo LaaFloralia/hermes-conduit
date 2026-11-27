@@ -18,27 +18,27 @@ struct LAACalendarDetail: View {
         NavigationStack {
             List {
                 Section {
-                    Text(verbatim: event.title).font(.title2).textSelection(.enabled)
+                    Text(verbatim: event.title).laaTextStyle(.title).textSelection(.enabled)
                     .accessibilityIdentifier("laa.calendar.detail.title")
                 Text(verbatim: LAADateText.string(event.start, event.allDay ? .day : .dayTime)
                              + " – " + LAADateText.string(event.end, event.allDay ? .day : .dayTime))
                 if let location = event.location, !location.isEmpty {
                     Text(verbatim: location).textSelection(.enabled)
                     if let url = URL(string: "https://maps.apple.com/?q=" + (location.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")) {
-                        Link(destination: url) { Text(verbatim: "地図を開く") }
+                        Link(destination: url) { Text(verbatim: "Open Map") }
                     }
                 }
-                if let link = event.meetingLink, let url = safeURL(link) { Link(destination: url) { Text(verbatim: "会議に参加") } }
+                if let link = event.meetingLink, let url = safeURL(link) { Link(destination: url) { Text(verbatim: "Join Meeting") } }
                 if let notes = event.notes, !notes.isEmpty { Text(verbatim: notes).textSelection(.enabled) }
                 ForEach(Array((event.attendees ?? []).enumerated()), id: \.offset) { _, attendee in
-                    VStack(alignment: .leading) { Text(verbatim: attendee.name ?? attendee.email); Text(verbatim: attendee.email + " · " + (["accepted": "参加", "declined": "不参加", "tentative": "未定", "needsAction": "未回答"][attendee.response ?? ""] ?? "未回答")).font(.caption) }
+                    VStack(alignment: .leading) { Text(verbatim: attendee.name ?? attendee.email); Text(verbatim: attendee.email + " · " + (["accepted": "Accepted", "declined": "Declined", "tentative": "Tentative", "needsAction": "No Reply"][attendee.response ?? ""] ?? "No Reply")).laaTextStyle(.note) }
                 }
                 ForEach(Array((event.attachments ?? []).enumerated()), id: \.offset) { _, attachment in
                     if let url = safeURL(attachment.url) { Link(destination: url) { Text(verbatim: attachment.title) } }
                 }
                 if writable {
                     if event.recurringEventId != nil {
-                        Text(verbatim: "この回だけを変更します").font(.caption)
+                        Text(verbatim: "この回だけを変更します").laaTextStyle(.note)
                         Button { Task { await openSeries() } } label: { Text(verbatim: "Open Series") }.disabled(busy)
                     }
                     Button { editing = true } label: { Text(verbatim: "Edit") }.disabled(busy)

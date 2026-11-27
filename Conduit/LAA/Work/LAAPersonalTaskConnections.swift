@@ -50,25 +50,25 @@ struct LAAPersonalHistory: Decodable, Identifiable {
             if before != nil || after != nil { result.append("\(label): \(before ?? "—") → \(after ?? "—")") }
         }
         func name(_ item: Name?) -> String? { item?.name ?? item?.identifier ?? item?.title ?? item?.displayName }
-        change("タイトル", fromTitle, toTitle)
-        change("状態", name(fromState), name(toState))
-        change("担当", name(fromAssignee), name(toAssignee))
-        change("委任先", name(fromDelegate), name(toDelegate))
-        change("優先度", fromPriority.map { String($0) }, toPriority.map { String($0) })
-        change("見積り", fromEstimate.map { String($0) }, toEstimate.map { String($0) })
-        change("期限", fromDueDate, toDueDate)
+        change("Title", fromTitle, toTitle)
+        change("Status", name(fromState), name(toState))
+        change("Assignee", name(fromAssignee), name(toAssignee))
+        change("Delegate", name(fromDelegate), name(toDelegate))
+        change("Priority", fromPriority.map { String($0) }, toPriority.map { String($0) })
+        change("Estimate", fromEstimate.map { String($0) }, toEstimate.map { String($0) })
+        change("Due Date", fromDueDate, toDueDate)
         change("Cycle", name(fromCycle), name(toCycle))
         change("Project", name(fromProject), name(toProject))
         change("Milestone", name(fromProjectMilestone), name(toProjectMilestone))
-        change("チーム", name(fromTeam), name(toTeam))
-        change("親課題", name(fromParent), name(toParent))
+        change("Team", name(fromTeam), name(toTeam))
+        change("Parent Issue", name(fromParent), name(toParent))
         if updatedDescription == true { result.append("本文を更新") }
         if let labels = addedLabels, !labels.isEmpty { result.append("ラベルを追加: " + labels.compactMap(name).joined(separator: ", ")) }
         if let labels = removedLabels, !labels.isEmpty { result.append("ラベルを削除: " + labels.compactMap(name).joined(separator: ", ")) }
         if let releases = addedToReleases, !releases.isEmpty { result.append("Releaseに追加: " + releases.compactMap(name).joined(separator: ", ")) }
         if let releases = removedFromReleases, !releases.isEmpty { result.append("Releaseから削除: " + releases.compactMap(name).joined(separator: ", ")) }
         for relation in relationChanges ?? [] { result.append("関連: \(relation.identifier) · \(relation.type)") }
-        if archived == true { result.append("アーカイブ") }
+        if archived == true { result.append("Archive") }
         if autoArchived == true { result.append("自動アーカイブ") }
         if autoClosed == true { result.append("自動クローズ") }
         if trashed == true { result.append("ゴミ箱へ移動") }
@@ -193,24 +193,24 @@ struct LAAPersonalTaskConnections: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x4) {
-            Button() { reply = LAAPersonalCommentTarget(parentId: nil) } label: { Text(verbatim: "コメントを追加") }.buttonStyle(.bordered)
+            Button() { reply = LAAPersonalCommentTarget(parentId: nil) } label: { Text(verbatim: "Add Comment") }.buttonStyle(.bordered)
                 .accessibilityIdentifier("work.task.new-comment")
             LAAPersonalDetailSection("Comments", path: path + "/comments", viewerId: viewerId, revision: revision) { (comment: LAAPersonalComment) in
                 LAAPersonalCommentRow(comment: comment, taskPath: path, viewerId: viewerId, revision: revision) { parent in
                     reply = LAAPersonalCommentTarget(parentId: parent)
                 }
             }
-            Button() { showSubtask = true } label: { Text(verbatim: "サブ課題を追加") }.buttonStyle(.bordered).disabled(task.linearId == nil || task.team == nil)
+            Button() { showSubtask = true } label: { Text(verbatim: "Add Sub-issue") }.buttonStyle(.bordered).disabled(task.linearId == nil || task.team == nil)
             LAAPersonalDetailSection("Subtasks", path: path + "/children", viewerId: viewerId, revision: revision) { (child: LAAPersonalTask) in
                 NavigationLink(destination: LAAPersonalTaskDetailView(id: child.id, drafts: drafts)) {
                     Text(verbatim: "\(child.sourceId) · \(child.title)")
                 }
             }
-            Button() { itemMode = .relation } label: { Text(verbatim: "関連を追加") }.buttonStyle(.bordered)
+            Button() { itemMode = .relation } label: { Text(verbatim: "Add Relation") }.buttonStyle(.bordered)
             relationSection("Relations", section: "relations")
             relationSection("Referenced By", section: "inverse-relations")
-            Button() { itemMode = .attachment } label: { Text(verbatim: "リンクを追加") }.buttonStyle(.bordered)
-            Button() { showUpload = true } label: { Text(verbatim: "ファイルを追加") }.buttonStyle(.bordered)
+            Button() { itemMode = .attachment } label: { Text(verbatim: "Add Link") }.buttonStyle(.bordered)
+            Button() { showUpload = true } label: { Text(verbatim: "Add File") }.buttonStyle(.bordered)
             LAAPersonalDetailSection("Attachments", path: path + "/attachments", viewerId: viewerId, revision: revision) { (item: LAAPersonalAttachment) in
                 VStack(alignment: .leading) {
                     if let url = URL(string: item.url), url.scheme?.lowercased() == "https",
@@ -276,7 +276,7 @@ private struct LAAPersonalCommentRow: View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
             Text(verbatim: "\(comment.user?.name ?? "不明") · \(LAAWorkPresentation.date(comment.createdAt))")
                 .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-            if comment.parentId != nil { Text(verbatim: "返信").laaTextStyle(.secondary) }
+            if comment.parentId != nil { Text(verbatim: "Reply").laaTextStyle(.secondary) }
             MarkdownText(source: comment.body, foregroundStyle: LAAColor.text)
             if comment.body.lowercased().contains("https://uploads.linear.app/") {
                 LAAPersonalMarkdownFiles(taskPath: taskPath, viewerId: viewerId, commentId: comment.id)
@@ -318,7 +318,7 @@ private enum LAAPersonalItemMode: String, Identifiable {
     case relation, attachment
     var id: String { rawValue }
     var section: String { self == .relation ? "relations" : "attachments" }
-    var caption: String { self == .relation ? "関連を追加" : "リンクを追加" }
+    var caption: String { self == .relation ? "Add Relation" : "Add Link" }
 }
 
 private struct LAAPersonalItemEditor: View {
@@ -356,23 +356,23 @@ private struct LAAPersonalItemEditor: View {
                                 Button(LAACopy.WorkTab.retrySameRequest) { Task { await perform(pending, firstAttempt: false) } }
                             }
                         }
-                    } header: { Text(verbatim: "送信待ち") }
+                    } header: { Text(verbatim: "Queued") }
                 }
                 if mode == .relation {
                     Section() {
-                        TextField(text: $draft.first) { Text(verbatim: "課題番号") }.textInputAutocapitalization(.characters)
+                        TextField(text: $draft.first) { Text(verbatim: "Issue Number") }.textInputAutocapitalization(.characters)
                         Picker(selection: $draft.relationType) {
                             Text(verbatim: "関連").tag("related"); Text(verbatim: "ブロック").tag("blocks")
                             Text(verbatim: "重複").tag("duplicate"); Text(verbatim: "類似").tag("similar")
                         } label: { Text(verbatim: "関連") }
                         Text(verbatim: "このタスクから入力したタスクへの関係です。").laaTextStyle(.secondary)
-                    } header: { Text(verbatim: "関連する課題") }.disabled(!ready || pending != nil)
+                    } header: { Text(verbatim: "Related Issues") }.disabled(!ready || pending != nil)
                 } else {
                     Section() {
-                        TextField(text: $draft.first) { Text(verbatim: "題名") }
-                        TextField(text: $draft.second) { Text(verbatim: "リンク") }.keyboardType(.URL).textInputAutocapitalization(.never)
+                        TextField(text: $draft.first) { Text(verbatim: "Title") }
+                        TextField(text: $draft.second) { Text(verbatim: "Link") }.keyboardType(.URL).textInputAutocapitalization(.never)
                         Text(verbatim: "外部リンクを追加します。ファイルは別の操作でアップロードできます。").laaTextStyle(.secondary)
-                    } header: { Text(verbatim: "リンク") }.disabled(!ready || pending != nil)
+                    } header: { Text(verbatim: "Link") }.disabled(!ready || pending != nil)
                 }
                 Button() { submit() } label: { Text(verbatim: LAACopy.save) }.disabled(!ready || busy || pending != nil || drafts.persistenceFailed || draft.first.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
@@ -487,16 +487,16 @@ private struct LAAPersonalCommentEditor: View {
                                 Button(LAACopy.WorkTab.retrySameRequest) { Task { await perform(pending, firstAttempt: false) } }
                             }
                         }
-                    } header: { Text(verbatim: "送信待ち") }
+                    } header: { Text(verbatim: "Queued") }
                 }
                 Section() {
                     TextEditor(text: $text).frame(minHeight: 180).disabled(!ready || pending != nil)
                         .accessibilityIdentifier("work.task.comment")
-                } header: { Text(verbatim: parentId == nil ? "コメント" : "返信") }
+                } header: { Text(verbatim: parentId == nil ? "Comment" : "Reply") }
                 Button() { submit() } label: { Text(verbatim: "投稿") }.disabled(!ready || busy || pending != nil || drafts.persistenceFailed || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             .disabled(busy)
-            .navigationTitle(Text(verbatim: parentId == nil ? "コメントを追加" : "返信"))
+            .navigationTitle(Text(verbatim: parentId == nil ? "Add Comment" : "Reply"))
             .toolbar { ToolbarItem(placement: .topBarTrailing) { LAACloseButton { dismiss() }.accessibilityIdentifier("work.task.relation.close") } }
             .task(id: bridge.revision) { restore() }
             .onChange(of: text) { _, value in if ready && pending == nil { saveDraft(value) } }

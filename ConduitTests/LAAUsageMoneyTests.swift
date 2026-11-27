@@ -22,9 +22,9 @@ final class LAAUsageMoneyTests: XCTestCase {
 
     func testZeroMissingAndNegativeAmounts() {
         XCTAssertEqual(LAAUsageMoney.text(0, locale: locale), "$0.00")
-        XCTAssertEqual(LAAUsageMoney.text(nil, locale: locale), "未取得")
-        XCTAssertEqual(LAAUsageMoney.text(Double.nan, locale: locale), "未取得")
-        XCTAssertEqual(LAAUsageMoney.text(Double.infinity, locale: locale), "未取得")
+        XCTAssertEqual(LAAUsageMoney.text(nil, locale: locale), "Unknown")
+        XCTAssertEqual(LAAUsageMoney.text(Double.nan, locale: locale), "Unknown")
+        XCTAssertEqual(LAAUsageMoney.text(Double.infinity, locale: locale), "Unknown")
         XCTAssertEqual(LAAUsageMoney.text(-1.567, locale: locale), "-$1.57")
     }
 }

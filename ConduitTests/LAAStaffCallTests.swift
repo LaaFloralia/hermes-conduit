@@ -655,9 +655,9 @@ final class LAAStaffCallTests: XCTestCase {
     }
 
     func testAudioRouteLabelsUseTheActualOutputName() {
-        XCTAssertEqual(LAAAudioRouteLabel.labels([]), "出力先なし")
-        XCTAssertEqual(LAAAudioRouteLabel.label(type: .builtInReceiver, name: "Receiver"), "受話口")
-        XCTAssertEqual(LAAAudioRouteLabel.label(type: .builtInSpeaker, name: "Speaker"), "スピーカー")
+        XCTAssertEqual(LAAAudioRouteLabel.labels([]), "No Audio Output")
+        XCTAssertEqual(LAAAudioRouteLabel.label(type: .builtInReceiver, name: "Receiver"), "Receiver")
+        XCTAssertEqual(LAAAudioRouteLabel.label(type: .builtInSpeaker, name: "Speaker"), "Speaker")
         XCTAssertEqual(LAAAudioRouteLabel.label(type: .bluetoothHFP, name: " Monet’s AirPods "), "Monet’s AirPods")
         XCTAssertEqual(LAAAudioRouteLabel.label(type: .bluetoothA2DP, name: ""), "Bluetooth")
         XCTAssertEqual(LAAAudioRouteLabel.label(type: .headphones, name: "Headphones"), "Headphones")

@@ -50,7 +50,7 @@ struct LAAAssetsView: View {
             if !studioSelected && !behindSettingsCard {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { driveLayoutToggle &+= 1 } label: { Image(systemName: "square.grid.2x2") }
-                        .accessibilityLabel(Text(verbatim: "一覧表示を切り替える"))
+                        .accessibilityLabel(Text(verbatim: "Toggle View"))
                         .accessibilityIdentifier("laa.drive.layout")
                         .laaHiddenBehindSettingsCard()
                 }
@@ -81,13 +81,13 @@ struct LAAAssetsView: View {
             if linkRequest.url?.host == "assets" { studioSelected = false }
         }
         .confirmationDialog(String("このフォルダを端末に保存しますか？"), isPresented: $confirmFolder, titleVisibility: .visible) {
-            Button(String("ファイルを保存")) { if let folderPlan { saveFolder(folderPlan) } }
+            Button(String("Save Files")) { if let folderPlan { saveFolder(folderPlan) } }
             Button(String("Cancel"), role: .cancel) { folderPlan = nil }
         } message: {
             if let folderPlan {
                 let minimumSpace = ByteCountFormatter.string(fromByteCount: folderPlan.knownBytes, countStyle: .file)
-                Text(verbatim: "ファイル: \(folderPlan.files.count)") +
-                Text(verbatim: "\n") + Text(verbatim: "必要な空き容量: \(minimumSpace)") +
+                Text(verbatim: "Files: \(folderPlan.files.count)") +
+                Text(verbatim: "\n") + Text(verbatim: "Required Space: \(minimumSpace)") +
                 Text(verbatim: "\n") + Text(verbatim: "取得できなかった項目: \(folderPlan.issues.count)") +
                 Text(verbatim: "\n") + Text(verbatim: "失敗した場合も、保存済みのファイルは残ります。")
             }
@@ -161,7 +161,7 @@ struct LAAAssetsView: View {
                                usesNavigationTitle: false)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            LAAMacEmptyDetail(symbol: "folder", title: "ファイルを選ぶ",
+            LAAMacEmptyDetail(symbol: "folder", title: "Choose File",
                               message: "左の一覧からファイルを選ぶと、ここにプレビューと情報を表示します。")
         }
     }

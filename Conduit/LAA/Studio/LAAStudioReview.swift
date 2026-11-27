@@ -43,7 +43,7 @@ struct LAAStudioReviewView: View {
                             UIPasteboard.general.string = state.comment
                             copied = true
                         } label: {
-                            Text(verbatim: copied ? "コメントをコピーしました" : "コメントをコピー").frame(minHeight: LAASpacing.minimumTouchTarget)
+                            Text(verbatim: copied ? "Comment Copied" : "Copy Comment").frame(minHeight: LAASpacing.minimumTouchTarget)
                         }
                     }
                 }
@@ -64,12 +64,12 @@ struct LAAStudioReviewView: View {
                             .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
                     }
                     Picker(selection: verdict) {
-                        Text(verbatim: "判定なし").tag("")
-                        Text(verbatim: "採用").tag("adopt")
-                        Text(verbatim: "直す").tag("revise")
-                        Text(verbatim: "不採用").tag("reject")
-                    } label: { Text(verbatim: "判定") }.pickerStyle(.segmented).disabled(state.pending != nil || sending || storageError)
-                    Text(verbatim: "コメント").laaTextStyle(.section).fontWeight(.semibold)
+                        Text(verbatim: "No Verdict").tag("")
+                        Text(verbatim: "Adopt").tag("adopt")
+                        Text(verbatim: "Revise").tag("revise")
+                        Text(verbatim: "Reject").tag("reject")
+                    } label: { Text(verbatim: "Verdict") }.pickerStyle(.segmented).disabled(state.pending != nil || sending || storageError)
+                    Text(verbatim: "Comment").laaTextStyle(.section).fontWeight(.semibold)
                     TextEditor(text: $state.comment)
                         .frame(minHeight: 140).padding(LAASpacing.x2)
                         .background(LAAColor.subtleSurface, in: RoundedRectangle(cornerRadius: LAARadius.card))
@@ -79,7 +79,7 @@ struct LAAStudioReviewView: View {
                         .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     if state.pending == nil {
                         Button { Task { await submit(retry: false) } } label: {
-                            Text(verbatim: "講評を保存")
+                            Text(verbatim: "Save Review")
                         }.laaGlassButton(prominent: true).disabled(!canSubmit)
                             .accessibilityIdentifier("laa.studio.review.send")
                     } else {
@@ -87,7 +87,7 @@ struct LAAStudioReviewView: View {
                             Text(verbatim: "保存状態を確認").frame(minHeight: LAASpacing.minimumTouchTarget)
                         }.disabled(sending || storageError)
                         Button { Task { await submit(retry: true) } } label: {
-                            Text(verbatim: "同じ講評を再送").frame(minHeight: LAASpacing.minimumTouchTarget)
+                            Text(verbatim: "Resend Review").frame(minHeight: LAASpacing.minimumTouchTarget)
                         }.disabled(sending || storageError).accessibilityIdentifier("laa.studio.review.retry")
                         if canEditAgain {
                             Button {
@@ -131,7 +131,7 @@ struct LAAStudioReviewView: View {
                         .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
                 }
             }.padding(LAASpacing.horizontal).laaPageWidth()
-        }.background(LAAColor.background.ignoresSafeArea()).navigationTitle(Text(verbatim: "講評"))
+        }.background(LAAColor.background.ignoresSafeArea()).navigationTitle(Text(verbatim: "Review"))
             .navigationBarTitleDisplayMode(.inline).tint(LAAColor.link)
             .onAppear(perform: restore)
             .onChange(of: state) { _, value in
@@ -142,10 +142,10 @@ struct LAAStudioReviewView: View {
     }
     static func label(_ value: String?) -> String {
         switch value {
-        case "adopt": return "採用"
-        case "revise": return "直す"
-        case "reject": return "不採用"
-        default: return "コメント"
+        case "adopt": return "Adopted"
+        case "revise": return "Revise"
+        case "reject": return "Rejected"
+        default: return "Comment"
         }
     }
     @MainActor private func restore() {
