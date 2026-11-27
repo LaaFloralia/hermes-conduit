@@ -100,11 +100,11 @@ struct LAAPersonalTaskEditor: View {
                     Picker(selection: $draft.milestoneId) {
                         Text(verbatim: "None").tag("")
                         ForEach(milestones.filter { $0.project?.id == draft.projectId }) { Text(verbatim: $0.displayName).tag($0.id) }
-                    } label: { Text(verbatim: "マイルストーン") }
+                    } label: { Text(verbatim: "Milestone") }
                     Picker(selection: $draft.cycleId) {
                         Text(verbatim: "None").tag("")
                         ForEach(cycles.filter { $0.team?.id == draft.teamId }) { Text(verbatim: $0.displayName).tag($0.id) }
-                    } label: { Text(verbatim: "サイクル") }
+                    } label: { Text(verbatim: "Cycle") }
                     TextField(text: $draft.estimate) { Text(verbatim: "見積り（整数）") }.keyboardType(.numberPad)
                     TextField(text: $draft.dueDate) { Text(verbatim: "期限（YYYY-MM-DD）") }.textInputAutocapitalization(.never)
                     if incompleteChoices {

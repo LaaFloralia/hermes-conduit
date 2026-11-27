@@ -509,7 +509,7 @@ private struct LAADriveSearchPlacement: ViewModifier {
             content
         } else {
             content.searchable(text: $query, placement: .navigationBarDrawer(displayMode: .automatic),
-                               prompt: Text("Search"))
+                               prompt: Text(verbatim: "Search"))
         }
     }
 }

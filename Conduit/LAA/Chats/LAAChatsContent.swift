@@ -245,8 +245,11 @@ struct LAAChatsContent: View {
                 Button { openPerson(person) } label: {
                     HStack(spacing: 12) {
                         avatar(profile: person.profile, name: person.name, size: 36)
+                        // System type like every sibling row: Georgia set the
+                        // Japanese "無検閲" in a Mincho fallback.
                         Text(verbatim: LAAChatPerson.name(person.name))
-                            .font(.custom("Georgia", size: 17, relativeTo: .body))
+                            .font(LAAType.chatListName(person.name, japaneseSize: japaneseNameSize))
+                            .lineLimit(1).truncationMode(.middle)
                         Spacer(minLength: 0)
                     }.frame(minHeight: 56).contentShape(Rectangle())
                 }.buttonStyle(LAAListRowStyle()).disabled(!person.available)

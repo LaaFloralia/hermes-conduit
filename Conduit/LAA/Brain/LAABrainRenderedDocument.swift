@@ -230,13 +230,13 @@ struct LAABrainEmbedView: View {
 
     @MainActor private func load() async {
         content = nil
-        guard let spec = LAABrainEmbedSpec.parse(source) else { content = .unavailable("Unsupported embed."); return }
+        guard let spec = LAABrainEmbedSpec.parse(source) else { content = .unavailable("この埋め込みには対応していません。"); return }
         let name = spec.target.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? ""
         let ext = URL(fileURLWithPath: name).pathExtension.lowercased()
         let imageTypes: Set<String> = ["png", "jpg", "jpeg", "gif", "heic", "heif", "tif", "tiff", "webp"]
         if !imageTypes.contains(ext), ext != "pdf",
            let file = (lookup ?? LAABrainPathLookup(files: files)).resolve(spec.target, currentPath: currentPath) {
-            guard depth < 3, !visited.contains(file.path) else { content = .unavailable("Nested or circular embed. Open the note directly."); return }
+            guard depth < 3, !visited.contains(file.path) else { content = .unavailable("埋め込みが入れ子か循環しています。ノートを直接開いてください。"); return }
             do {
                 let note: LAABrainNote
                 if isLocal {
@@ -248,15 +248,15 @@ struct LAABrainEmbedView: View {
                 }
                 try Task.checkCancellation()
                 if let anchor = spec.anchor, !anchor.isEmpty {
-                    guard let section = LAABrainDocument(note.text).section(anchor) else { content = .unavailable("Embedded heading not found."); return }
+                    guard let section = LAABrainDocument(note.text).section(anchor) else { content = .unavailable("埋め込み先の見出しが見つかりません。"); return }
                     content = .note(LAABrainNote(id: note.id, path: note.path, text: section), file, anchor)
                 } else { content = .note(note, file, nil) }
             } catch is CancellationError { return }
             catch { content = .unavailable(LAABrainVaultError.unreadable.message) }
             return
         }
-        guard imageTypes.contains(ext) || ext == "pdf" else { content = .unavailable("This embed is unavailable."); return }
-        guard isLocal else { content = .unavailable("Attachments are unavailable over the Mac connection."); return }
+        guard imageTypes.contains(ext) || ext == "pdf" else { content = .unavailable("この埋め込みは表示できません。"); return }
+        guard isLocal else { content = .unavailable("Mac経由では添付を表示できません。"); return }
         do {
             let root = try local.snapshot()
             let attachment = try await Task.detached(priority: .userInitiated) {
@@ -264,7 +264,7 @@ struct LAABrainEmbedView: View {
             }.value
             try Task.checkCancellation()
             if ext == "pdf" {
-                guard PDFDocument(data: attachment.data) != nil else { content = .unavailable("This PDF could not be opened."); return }
+                guard PDFDocument(data: attachment.data) != nil else { content = .unavailable("このPDFを開けませんでした。"); return }
                 content = .pdf(attachment.data)
             } else {
                 guard let source = CGImageSourceCreateWithData(attachment.data as CFData, nil),
@@ -272,7 +272,7 @@ struct LAABrainEmbedView: View {
                         kCGImageSourceCreateThumbnailFromImageAlways: true,
                         kCGImageSourceCreateThumbnailWithTransform: true,
                         kCGImageSourceThumbnailMaxPixelSize: maxPixelSize
-                      ] as CFDictionary) else { content = .unavailable("This image could not be opened."); return }
+                      ] as CFDictionary) else { content = .unavailable("この画像を開けませんでした。"); return }
                 content = .image(UIImage(cgImage: image))
             }
         } catch is CancellationError { return }

@@ -216,7 +216,7 @@ struct LAAStudioCreateView: View {
     private var composerKinds: some View {
         ForEach(Self.kinds.dropLast().map(\.key), id: \.self) { kind in
             Button { draft.kind = draft.kind == kind ? nil : kind } label: {
-                Text(verbatim: Self.kindLabel(kind)).studioFilterChip(selected: draft.kind == kind)
+                Text(verbatim: Self.kindLabel(kind)).studioFilterChip(selected: draft.kind == kind, onGlass: true)
             }.buttonStyle(.plain).disabled(editingBlocked)
                 .accessibilityIdentifier("laa.studio.kind.\(kind)")
                 .accessibilityAddTraits(draft.kind == kind ? .isSelected : [])
@@ -352,14 +352,19 @@ private struct LAAStudioInputField: ViewModifier {
 extension View {
     func studioInputField() -> some View { modifier(LAAStudioInputField()) }
 
-    func studioFilterChip(selected: Bool) -> some View {
-        fontWeight(selected ? .semibold : .regular)
+    /// `onGlass`: the chip sits inside the glass composer, so it is plain
+    /// text (accent and semibold when chosen), never glass on glass.
+    @ViewBuilder func studioFilterChip(selected: Bool, onGlass: Bool = false) -> some View {
+        let chip = fontWeight(selected ? .semibold : .regular)
             // A kind is one word: whole, never one character per line.
             .lineLimit(1).fixedSize()
             .foregroundStyle(selected ? LAAColor.link : LAAColor.secondaryText)
             .frame(minHeight: LAASpacing.minimumTouchTarget)
-            .padding(.horizontal, LAASpacing.x4)
-            .laaGlass(in: Capsule(), selected: selected)
+        if onGlass {
+            chip.padding(.horizontal, LAASpacing.x2).contentShape(Rectangle())
+        } else {
+            chip.padding(.horizontal, LAASpacing.x4).laaGlass(in: Capsule(), selected: selected)
+        }
     }
 }
 #endif
