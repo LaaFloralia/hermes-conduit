@@ -421,7 +421,7 @@ struct LAATaskControls: View {
             .modifier(LAATaskControlFace(selected: archived || quick != .all))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text(verbatim: "表示、\(viewTitle)、\(viewCount)件"))
+        .accessibilityLabel(Text(verbatim: "View, \(viewTitle), \(viewCount)"))
         .accessibilityIdentifier("work.tasks.quick")
     }
 
