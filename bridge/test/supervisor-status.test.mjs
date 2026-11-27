@@ -60,6 +60,23 @@ test('status projects safe metrics, reports a writer stall, and becomes stale on
   assert.equal((await api.request('/v1/status', { token })).body.data.supervisor.status, 'stale');
 });
 
+test('status rejects incomplete, invalid and reversed supervisor timestamps without failing the endpoint', async (t) => {
+  const { api, path } = await rig(t);
+  const token = await api.token();
+  const { checkedAt, nextCheckBy, ...raw } = fixture();
+  for (const timing of [{}, { checkedAt }, { nextCheckBy },
+    { checkedAt, nextCheckBy: 'not-a-timestamp' },
+    { checkedAt: '2026-02-30T10:30:00Z', nextCheckBy },
+    { checkedAt, nextCheckBy: '2026-11-26T24:00:00Z' },
+    { checkedAt, nextCheckBy: '2026-11-26T11:00:00+01:00' },
+    { checkedAt: '2026-11-26T10:35:00.0009Z', nextCheckBy: '2026-11-26T11:35:00.0001+01:00' }]) {
+    writeFileSync(path, JSON.stringify({ ...raw, ...timing }));
+    const res = await api.request('/v1/status', { token });
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.body.data.supervisor, { status: 'missing' }, JSON.stringify(timing));
+  }
+});
+
 test('missing, malformed, oversized or symlinked status is not reported as healthy', async (t) => {
   const { api, path } = await rig(t);
   const token = await api.token();
