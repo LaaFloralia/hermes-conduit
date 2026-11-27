@@ -862,7 +862,7 @@ test('add: a short Paseo id resolves to the one full id it names', (t) => {
 
 test('2026-11-28: only brand preference and the owner\'s own operation stay owner-only; legacy owner records become Monet\'s', async (t) => {
   const f = fixture(t);
-  for (const kind of ['ブランドの好み', 'ブランド', '好み', '本人の操作', '本人操作', '本人の物理操作', '本人認証', '本人の認証', 'お金・ブランドの好み', '本人 の 操作']) {
+  for (const kind of ['ブランドの好み', 'ブランド', '好み', '本人の操作', '本人操作', '本人の物理操作', '本人認証', '本人の認証', 'お金・ブランドの好み', '本人 の 操作', 'Brand', 'brand preference', 'BRAND', 'ｂｒａｎｄ', 'Physical operation', 'authentication', 'Final logo']) {
     assert.equal(decisionCategory(`【必ず社長：${kind}】`).category, 'owner', kind);
   }
   for (const kind of ['お金', '停止', '削除', '公開範囲', '社外への公開', '本人の判断', '契約', '選択']) {
