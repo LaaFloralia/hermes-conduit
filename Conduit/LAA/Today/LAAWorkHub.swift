@@ -49,7 +49,7 @@ struct LAAWorkHub: View {
         var title: String {
             switch self {
             case .decisions: Section.decisions.title
-            case .findings: LAABoardKind.findings.title
+            case .findings: String("Findings")
             case .campaigns: LAACampaignCopy.section
             }
         }
