@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Run a named test suite on the simulator and ratchet its failures.
 
+ABOLISHED 2026-11-27 (owner decision): `run` (and its worker) and `seed` exit 64
+before touching a simulator, build slot or MacBook; the completion gate is
+`laa-app-gate pre hortensia --src <worktree>`. `parse`/`check` stay read-only.
+The runner code below is kept so the owner can re-enable it.
+
 Two suites, kept apart on purpose (BUS-504): `integration` is the LAA build
 (project-laa.yml) with every unit and UI class; `smoke` is the default Conduit
 build (project.yml) with the merge gate's selection. A count is never the
@@ -623,7 +628,12 @@ def cmd_seed(args):
     return 0
 
 
-def main(argv=None):
+ABOLISHED_EXIT = 64
+ABOLISHED = ("シミュレーター試験は2026-11-27に廃止されました（社長決定）。"
+             "代わりに laa-app-gate pre hortensia --src <作業ツリー> を使ってください。")
+
+
+def build_parser():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="cmd", required=True)
     run = sub.add_parser("run")
@@ -641,6 +651,15 @@ def main(argv=None):
         p = sub.add_parser(name); p.add_argument("suite"); p.add_argument("out")
         if name == "check":
             p.add_argument("--partial", action="store_true", help="a subset ran: skip the did-not-run checks")
+    return parser, run
+
+
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else list(argv)
+    if argv and argv[0] in ("run", "worker", "seed"):
+        print(ABOLISHED, file=sys.stderr)
+        return ABOLISHED_EXIT
+    parser, run = build_parser()
     args = parser.parse_args(argv)
     if args.cmd == "run" and args._worker_source is None and not args.out:
         run.error("the following arguments are required: --out")

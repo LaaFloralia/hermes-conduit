@@ -217,6 +217,27 @@ final class ComposerDraftStore: ObservableObject {
         return persist()
     }
 
+    /// Remove every draft whose key matches in one snapshot write; the other
+    /// drafts keep their order. Nothing is written when nothing matches, and
+    /// an unreadable snapshot is left alone. True when no match remains on disk.
+    @discardableResult
+    func removeDrafts(where matches: (ComposerDraftKey) -> Bool) -> Bool {
+        guard !unreadableSnapshot else { return false }
+        let removed = Set(drafts.keys.filter(matches))
+        guard !removed.isEmpty else { return true }
+        let oldDrafts = drafts, oldOrder = order, oldGenerations = generations
+        for key in removed {
+            drafts.removeValue(forKey: key)
+            generations.removeValue(forKey: key)
+        }
+        order.removeAll { removed.contains($0) }
+        guard persist() else {
+            drafts = oldDrafts; order = oldOrder; generations = oldGenerations
+            return false
+        }
+        return true
+    }
+
     func removeDraft(for bucket: ComposerDraftSubmissionBucket) {
         guard let generation = bucket.generation,
               generations[bucket.key] == generation else { return }
