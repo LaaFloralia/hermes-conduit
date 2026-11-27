@@ -885,7 +885,7 @@ test('a session without a workspace runs in the home folder, bypass only when as
 
   const fast = await ctx.bridge.request('/v1/sessions', {
     method: 'POST', token: ctx.token, key: 'k-home-2',
-    body: { requestId: 'req-home-2', profile: 'opus-high', prompt: 'ok', fast: true },
+    body: { requestId: 'req-home-2', profile: 'opus-medium', prompt: 'ok', fast: true },
   });
   assert.equal(fast.status, 201);
   assert.equal(fast.body.data.mode, 'default');
@@ -895,13 +895,13 @@ test('a session without a workspace runs in the home folder, bypass only when as
 
   const bad = await ctx.bridge.request('/v1/sessions', {
     method: 'POST', token: ctx.token, key: 'k-home-3',
-    body: { requestId: 'req-home-3', profile: 'opus-high', prompt: 'ok', mode: 'plan' },
+    body: { requestId: 'req-home-3', profile: 'opus-medium', prompt: 'ok', mode: 'plan' },
   });
   assert.equal(bad.status, 400);
   // The same requestId with a different fast setting is a different request.
   const conflict = await ctx.bridge.request('/v1/sessions', {
     method: 'POST', token: ctx.token, key: 'k-home-4',
-    body: { requestId: 'req-home-2', profile: 'opus-high', prompt: 'ok', mode: 'default', fast: false },
+    body: { requestId: 'req-home-2', profile: 'opus-medium', prompt: 'ok', mode: 'default', fast: false },
   });
   assert.equal(conflict.status, 409);
 });

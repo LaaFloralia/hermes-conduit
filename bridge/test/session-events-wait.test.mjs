@@ -61,7 +61,7 @@ async function boot(t, requestId) {
   const token = await bridge.token();
   const created = await bridge.request('/v1/sessions', {
     method: 'POST', token, key: `${requestId}-create`,
-    body: { requestId, profile: 'deepseek', prompt: 'bench' },
+    body: { requestId, profile: 'deepseek-flash-high', prompt: 'bench' },
   });
   assert.ok([200, 201].includes(created.status), `create failed: ${created.status} ${JSON.stringify(created.body)}`);
   const id = created.body.data.id;
