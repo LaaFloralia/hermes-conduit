@@ -29,17 +29,8 @@ private struct LAAStudioWorkItem: Identifiable {
 }
 
 private enum LAAStudioFilter: String, CaseIterable, Identifiable {
-    case all = "すべて", pages = "ページ", images = "画像", video = "動画", model = "3D", audio = "音声"
-    var label: String {
-        switch self {
-        case .all: "All"
-        case .pages: "Pages"
-        case .images: "Images"
-        case .video: "Video"
-        case .model: "3D"
-        case .audio: "Audio"
-        }
-    }
+    // The raw value is the label on screen (D-21: short English words).
+    case all = "All", pages = "Pages", images = "Images", video = "Video", model = "3D", audio = "Audio"
     var id: String { rawValue }
     func includes(_ item: LAAStudioWorkItem) -> Bool {
         switch self {
@@ -133,7 +124,7 @@ struct LAAStudioWorkBody: View {
                             if Set(allItems.map(\.kind)).count > 1 {
                                 Menu {
                                     Picker(String("Type"), selection: $filter) {
-                                        ForEach(LAAStudioFilter.allCases) { Text(verbatim: $0.label).tag($0) }
+                                        ForEach(LAAStudioFilter.allCases) { Text(verbatim: $0.rawValue).tag($0) }
                                     }
                                 } label: { Image(systemName: "line.3.horizontal.decrease").frame(width: 44, height: 44) }.accessibilityLabel(String("Type"))
                             }

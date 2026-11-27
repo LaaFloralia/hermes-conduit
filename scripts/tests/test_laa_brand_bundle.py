@@ -62,7 +62,7 @@ class LAABrandBundleTests(unittest.TestCase):
             self.assertNotIn("Conduit", info["NSMicrophoneUsageDescription"])
             scenes = info["UIApplicationSceneManifest"]["UISceneConfigurations"]
             self.assertEqual(scenes, {"UIWindowSceneSessionRoleApplication": [{"UISceneClassName": "MainScene"}]})
-            self.assertEqual(plistlib.loads((local / "Localizable.strings").read_bytes())["Open Conduit"], "LAAを開く")
+            self.assertEqual(plistlib.loads((local / "Localizable.strings").read_bytes())["Open Conduit"], "Open Hortensia")
             self.assertEqual(plistlib.loads((local / "InfoPlist.strings").read_bytes())["CFBundleName"], "LAA")
             self.assertTrue((bundle / "Contents/Resources/en.lproj/Localizable.strings").is_file())
             self.assertFalse((bundle / "en.lproj").exists())
@@ -143,7 +143,7 @@ class LAABrandBundleTests(unittest.TestCase):
             self.assertEqual(info["ConduitLauncherAppGroup"], "group.keep")
             with (local / "Localizable.strings").open("rb") as stream:
                 localized = plistlib.load(stream)
-            self.assertEqual(localized["Open Conduit"], "LAAを開く")
+            self.assertEqual(localized["Open Conduit"], "Open Hortensia")
             self.assertEqual(localized["identifier"], "conduit://keep")
             with (local / "InfoPlist.strings").open("rb") as stream:
                 self.assertNotIn("Conduit", plistlib.load(stream)["NSMicrophoneUsageDescription"])
@@ -431,9 +431,10 @@ class LAABrandBundleTests(unittest.TestCase):
         source = {"Cancel": "Cancel", "Message": "Message", "Chat": "Chat", "user-content": "Cancel"}
         result = brand.values_only(source, locale="ja")
         self.assertEqual(set(result), set(source))
-        self.assertEqual(result["Cancel"], "キャンセル")
-        self.assertEqual(result["Message"], "メッセージ")
-        self.assertEqual(result["Chat"], "チャット")
+        # D-21 (2026-11-27): simple operating words stay English in the Japanese interface.
+        self.assertEqual(result["Cancel"], "Cancel")
+        self.assertEqual(result["Message"], "Message")
+        self.assertEqual(result["Chat"], "Chat")
         self.assertEqual(result["user-content"], "Cancel")
         self.assertEqual(brand.values_only(source, locale="en"), source)
 
