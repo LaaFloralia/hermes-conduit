@@ -65,7 +65,12 @@ struct GroupChatView: View {
             if isV2 {
 #if LAA_BUILD
                 VStack(spacing: 0) {
+                    // The transcript starts, and is cut, below the title that
+                    // hangs under the bar, as a chat's is below its heading:
+                    // scrolled beneath it, large lines ("今日") showed through.
                     transcript
+                        .padding(.top, titleHang)
+                        .clipped()
                     bottomBar
                 }
 #else
@@ -259,13 +264,7 @@ struct GroupChatView: View {
 #else
                 .padding(.horizontal, 16)
 #endif
-#if LAA_BUILD
-                // Below the title that hangs over the transcript: under it,
-                // the first line ("今日") was covered.
-                .padding(.top, 14 + titleHang)
-#else
                 .padding(.top, 14)
-#endif
                 .padding(.bottom, 18)
             }
 #if LAA_BUILD
