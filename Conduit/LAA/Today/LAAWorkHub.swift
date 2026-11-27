@@ -202,6 +202,7 @@ struct LAAWorkHub: View {
                     Text(verbatim: page.title).tag(page)
                 }
             }
+            .pickerStyle(.inline)
         } label: {
             Label {
                 Text(verbatim: selection.wrappedValue.title).laaTextStyle(.body)
