@@ -5,6 +5,7 @@ const MAX_BYTES = 256 * 1024;
 const counts = ['runningAll', 'readyPending', 'stalled', 'needsJudgement', 'reportedUnverified',
   'memoryPending', 'boardDelegable', 'boardOwnerOnly'];
 const metrics = ['tickDurationMs', 'inspectP95Ms'];
+const reasonTokens = /^[a-z_]+(?:,[a-z_]+)*$/;
 const timestamp = /^((?!0000)\d{4}-\d{2}-\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.(\d{1,9}))?(?:Z|[+-]\d{2}:\d{2})$/;
 function parseTime(value) {
   const match = typeof value === 'string' && timestamp.exec(value);
@@ -39,12 +40,15 @@ export async function readSupervisorStatus(file, now) {
     }
     if (size > MAX_BYTES) return missing;
     const raw = JSON.parse(bytes.toString('utf8', 0, size));
-    if (raw?.schema !== 'laa.supervisor-status.v1' || !['ok', 'stalled'].includes(raw.status)) return missing;
+    if (raw?.schema !== 'laa.supervisor-status.v1' || !['ok', 'degraded', 'stalled'].includes(raw.status)) return missing;
     const checked = parseTime(raw.checkedAt), deadline = parseTime(raw.nextCheckBy);
     if (!checked || !deadline || deadline.ms < checked.ms
       || (deadline.ms === checked.ms && deadline.fraction < checked.fraction)) return missing;
+    const reason = raw.reason;
+    const safeReason = typeof reason === 'string' && reason.length <= 200 && reasonTokens.test(reason);
     return {
       status: now() > deadline.ms ? 'stale' : raw.status,
+      ...(safeReason ? { reason } : {}),
       checkedAt: new Date(checked.ms).toISOString(),
       nextCheckBy: new Date(deadline.ms).toISOString(),
       ...Object.fromEntries(metrics.filter((key) => metric(raw[key])).map((key) => [key, raw[key]])),
