@@ -1,5 +1,6 @@
 #if LAA_BUILD
 import SwiftUI
+import LAAKit
 
 /// The box a task starts with. It only picks the task for the 完了 button
 /// under the list's controls and writes nothing: completing takes that
@@ -219,7 +220,8 @@ struct LAATaskRow: View, Equatable {
     }
 }
 
-/// A run's status: a tinted capsule that opens its session when it has one.
+/// A run's status: plain text in the meta line (no chip), which opens its
+/// session when it has one.
 struct LAATaskStatusBadge: View {
     let status: LAATaskRunStatus
     let taskID: String
@@ -228,9 +230,6 @@ struct LAATaskStatusBadge: View {
         let label = Text(verbatim: status.label).lineLimit(1)
             .fontWeight(status.tone == .quiet ? .regular : .semibold)
             .foregroundStyle(status.color)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 1.5)
-            .background(status.color.opacity(status.tone == .quiet ? 0.08 : 0.13), in: Capsule())
         if let session = status.sessionID {
             // The same handler the deep link uses.
             Button {
@@ -299,11 +298,11 @@ struct LAATaskSectionHeader: View {
                 if let staff = section.staff {
                     LAAStaffStill(staff: staff, size: mark)
                 } else if let symbol = section.symbol {
+                    // A plain line icon in the muted ink: no tile behind it.
                     Image(systemName: symbol)
-                        .font(.system(size: mark * 0.5, weight: .semibold))
-                        .foregroundStyle(section.tint)
+                        .font(.system(size: LAAIconSize.inline))
+                        .foregroundStyle(LAAColor.secondaryText)
                         .frame(width: mark, height: mark)
-                        .background(section.tint.opacity(0.13), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
                 }
                 Text(verbatim: section.title)
                     .laaTextStyle(.section).foregroundStyle(LAAColor.text)
@@ -357,7 +356,7 @@ struct LAATaskControls: View {
     }
 
     private func line(groupingTitle: Bool) -> some View {
-        HStack(spacing: 6) {
+        HStack(spacing: LAASpacing.x3) {
             // The archive is not cut by the range, so the toggles step aside.
             if !archived {
                 ForEach(LAALinearTaskFilter.toggles) { option in toggle(option) }
@@ -378,8 +377,8 @@ struct LAATaskControls: View {
             change { filter = filter.toggling(option) }
         } label: {
             Text(verbatim: option.title)
-                .laaTextStyle(.secondary).fontWeight(.medium)
-                .foregroundStyle(lit ? LAAColor.link : LAAColor.text)
+                .laaTextStyle(.secondary).fontWeight(lit ? .semibold : .regular)
+                .foregroundStyle(lit ? LAAColor.link : LAAColor.secondaryText)
                 .fixedSize()
                 .modifier(LAATaskControlFace(selected: lit))
         }
@@ -411,8 +410,8 @@ struct LAATaskControls: View {
                 change { archived = true }
             }
         } label: {
-            HStack(spacing: 5) {
-                Text(verbatim: viewTitle).fontWeight(.medium)
+            HStack(spacing: LAASpacing.x1) {
+                Text(verbatim: viewTitle)
                 Text(verbatim: "\(viewCount)").monospacedDigit()
                     .foregroundStyle(archived || quick != .all ? LAAColor.link : LAAColor.secondaryText)
             }
@@ -440,9 +439,9 @@ struct LAATaskControls: View {
             }
             .accessibilityIdentifier("work.tasks.foldAll")
         } label: {
-            HStack(spacing: 5) {
-                Image(systemName: grouping.symbol).font(.system(size: 12, weight: .semibold))
-                if title { Text(verbatim: grouping.title).laaTextStyle(.secondary).fontWeight(.medium) }
+            HStack(spacing: LAASpacing.x1) {
+                Image(systemName: grouping.symbol).font(.system(size: LAAIconSize.inline))
+                if title { Text(verbatim: grouping.title).laaTextStyle(.secondary) }
             }
             .foregroundStyle(LAAColor.link)
             .fixedSize()
@@ -454,15 +453,14 @@ struct LAATaskControls: View {
     }
 }
 
-/// One glass capsule of the list's controls: 32pt to the eye, 44pt to the
-/// finger, tinted while it narrows the list.
+/// One text control of the list's line: no capsule and no glass, the same
+/// height for every control, a 44pt target. Selection reads from the accent
+/// colour and the weight the caller sets.
 private struct LAATaskControlFace: ViewModifier {
     let selected: Bool
     func body(content: Content) -> some View {
         content
-            .padding(.horizontal, 12)
-            .frame(minHeight: 32)
-            .laaGlass(in: Capsule(), selected: selected)
+            .padding(.horizontal, LAASpacing.x1)
             .frame(minHeight: LAASpacing.minimumTouchTarget)
             .contentShape(Rectangle())
     }

@@ -76,9 +76,17 @@ struct LAAWorkSectionSelector: View {
                               identifier: "work.section.campaigns") { selection = .campaigns }
         } label: {
             Image(systemName: "ellipsis")
-                .font(.body)
+                .font(.body.weight(selected ? .semibold : .regular))
                 .foregroundStyle(selected ? LAAColor.link : LAAColor.text)
                 .frame(width: hit, height: hit)
+                // Campaigns lives here: while it is open the overflow wears the
+                // same selection face as a segment, so the place is not lost.
+                .background {
+                    if selected {
+                        RoundedRectangle(cornerRadius: control.radius)
+                            .fill(LAAColor.selectionFill).frame(height: control.height)
+                    }
+                }
                 .overlay(alignment: .bottom) {
                     if campaigns > 0 { countMark }
                 }

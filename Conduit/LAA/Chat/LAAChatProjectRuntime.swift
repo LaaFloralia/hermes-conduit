@@ -86,7 +86,8 @@ enum LAAChatProjectPrompt {
             remaining -= bytes
             end -= 2
         }
-        return .init(conversationID: project.id, turnID: question.id, route: route, system: system, history: history, text: question.text)
+        return .init(conversationID: project.conversationID(for: project.model), turnID: question.id,
+                     route: route, system: system, history: history, text: question.text)
     }
 }
 
@@ -110,7 +111,7 @@ enum LAAChatProjectPrompt {
         }
         let route = try LAAChatProjectRoute(project.model)
         let submit = try LAAChatProjectPrompt.assemble(project: project, route: route, question: question, referenceAnswer: referenceAnswer)
-        try await runtime.create(.init(conversationID: project.id, route: route, title: project.name))
+        try await runtime.create(.init(conversationID: submit.conversationID, route: route, title: project.name))
         var sawStart = false
         var output = ""
         for try await event in runtime.submit(submit) {

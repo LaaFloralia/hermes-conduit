@@ -14,7 +14,7 @@ extension LAACopy {
         static let redo = "Redo"
         static let dismissKeyboard = "Hide Keyboard"
         static let subtitle = ""
-        static let search = "検索"
+        static let search = "Search"
         static let recent = "最近"
         static let folders = "フォルダ"
         static let tags = "タグ"

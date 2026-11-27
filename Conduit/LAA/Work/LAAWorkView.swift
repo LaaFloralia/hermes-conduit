@@ -1,5 +1,6 @@
 #if LAA_BUILD
 import SwiftUI
+import LAAKit
 
 struct LAAWorkView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
@@ -233,8 +234,18 @@ private struct LAAWorkListRow: ViewModifier {
             .contentShape(Rectangle())
     }
 }
+/// A block on the paper under a 1pt rule: the ruled alternative to a card,
+/// for detail screens that stack several blocks (at most two cards a screen).
+private struct LAAWorkRuled: ViewModifier {
+    func body(content: Content) -> some View {
+        content.padding(.top, LAASpacing.x4).frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(alignment: .top) { Rectangle().fill(LAAColor.separator).frame(height: LAAStroke.rule) }
+            .laaTextStyle(.body).foregroundStyle(LAAColor.text)
+    }
+}
 extension View {
     func workCard() -> some View { modifier(LAAWorkCard()) }
+    func workRuled() -> some View { modifier(LAAWorkRuled()) }
     func workListRow() -> some View { modifier(LAAWorkListRow()) }
 }
 #endif

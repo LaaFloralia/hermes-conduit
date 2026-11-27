@@ -35,6 +35,7 @@ import { businessRoutes } from './routes/index.mjs';
 import { LANE_HEADER, laneEnabled, laneMissing, validateLane } from './lane/guard.mjs';
 import { laneAdapters, refusedLaneEdge } from './lane/adapters.mjs';
 import { resolvePort } from './config.mjs';
+import { readSupervisorStatus } from './supervisor-status.mjs';
 
 export { BridgeError };
 
@@ -222,6 +223,11 @@ export function createBridge({
     return { status: 200, data: { version, uptimeSeconds: Math.floor((now() - startedAt) / 1000), ...(lane ? { lane: lane.id } : {}) } };
   }
 
+  async function status() {
+    const supervisor = await readSupervisorStatus(routeOptions.supervisorFile, now);
+    return { status: 200, data: { ...health().data, supervisor } };
+  }
+
   function enroll({ rawBody }) {
     const payload = requireObject(parseJsonBody(rawBody));
     const code = normalizePairingCode(payload.code);
@@ -296,6 +302,7 @@ export function createBridge({
 
   const ROUTES = [
     { method: 'GET', path: '/v1/health', auth: false, handler: health },
+    { method: 'GET', path: '/v1/status', auth: true, scope: 'usage:read', handler: status },
     // The LAA Work engine reads this to check the Bridge's mark on the owner's messages.
     { method: 'GET', path: WORK_ORIGIN_KEY_PATH, auth: false, handler: () => ({ status: 200, data: workOriginKey() }) },
     { method: 'POST', path: '/v1/devices/enroll', auth: false, idempotent: false, handler: enroll },

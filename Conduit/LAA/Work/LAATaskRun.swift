@@ -91,8 +91,8 @@ struct LAATaskRunStatus: Equatable {
 }
 
 enum LAATaskRunCopy {
-    static let filterCreated = "自分が作成"
-    static let filterAssigned = "自分が担当"
+    static let filterCreated = "Created"
+    static let filterAssigned = "Assigned"
     static let runningReason = "実施中のため、終わってから完了できます"
 
     ///「完了にしますか？」の本文。The session line is added only when the task

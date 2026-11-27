@@ -27,6 +27,11 @@ struct LAADecisionDetailView: View {
     /// True when the answer just sent was stored instead of delivered.
     @State private var stored: Bool?
     @FocusState private var noteFocused: Bool
+    @State private var viewer: LAADecisionImageViewer.Request?
+    /// Option pictures retention removed: VoiceOver hears it on the picture.
+    @State private var removedPictures = Set<String>()
+    @Environment(\.laaDecisionViewerOpen) private var viewerOpen
+    @State private var browser: LAADecisionBrowserPage?
 
     init(item: LAADecision, board: LAADecisionBoard, drafts: ComposerDraftStore,
          onAnswered: ((LAADecision) -> Void)? = nil,
@@ -81,6 +86,11 @@ struct LAADecisionDetailView: View {
                 do { try await Task.sleep(for: .seconds(3)) } catch { return }
             }
         }
+        .fullScreenCover(item: $viewer) { request in
+            LAADecisionImageViewer(request: request).environmentObject(bridge)
+        }
+        .laaDecisionLinks($browser)
+        .onChange(of: viewer != nil) { _, open in viewerOpen?.wrappedValue = open }
         .sensoryFeedback(.selection, trigger: choice)
         .sensoryFeedback(.warning, trigger: undelivered) { old, new in old == nil && new != nil }
     }
@@ -134,8 +144,13 @@ struct LAADecisionDetailView: View {
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("work.decision.title")
             if !item.summary.isEmpty, item.kind == .board {
-                Text(verbatim: item.summary).laaTextStyle(.body).foregroundStyle(LAAColor.text)
+                Text(LAADecisionLinks.attributed(item.summary)).laaTextStyle(.body).foregroundStyle(LAAColor.text)
                     .lineSpacing(3).fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("work.decision.summary")
+            }
+            if item.kind == .board, !item.generalImages.isEmpty {
+                LAADecisionImageStrip(item: item) { open($0) }
+                    .padding(.vertical, LAASpacing.x1)
             }
             facts
         }
@@ -174,7 +189,7 @@ struct LAADecisionDetailView: View {
     }
 
     private func fact(icon: String, text: String, color: Color) -> some View {
-        Label { Text(verbatim: text).fixedSize(horizontal: false, vertical: true) } icon: { Image(systemName: icon) }
+        Label { Text(LAADecisionLinks.attributed(text)).fixedSize(horizontal: false, vertical: true) } icon: { Image(systemName: icon) }
             .laaTextStyle(.secondary)
             .foregroundStyle(color)
     }
@@ -234,12 +249,50 @@ struct LAADecisionDetailView: View {
         }
     }
 
+    /// The side of an option's picture at the row's right end.
+    static let optionThumb: CGFloat = 72
+
+    private func open(_ image: LAADecision.Image) {
+        viewer = .init(item: item, start: image)
+    }
+
     private func optionRow(index: Int, option: LAADecision.Option) -> some View {
         let selected = choice == .option(index)
+        let picture = item.kind == .board ? item.image(forOption: index) : nil
+        let linked = !(option.detail.map(LAADecisionLinks.urls(in:)) ?? []).isEmpty
         return Button { choice = .option(index) } label: {
-            HStack(alignment: .center, spacing: LAASpacing.x3) {
-                mark(selected)
-                VStack(alignment: .leading, spacing: LAASpacing.x1) {
+            optionContent(option, selected: selected, picture: picture, layer: linked ? .underLinks : .whole)
+                .background(selected ? LAAColor.selectionFill : Color.clear,
+                            in: RoundedRectangle(cornerRadius: LAASpacing.x2))
+                .contentShape(RoundedRectangle(cornerRadius: LAASpacing.x2))
+        }
+        .buttonStyle(LAADecisionPressStyle())
+        .accessibilityLabel(Text(verbatim: (option.recommended ? "推奨、" : "") + option.label
+                                 + (option.detail.map { "、\($0)" } ?? "")))
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityIdentifier("work.decision.option.\(index)")
+        // A Button takes every tap inside its label, links included (r7:
+        // tapping the address chose the option). The detail with links is
+        // drawn again above the row at the same place, outside the Button.
+        .overlay(alignment: .topLeading) {
+            if linked { optionContent(option, selected: selected, picture: picture, layer: .links) }
+        }
+        .overlay(alignment: .trailing) {
+            if let picture { optionThumb(picture, index: index, option: option) }
+        }
+    }
+
+    private enum OptionLayer { case whole, underLinks, links }
+
+    /// One option's row content. `.underLinks` keeps the detail's place but
+    /// leaves it to `.links`, which shows only that detail, with its links.
+    private func optionContent(_ option: LAADecision.Option, selected: Bool, picture: LAADecision.Image?,
+                               layer: OptionLayer) -> some View {
+        let onlyLinks = layer == .links
+        return HStack(alignment: .center, spacing: LAASpacing.x3) {
+            mark(selected).opacity(onlyLinks ? 0 : 1).allowsHitTesting(!onlyLinks)
+            VStack(alignment: .leading, spacing: LAASpacing.x1) {
+                Group {
                     if option.recommended {
                         Text(verbatim: LAADecisionCopy.recommended)
                             .laaTextStyle(.section).fontWeight(.semibold)
@@ -250,25 +303,52 @@ struct LAADecisionDetailView: View {
                         .laaTextStyle(.body).fontWeight(.semibold)
                         .foregroundStyle(LAAColor.text)
                         .fixedSize(horizontal: false, vertical: true)
-                    if let detail = option.detail, !detail.isEmpty {
-                        Text(verbatim: detail).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
                 }
-                Spacer(minLength: 0)
+                .opacity(onlyLinks ? 0 : 1)
+                .accessibilityHidden(onlyLinks)
+                .allowsHitTesting(!onlyLinks)
+                if let detail = option.detail, !detail.isEmpty {
+                    // Under the links layer the copy only keeps the place and
+                    // carries no link: a Button exposes the links inside its
+                    // label even when hidden, so it would be found twice.
+                    Text(layer == .underLinks ? AttributedString(detail) : LAADecisionLinks.attributed(detail))
+                        .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .opacity(layer == .underLinks ? 0 : 1)
+                        .allowsHitTesting(onlyLinks)
+                }
             }
-            .padding(.horizontal, LAASpacing.x3)
-            .padding(.vertical, LAASpacing.x3)
-            .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
-            .background(selected ? LAAColor.selectionFill : Color.clear,
-                        in: RoundedRectangle(cornerRadius: LAASpacing.x2))
-            .contentShape(RoundedRectangle(cornerRadius: LAASpacing.x2))
+            Spacer(minLength: 0)
+            // Room for the picture laid over the row's end, at its full
+            // height, so rows never let two pictures overlap. The row
+            // itself still spans the full width.
+            if picture != nil {
+                Color.clear.frame(width: Self.optionThumb, height: Self.optionThumb).allowsHitTesting(false)
+            }
+        }
+        .padding(.horizontal, LAASpacing.x3)
+        .padding(.vertical, LAASpacing.x3)
+        .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
+    }
+
+    /// A sibling over the row, not inside it: a tap here opens the viewer and
+    /// a tap anywhere else on the row still chooses the option.
+    private func optionThumb(_ image: LAADecision.Image, index: Int, option: LAADecision.Option) -> some View {
+        Button { open(image) } label: {
+            LAADecisionImageView(decisionID: item.id, image: image, size: .thumb) { phase in
+                if phase == .removed { removedPictures.insert(image.id) } else { removedPictures.remove(image.id) }
+            }
+                .frame(width: Self.optionThumb, height: Self.optionThumb)
+                .clipped()
+                .contentShape(Rectangle())
         }
         .buttonStyle(LAADecisionPressStyle())
-        .accessibilityLabel(Text(verbatim: (option.recommended ? "推奨、" : "") + option.label
-                                 + (option.detail.map { "、\($0)" } ?? "")))
-        .accessibilityAddTraits(selected ? .isSelected : [])
-        .accessibilityIdentifier("work.decision.option.\(index)")
+        .padding(.trailing, LAASpacing.x3)
+        .accessibilityLabel(Text(verbatim: LAADecisionImageCopy.option(option.label)
+            + (removedPictures.contains(image.id) ? "、" + LAADecisionImageCopy.removed : "")))
+        .accessibilityHint(Text(verbatim: LAADecisionImageCopy.openHint))
+        .accessibilityAddTraits(.isImage)
+        .accessibilityIdentifier("work.decision.option.\(index).image")
     }
 
     private func mark(_ selected: Bool) -> some View {
@@ -442,7 +522,7 @@ struct LAADecisionDetailView: View {
                     deadline: item.deadline, source: item.source, sourceRef: item.sourceRef, createdAt: item.createdAt,
                     answer: .init(optionIndex: optionIndex, label: label, note: note,
                                   answeredAt: ISO8601DateFormatter().string(from: Date())),
-                    delivery: item.delivery, sessionId: item.sessionId)
+                    delivery: item.delivery, sessionId: item.sessionId, category: item.category, images: item.images)
     }
 }
 #endif

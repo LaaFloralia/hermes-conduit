@@ -256,7 +256,8 @@ import SwiftUI
                                      allowOther: decision.allowOther, impact: decision.impact, deadline: decision.deadline,
                                      source: decision.source, sourceRef: decision.sourceRef ?? item.sourceRef,
                                      createdAt: decision.createdAt ?? item.createdAt, answer: decision.answer,
-                                     delivery: decision.delivery, category: decision.category)
+                                     delivery: decision.delivery, category: decision.category,
+                                     images: decision.images.isEmpty ? item.images : decision.images)
             if let index = board.items.firstIndex(where: { $0.id == item.id }) { board.items[index] = merged }
             else { board.items.append(merged) }
             board.items = LAADecisionOrder.sorted(board.items)

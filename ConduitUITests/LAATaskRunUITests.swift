@@ -119,15 +119,15 @@ final class LAATaskRunUITests: XCTestCase {
 
     /// A device without sessions:write is refused for a staff assignee: the
     /// form keeps its words, says why, and can still save it as 社長's own.
-    /// The range is two glass toggles, 自分が作成 and 自分が担当, on the same
+    /// The range is two text toggles, Created and Assigned, on the same
     /// line as the count menu and the grouping (owner, 2026-11-14). At most
     /// one is lit; neither lit shows every task, as 自分に関係 did.
     func testRangeTogglesShareOneLineWithTheCount() throws {
         let app = try launch()
         tasks(app)
-        // T13 has no run record (自分が担当) and sits low in その他, off a
+        // T13 has no run record (Assigned) and sits low in その他, off a
         // 402 pt screen until the range leaves it nearly alone; T15 was
-        // created for Sherlock (自分が作成) and is the first row.
+        // created for Sherlock (Created) and is the first row.
         let mine = row(app, "今週の振り返りをまとめる")
         let made = row(app, "名刺の紙を決める")
         XCTAssertTrue(made.waitForExistence(timeout: 20))
@@ -147,7 +147,7 @@ final class LAATaskRunUITests: XCTestCase {
         XCTAssertLessThanOrEqual(count.frame.maxX, grouping.frame.minX + 1)
         XCTAssertLessThanOrEqual(grouping.frame.maxX, app.frame.maxX)
         XCTAssertFalse(app.buttons["work.tasks.quick.all"].exists, "the quick filters live in the count menu")
-        XCTAssertTrue(count.label.hasPrefix("表示、すべて、"), count.label)
+        XCTAssertTrue(count.label.hasPrefix("表示、All、"), count.label)
         let everything = count.label
 
         assigned.tap()
@@ -155,7 +155,7 @@ final class LAATaskRunUITests: XCTestCase {
         XCTAssertTrue(mine.waitForExistence(timeout: 5))
         XCTAssertTrue(assigned.isSelected)
         XCTAssertFalse(created.isSelected)
-        XCTAssertEqual(count.label, "表示、すべて、1件")
+        XCTAssertEqual(count.label, "表示、All、1件")
 
         created.tap()
         XCTAssertTrue(mine.waitForNonExistence(timeout: 5))

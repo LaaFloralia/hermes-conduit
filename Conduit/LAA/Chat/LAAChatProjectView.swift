@@ -104,7 +104,7 @@ struct LAAChatProjectDetail: View {
                     .textSelection(.enabled)
             }
         } else {
-            reply(message.text, model: model)
+            reply(message.text, model: message.model ?? model)
         }
     }
 
@@ -215,8 +215,8 @@ struct LAAChatProjectDetail: View {
         Task { @MainActor in
             defer { store.endTurn(in: id) }
             do {
-                let pin = try LAAChatProjectRoute(project.model)
-                let events = try await runtime.replay(conversationID: id, turnID: pending.id)
+                let pin = try LAAChatProjectRoute(project.pendingModel)
+                let events = try await runtime.replay(conversationID: project.pendingConversationID, turnID: pending.id)
                 if case .failed(let error) = events.last { issue = error; restore(pending); return }
                 guard events.first == .started(pin), case .completed(let output) = events.last else {
                     issue = .init(.unknownDelivery); return
