@@ -283,7 +283,9 @@ struct LAAPersonalTaskDetailView: View {
     @ViewBuilder
     private func property<Value: View>(_ symbol: String, _ label: String, @ViewBuilder value: () -> Value) -> some View {
         let key = Label { Text(verbatim: label) } icon: {
-            Image(systemName: symbol).foregroundStyle(LAAColor.secondaryText).frame(width: LAAIconSize.row)
+            // At least the row's icon width; a larger glyph widens it
+            // rather than running into the label.
+            Image(systemName: symbol).foregroundStyle(LAAColor.secondaryText).frame(minWidth: LAAIconSize.row)
         }
         .laaTextStyle(.secondary)
         .foregroundStyle(LAAColor.secondaryText)

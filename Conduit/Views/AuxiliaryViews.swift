@@ -1455,7 +1455,9 @@ private struct SettingsHome: View {
     private func laaLink(_ destination: SettingsDestination, icon: String, title: String, identifier: String = "") -> some View {
         LAAListRow(action: { path.append(destination) }) {
             HStack(spacing: 12) {
-                Image(systemName: icon).foregroundStyle(LAAColor.link).frame(width: 24).accessibilityHidden(true)
+                // 24 pt at least; a larger glyph widens it rather than
+                // running into the title.
+                Image(systemName: icon).foregroundStyle(LAAColor.link).frame(minWidth: 24).accessibilityHidden(true)
                 Text(verbatim: title)
                 Spacer(minLength: 0)
             }

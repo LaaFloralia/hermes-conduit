@@ -89,13 +89,11 @@ struct LAAStudioCreateView: View {
                     .font(.title3).lineLimit(6...14).focused($promptFocused)
                     .disabled(draft.pending || sending || storageBlocked)
                     .accessibilityIdentifier("laa.studio.composer.field")
-                HStack(spacing: LAASpacing.x2) {
-                    ForEach(["画像", "動画", "資料", "その他"], id: \.self) { kind in
-                        Button { draft.kind = draft.kind == kind ? nil : kind } label: {
-                            Text(verbatim: kind).studioFilterChip(selected: draft.kind == kind)
-                        }.buttonStyle(.plain).disabled(draft.pending || sending || storageBlocked)
-                            .accessibilityIdentifier("laa.studio.kind.\(kind)")
-                    }
+                // One row while it fits; at large text the chips stack
+                // rather than breaking a word one character per line.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: LAASpacing.x2) { formKinds }
+                    VStack(alignment: .leading, spacing: LAASpacing.x2) { formKinds }
                 }
                 Menu {
                     Button(String("写真から選ぶ"), systemImage: "photo") { upload = true }
@@ -167,35 +165,68 @@ struct LAAStudioCreateView: View {
                     }.laaTextStyle(.secondary)
                 }
             }
-            HStack(spacing: LAASpacing.x1) {
-                Menu {
-                    Button(String("写真から選ぶ"), systemImage: "photo") { upload = true }
-                    Button(String("Driveから選ぶ"), systemImage: "folder") { referencePicker = true }
-                } label: { Image(systemName: "plus").frame(width: 36, height: 44) }
-                .accessibilityLabel(Text(verbatim: "参考を添付")).disabled(editingBlocked)
-                ForEach(["画像", "動画", "資料"], id: \.self) { kind in
-                    Button { draft.kind = draft.kind == kind ? nil : kind } label: {
-                        Text(verbatim: kind).studioFilterChip(selected: draft.kind == kind)
-                    }.buttonStyle(.plain).disabled(editingBlocked)
-                        .accessibilityIdentifier("laa.studio.kind.\(kind)")
-                        .accessibilityAddTraits(draft.kind == kind ? .isSelected : [])
+            // One row while it fits; at large text the kinds take their own
+            // row (or column) rather than breaking a word one character per line.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: LAASpacing.x1) {
+                    attachMenu
+                    composerKinds
+                    Spacer(minLength: 0)
+                    sendButton
                 }
-                Spacer(minLength: 0)
-                Button { promptFocused = false; Task { await submit() } } label: {
-                    Image(systemName: "arrow.up").font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(canSend ? .white : LAAColor.secondaryText)
-                        .frame(width: 36, height: 36)
-                        .laaComposerGlass(in: Circle(), fill: canSend ? LAAColor.link : nil)
-                        .frame(minWidth: 44, minHeight: 44)
-                        .contentShape(Rectangle())
-                }.buttonStyle(.plain).disabled(!canSend)
-                    .accessibilityLabel(Text(verbatim: initialProject == nil ? "依頼する" : "直しを頼む"))
-                    .accessibilityIdentifier("laa.studio.composer.send")
+                VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                    HStack(spacing: LAASpacing.x1) { composerKinds }
+                    HStack(spacing: LAASpacing.x1) { attachMenu; Spacer(minLength: 0); sendButton }
+                }
+                VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                    composerKinds
+                    HStack(spacing: LAASpacing.x1) { attachMenu; Spacer(minLength: 0); sendButton }
+                }
             }
             inlineFeedback
         }.padding(LAASpacing.x4)
             .frame(maxWidth: .infinity, minHeight: 112)
             .laaComposerGlass(in: RoundedRectangle(cornerRadius: 22))
+    }
+
+    private var formKinds: some View {
+        ForEach(["画像", "動画", "資料", "その他"], id: \.self) { kind in
+            Button { draft.kind = draft.kind == kind ? nil : kind } label: {
+                Text(verbatim: kind).studioFilterChip(selected: draft.kind == kind)
+            }.buttonStyle(.plain).disabled(draft.pending || sending || storageBlocked)
+                .accessibilityIdentifier("laa.studio.kind.\(kind)")
+        }
+    }
+
+    private var attachMenu: some View {
+        Menu {
+            Button(String("写真から選ぶ"), systemImage: "photo") { upload = true }
+            Button(String("Driveから選ぶ"), systemImage: "folder") { referencePicker = true }
+        } label: { Image(systemName: "plus").frame(width: 36, height: 44) }
+        .accessibilityLabel(Text(verbatim: "参考を添付")).disabled(editingBlocked)
+    }
+
+    private var composerKinds: some View {
+        ForEach(["画像", "動画", "資料"], id: \.self) { kind in
+            Button { draft.kind = draft.kind == kind ? nil : kind } label: {
+                Text(verbatim: kind).studioFilterChip(selected: draft.kind == kind)
+            }.buttonStyle(.plain).disabled(editingBlocked)
+                .accessibilityIdentifier("laa.studio.kind.\(kind)")
+                .accessibilityAddTraits(draft.kind == kind ? .isSelected : [])
+        }
+    }
+
+    private var sendButton: some View {
+        Button { promptFocused = false; Task { await submit() } } label: {
+            Image(systemName: "arrow.up").font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(canSend ? .white : LAAColor.secondaryText)
+                .frame(width: 36, height: 36)
+                .laaComposerGlass(in: Circle(), fill: canSend ? LAAColor.link : nil)
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
+        }.buttonStyle(.plain).disabled(!canSend)
+            .accessibilityLabel(Text(verbatim: initialProject == nil ? "依頼する" : "直しを頼む"))
+            .accessibilityIdentifier("laa.studio.composer.send")
     }
 
     private func reviewComposer(_ adoption: LAAStudioAdoptButton) -> some View {
@@ -316,6 +347,8 @@ extension View {
 
     func studioFilterChip(selected: Bool) -> some View {
         fontWeight(selected ? .semibold : .regular)
+            // A kind is one word: whole, never one character per line.
+            .lineLimit(1).fixedSize()
             .foregroundStyle(selected ? LAAColor.link : LAAColor.secondaryText)
             .frame(minHeight: LAASpacing.minimumTouchTarget)
             .padding(.horizontal, LAASpacing.x4)

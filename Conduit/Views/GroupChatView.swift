@@ -626,6 +626,11 @@ struct GroupRoomTitle: View {
                     .conduitGlassControl(cornerRadius: 20, tint: LAAColor.link.opacity(0.06), interactive: false)
             }
         }.buttonStyle(.plain).frame(height: 44, alignment: .top)
+            // The title hangs below the bar by a fixed depth, so it does not
+            // grow with the text: larger, it covered the transcript's first
+            // line ("今日"). Touch and hold shows the name large.
+            .dynamicTypeSize(...DynamicTypeSize.large)
+            .accessibilityShowsLargeContentViewer { Text(verbatim: name) }
             .accessibilityLabel(String("\(name)、会話の情報"))
             .accessibilityIdentifier("room.header")
             .sheet(isPresented: $showingInformation) {

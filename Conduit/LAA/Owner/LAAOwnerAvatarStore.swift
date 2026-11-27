@@ -180,7 +180,9 @@ struct LAAOwnerAvatarView: View {
                 Image(uiImage: image).resizable().scaledToFill()
             } else {
                 Text(verbatim: LAAOwnerIdentity.initial)
-                    .font(.custom("Georgia", size: size * 0.5).weight(.semibold))
+                    // Sized to the circle, not to Dynamic Type: a scaled
+                    // initial outgrew the circle and was clipped.
+                    .font(.custom("Georgia", fixedSize: size * 0.5).weight(.semibold))
                     .foregroundStyle(LAAColor.ownBubbleText)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(LAAColor.ownBubble)
