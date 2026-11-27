@@ -113,10 +113,9 @@ Tailscale Serveの実体：8443 → `/`=8081、`/auday`=8082、`/overview`=4318�
 
 ## 13. 操作性能の計測（BUS-392、2026-11-11）
 
-2026-11-24から、アプリの操作性能は本番のBridge・Hermesへ接続しないローカルfixtureで測る。手順・指標・静穏の判定・比較の規則は `docs/laa/LAB.md`「Performance」、採用済みの基準は `scripts/laa/lab/perf-baseline.json`。
+シミュレーター性能計測（`perf.py run`、互換入口 `scripts/laa/perf/run.py`）は2026-11-27に廃止し、終了コード64で止まる。既存の計測同士の比較だけ残す（`docs/laa/LAB.md`「Watch・Performance」、基準 `scripts/laa/lab/perf-baseline.json`）。
 
 ```sh
-python3 scripts/laa/lab/perf.py run --out /absolute/local/work/perf-after --runs 5
 python3 scripts/laa/lab/perf.py compare /absolute/local/work/perf-before/perf.json /absolute/local/work/perf-after/perf.json
 ```
 
