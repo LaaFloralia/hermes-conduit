@@ -7,13 +7,14 @@ import XCTest
 /// the time and the count stay inside it. Synthetic delegate agents only
 /// (`-LAA_FIXTURE_WORKING_AGENTS`); nothing reaches a Bridge.
 final class LAAWorkingControlCaptureUITests: XCTestCase {
-    private func launch(agents: Int, largestText: Bool = false) -> XCUIApplication {
+    private func launch(agents: Int, largestText: Bool = false, dark: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_V2_CHAT_FIXTURE", "typing",
                                "-LAA_CAPTURE_SURFACE", "chat", "-LAA_CAPTURE_KIND", "paper", "-LAA_FIXTURE_PUSH_CHAT",
                                "-LAA_FIXTURE_PROFILE", "laa-monet", "-LAA_FIXTURE_STAFF_THINKING",
                                "-LAA_FIXTURE_THINKING_SEED", "8", "-LAA_FIXTURE_WORKING_AGENTS", String(agents)]
             + (largestText ? ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] : [])
+            + (dark ? ["-LAA_V2_DARK"] : [])
         app.launchInLab()
         XCTAssertTrue(app.staticTexts["fixture.capture.ready"].waitForExistence(timeout: 30))
         return app
@@ -65,6 +66,15 @@ final class LAAWorkingControlCaptureUITests: XCTestCase {
             let app = launch(agents: agents)
             checkPlacement(app, agents: agents, "agents-\(agents)")
             capture(app, "working-agents-\(agents)")
+            app.terminate()
+        }
+    }
+
+    func testDarkThinkingAndFiveAgents() {
+        for agents in [0, 5] {
+            let app = launch(agents: agents, dark: true)
+            checkPlacement(app, agents: agents, "dark-agents-\(agents)")
+            capture(app, "working-dark-agents-\(agents)")
             app.terminate()
         }
     }
