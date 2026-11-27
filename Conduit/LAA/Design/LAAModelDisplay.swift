@@ -21,6 +21,9 @@ enum LAAModelDisplay {
                 .filter { !["low", "medium", "high", "xhigh", "max"].contains($0.lowercased()) }
             return (["Gemini"] + words.map { $0.prefix(1).uppercased() + $0.dropFirst() }).joined(separator: " ")
         }
+        if let match = lower.firstMatch(of: #/^swe-(\d+)(?:-(\d+))?(?:-(?:low|medium|high|xhigh|max))?$/#) {
+            return "SWE-\(match.1)" + (match.2.map { ".\($0)" } ?? "")
+        }
         if lower.hasPrefix("deepseek-v") {
             return "DeepSeek V" + model.dropFirst("deepseek-v".count).split(separator: "-").map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
         }

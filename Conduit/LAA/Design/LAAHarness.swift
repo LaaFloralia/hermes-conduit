@@ -9,7 +9,7 @@ import SwiftUI
 /// This type only names and draws them.
 struct LAAHarness: Hashable, Identifiable {
     enum Kind: String, Hashable {
-        case claudeCode, codex, pi, antigravity, dsh, dshOrchestrator, hermes, muse, dots, echo, other
+        case claudeCode, codex, pi, antigravity, devin, dsh, dshOrchestrator, hermes, muse, dots, echo, other
     }
 
     let kind: Kind
@@ -36,6 +36,7 @@ struct LAAHarness: Hashable, Identifiable {
         case .codex: "Codex"
         case .pi: "Pi"
         case .antigravity: "Antigravity"
+        case .devin: "Devin"
         case .dsh: "DSH Worker"
         case .dshOrchestrator: "DSH Orchestrator"
         case .hermes: "Hermes"
@@ -59,6 +60,8 @@ struct LAAHarness: Hashable, Identifiable {
         case "codex": .codex
         case "pi", "pi-openai-api": .pi
         case "antigravity": .antigravity
+        // D-37: the Devin CLI over ACP (SWE-2.1, SWE-2 and the models Devin hosts).
+        case "devin": .devin
         // D-33: the Orchestrator is DSH on Refuseless (uncensored), the
         // Worker DSH on OpenCode Go; the picker names each by its own id.
         case "dsh-refuseless", "dsh-orchestrator": .dshOrchestrator
@@ -148,6 +151,7 @@ struct LAAHarnessMark: View {
             case .codex where LAAModelMark.hasOpenAIMark: issued("LAAOpenAIMark", scale: 0.92)
             case .pi: issued("LAAPiMark", scale: 1.0)
             case .antigravity: issued("LAAAntigravityMark", scale: 1.0)
+            case .devin: issued("LAADevinMark", scale: 0.92)
             case .hermes: issued("LAAHermesMark", scale: 1.0)
             case .dshOrchestrator: orchestrator
             default: badge
@@ -235,7 +239,7 @@ extension LAAModelMark {
     @MainActor static func officialMenuImage(model: String?, provider: String?, dark: Bool) -> Image? {
         let face = LAAModelFace.face(model: model, provider: provider)
         switch face {
-        case .claude, .deepSeek: break
+        case .claude, .deepSeek, .devin: break
         case .gpt where hasOpenAIMark: break
         default: return nil
         }
