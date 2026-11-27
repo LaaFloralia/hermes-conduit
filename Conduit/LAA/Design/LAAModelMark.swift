@@ -14,6 +14,8 @@ enum LAAModelFace: Equatable {
     case claude
     case gpt(LAAModelFace.Body)
     case deepSeek
+    /// Cognition's own models (SWE-2.1, SWE-2), shown with the Devin mark (D-37).
+    case devin
     case gemini
     case grok
     case unknown
@@ -24,6 +26,7 @@ enum LAAModelFace: Equatable {
         let raw = (model ?? "").lowercased()
         let provider = (provider ?? "").lowercased()
         if raw.contains("deepseek") || provider == "dsh" { return .deepSeek }
+        if raw.hasPrefix("swe-") || raw.contains("\"swe-") { return .devin }
         if raw.contains("gemini") || provider == "gemini" || provider == "antigravity" { return .gemini }
         if raw.contains("grok") || provider == "grok" { return .grok }
         if raw.contains("claude") || ["opus", "sonnet", "haiku", "mythos", "fable"].contains(where: raw.contains)
@@ -46,6 +49,7 @@ enum LAAModelFace: Equatable {
         case .claude: "Claude"
         case .gpt: "GPT"
         case .deepSeek: "DeepSeek"
+        case .devin: "Devin"
         case .gemini: "Gemini"
         case .grok: "Grok"
         case .unknown: nil
@@ -69,6 +73,7 @@ struct LAAModelMark: View {
             case .claude: claude
             case .gpt(let body): gpt(body)
             case .deepSeek: deepSeek
+            case .devin: devin
             case .gemini: symbol("sparkle", ink: LAAModelInk.gemini, disc: LAAModelInk.geminiDisc, scale: 0.56)
             case .grok: grok
             case .unknown: LAAAgentPlaceholderAvatar(size: size)
@@ -132,6 +137,18 @@ struct LAAModelMark: View {
             .frame(width: size, height: size)
             .background(LAAModelInk.deepSeekDisc, in: Circle())
             .overlay { Circle().strokeBorder(LAAModelInk.deepSeek.opacity(0.16), lineWidth: 0.5) }
+    }
+
+    /// Devin: Cognition's Devin symbol as issued (`LAADevinMark`, the brand
+    /// kit's dark mark with its light variant in dark appearance) on the
+    /// neutral disc.
+    private var devin: some View {
+        Image("LAADevinMark")
+            .renderingMode(.original)
+            .resizable().scaledToFit()
+            .frame(width: size * 0.56, height: size * 0.56)
+            .frame(width: size, height: size)
+            .background(LAAColor.subtleSurface, in: Circle())
     }
 
     private var grok: some View {
