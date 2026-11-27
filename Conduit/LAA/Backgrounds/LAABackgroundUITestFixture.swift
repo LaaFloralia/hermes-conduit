@@ -150,6 +150,10 @@ final class LAABackgroundFixture: ObservableObject {
                 app.messages.removeLast()
                 app.messages.append(ChatMessage(id: "reason", role: .reasoning, content: "予定を確認しています。", timestamp: String(now)))
                 app.handleStreamEvent(.sessionBusy(sessionId: conversationID, busy: true))
+                // The working capsule with agents: "-LAA_FIXTURE_WORKING_AGENTS <n>" (D-21 C).
+                for agent in LAAWorkingCaptureFixture.agents(args) {
+                    app.handleStreamEvent(.delegateAgent(sessionId: conversationID, activity: agent))
+                }
             }
         }
         // Two waits in a row, for the employee's thinking word
@@ -543,6 +547,29 @@ private final class LAAChatModelFixture {
             },
             setReasoning: { _, _ in },
             setSpeed: { _, _ in })
+    }
+}
+/// Delegate agents for photographing the working capsule's large size:
+/// `-LAA_FIXTURE_WORKING_AGENTS <n>` with the `typing` chat fixture. Names
+/// carry the `子｜` prefix that the screen drops.
+enum LAAWorkingCaptureFixture {
+    static func agents(_ args: [String]) -> [DelegateAgentActivity] {
+        guard let raw = args.firstIndex(of: "-LAA_FIXTURE_WORKING_AGENTS").flatMap({ args.indices.contains($0 + 1) ? args[$0 + 1] : nil }),
+              let count = Int(raw), count > 0 else { return [] }
+        let rows: [(String, String, DelegateAgentActivity.Status)] = [
+            ("子｜Hortensia｜Session下部の表示を直す", "claude-opus-5-5", .running),
+            ("子｜Read the build log and report the failures", "gpt-6.2-sol", .running),
+            ("子｜文言の置換表をまとめる", "gemini-4-neon", .queued),
+            ("子｜Check the tab bar glass", "gpt-6.2-sol", .failed),
+            ("子｜Usage storage text sizes", "deepseek-v4.1-flash", .queued),
+            ("子｜Model picker sections", "claude-opus-5-5", .running),
+        ]
+        return (0..<count).map { index in
+            let row = rows[index % rows.count]
+            return DelegateAgentActivity(id: "fixture-agent-\(index)", goal: row.0, model: row.1, status: row.2,
+                                         taskCount: count, taskIndex: index, currentTool: row.2 == .running ? "read_file" : nil,
+                                         summary: nil, stream: [], hasGatewayID: true, sessionId: "fixture", updatedAt: Date())
+        }
     }
 }
 #endif

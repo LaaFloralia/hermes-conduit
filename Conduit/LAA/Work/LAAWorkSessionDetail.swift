@@ -79,6 +79,8 @@ private struct LAAWorkPositionedScroll<Content: View>: View {
 struct LAAWorkSessionDetail: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     @Environment(\.laaDesktop) private var laaDesktop
+    /// The working capsule's height follows the text size (the transcript's end room).
+    @Environment(\.dynamicTypeSize) private var typeSize
     @ObservedObject var drafts: ComposerDraftStore
     let id: String
     let projects: [LAAWorkProject]
@@ -347,7 +349,9 @@ struct LAAWorkSessionDetail: View {
             // The end of the page, outside the lazy transcript. New arrivals
             // follow only while this sentinel is on screen.
             // Keeps the working pill's room free while the turn runs.
-            Color.clear.frame(height: session.map(canStop) == true ? LAAWorkingControlMetrics.coverage : 1).id("bottom-end")
+            Color.clear.frame(height: session.flatMap(workingStatus).map {
+                LAAWorkingControlMetrics.coverage(children: $0.children.count, typeSize: typeSize)
+            } ?? 1).id("bottom-end")
                 .onAppear {
                     followsConversation = true
                     userDragged = false

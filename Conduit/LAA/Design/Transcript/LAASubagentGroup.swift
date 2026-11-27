@@ -44,7 +44,7 @@ struct LAASubagentRow: View {
                 HStack(spacing: 8 * Self.scale) {
                     Text(verbatim: child.shape).foregroundStyle(child.color)
                         .font(.system(size: 12 * Self.scale))
-                    Text(verbatim: child.title)
+                    Text(verbatim: child.displayTitle)
                         .font(.system(size: 13 * Self.scale, weight: .medium))
                         .foregroundStyle(LAAColor.text)
                         .lineLimit(1)
@@ -91,7 +91,7 @@ struct LAASubagentRow: View {
         .buttonStyle(.plain)
         .disabled(!child.resolvable)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(verbatim: [child.title, child.word, child.meta].compactMap { $0 }.joined(separator: "、")))
+        .accessibilityLabel(Text(verbatim: [child.displayTitle, child.word, child.meta].compactMap { $0 }.joined(separator: "、")))
         .accessibilityAddTraits(child.resolvable ? .isLink : [])
         .accessibilityIdentifier(identifier)
     }
