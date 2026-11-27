@@ -303,14 +303,20 @@ final class LAAWorkTests: XCTestCase {
     func testDeviceScopedSessionCacheRestoresBeforeAnyNetworkRead() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }
-        let url = folder.appendingPathComponent("cache.json")
+        let url = folder.appendingPathComponent("drafts.json")
+        let directory = folder.appendingPathComponent("session-cache-v2")
         let row = try session("p", name: "保存済み", updated: "1")
         let store = ComposerDraftStore(capacity: .max, fileURL: url)
-        LAAWorkSessionCache.save([row], store: store, device: "a", target: "list")
+        let cache = LAAWorkSessionCacheStore(directory: directory)
+        cache.save([row], store: store, device: "a", target: "list")
+        cache.flush()
+        // A relaunch: a fresh cache and store read the snapshot from its own file.
         let restored = ComposerDraftStore(capacity: .max, fileURL: url)
-        let rows = LAAWorkSessionCache.read([LAAWorkSession].self, store: restored, device: "a", target: "list")
+        let relaunched = LAAWorkSessionCacheStore(directory: directory)
+        let rows = relaunched.read([LAAWorkSession].self, store: restored, device: "a", target: "list")
         XCTAssertEqual(rows?.first?.name, "保存済み")
-        XCTAssertNil(LAAWorkSessionCache.read([LAAWorkSession].self, store: restored, device: "b", target: "list"))
+        XCTAssertNil(relaunched.read([LAAWorkSession].self, store: restored, device: "b", target: "list"))
+        XCTAssertTrue(restored.keys.isEmpty, "snapshots are not drafts")
     }
 
     func testNotificationLinksPreserveCalendarIdentityAndValidateSessionRoute() throws {
