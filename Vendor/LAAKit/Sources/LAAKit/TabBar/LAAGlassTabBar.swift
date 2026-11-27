@@ -31,6 +31,8 @@ public struct LAAGlassTab<ID: Hashable>: Identifiable {
         self.id = id; self.title = title; self.icon = nil; self.image = image; self.selectedImage = selectedImage
         self.badge = badge
     }
+
+    func artwork(selected: Bool) -> Image? { selected ? selectedImage : image }
 }
 
 /// What the right capsule, the card header and the sidebar entry show: the owner's own name and picture
@@ -510,15 +512,15 @@ public struct LAAGlassTabBar<ID: Hashable, Card: View>: View {
     }
 
     @ViewBuilder
-    private func tabIcon(_ tab: LAAGlassTab<ID>, selected: Bool) -> some View {
+    private func tabIcon(_ tab: LAAGlassTab<ID>, selected: Bool, size: Double = LAATabBarToken.icon) -> some View {
         Group {
             if let icon = tab.icon {
-                LAAIconImage(icon, size: LAATabBarToken.icon, selected: selected)
-            } else if let image = selected ? tab.selectedImage : tab.image {
+                LAAIconImage(icon, size: size, selected: selected)
+            } else if let image = tab.artwork(selected: selected) {
                 // Drawn as a mask: an Image here (SF Symbol or UIImage) keeps its own spoken
                 // description ("Plain Text Document") beside the tab's name even when hidden.
                 Rectangle().fill(.foreground)
-                    .frame(width: LAATabBarToken.icon, height: LAATabBarToken.icon)
+                    .frame(width: size, height: size)
                     .mask { image.renderingMode(.template).resizable().scaledToFit() }
                     .accessibilityHidden(true)
             }
@@ -539,42 +541,46 @@ public struct LAAGlassTabBar<ID: Hashable, Card: View>: View {
     }
 
     private var appButton: some View {
-        Button {
-            isExpanded = true
-        } label: {
-            appIcon(size: LAATabBarToken.appImage)
-                .frame(width: LAATabBarToken.appCapsule, height: LAATabBarToken.appCapsule)
-                .contentShape(Circle())
+        roundButton(id: "app", slotWidth: LAATabBarToken.appCapsule, action: { isExpanded = true }) {
+            ownerAvatar(size: LAAPlatform.current.iconControl.icon)
         }
-        .buttonStyle(.plain)
-        .modifier(MorphGlass(id: "app", space: space, shape: Circle(), interactive: true,
-                             reduceMotion: reduceMotion, reduceTransparency: reduceTransparency))
         .accessibilityLabel(Text(app.settingsAccessibilityLabel()))
         .accessibilityIdentifier("laa.tabbar.app")
     }
 
-    /// The owner's picture (or initial), never the app's icon.
-    private func appIcon(size: Double) -> some View {
+    private func ownerAvatar(size: Double) -> some View {
         LAAProfileImage(profile: app.displayedProfile(), initial: app.displayedInitial(), size: size)
-            .modifier(Matched(id: "appIcon", space: space, enabled: !reduceMotion))
             .accessibilityHidden(true)
+    }
+
+    /// The glyph, glass, and transparent hit frame share one center. The tab-bar slot
+    /// keeps its layout size; only the glass morphs, not the profile artwork.
+    private func roundButton<Label: View>(id: String, slotWidth: Double, action: @escaping () -> Void,
+                                          @ViewBuilder label: () -> Label) -> some View {
+        let platform = LAAPlatform.current
+        let visual = platform.iconControl.visual
+        let hit = platform.controlHitArea
+        return Button(action: action) {
+            Color.clear.frame(width: visual, height: visual)
+                .overlay(alignment: .center, content: label)
+                .modifier(MorphGlass(id: id, space: space, shape: Circle(), interactive: true,
+                                     reduceMotion: reduceMotion, reduceTransparency: reduceTransparency))
+                .frame(width: hit, height: hit)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .frame(width: slotWidth, height: LAATabBarToken.height, alignment: .center)
     }
 
     // MARK: Expanded
 
     private var currentTab: some View {
-        Button {
-            isExpanded = false
-        } label: {
-            Group {
-                if let current { tabIcon(current, selected: true).modifier(Matched(id: "current", space: space, enabled: !reduceMotion)) }
+        roundButton(id: "tabs", slotWidth: LAATabBarToken.height, action: { isExpanded = false }) {
+            if let current {
+                tabIcon(current, selected: true, size: LAAPlatform.current.iconControl.icon)
+                    .modifier(Matched(id: "current", space: space, enabled: !reduceMotion))
             }
-            .frame(width: LAATabBarToken.height, height: LAATabBarToken.height)
-            .contentShape(Circle())
         }
-        .buttonStyle(.plain)
-        .modifier(MorphGlass(id: "tabs", space: space, shape: Circle(), interactive: true,
-                             reduceMotion: reduceMotion, reduceTransparency: reduceTransparency))
         .accessibilityLabel(Text("Close"))
         .accessibilityIdentifier("laa.tabbar.close")
     }
@@ -621,20 +627,8 @@ public struct LAAGlassTabBar<ID: Hashable, Card: View>: View {
 
     private var header: some View {
         HStack(spacing: LAASpace.s12) {
-            appIcon(size: LAATabBarToken.Card.headerIcon)
-            VStack(alignment: .leading, spacing: 0) {
-                Text(app.displayedOwnerName())
-                    .laaFont(LAAPlatform.current.canvas.heading, weight: .semibold)
-                    .foregroundStyle(palette.text)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.5) // accessibility sizes: the name shrinks before it truncates
-                if !app.version.isEmpty {
-                    Text(app.version)
-                        .font(.system(size: LAAPlatform.current.canvas.label).monospacedDigit())
-                        .foregroundStyle(palette.textMuted)
-                        .lineLimit(1)
-                }
-            }
+            ownerAvatar(size: LAATabBarToken.Card.headerIcon)
+            LAASettingsCardOwnerHeading(app: app)
             Spacer(minLength: 0)
         }
         .padding(.bottom, LAASpace.s8)
@@ -655,7 +649,7 @@ struct LAACardScroll<Content: View>: View {
     @State private var contentHeight: Double = 0
 
     var body: some View {
-        let cap = max(maxHeight, LAATabBarToken.Card.row * 2)
+        let cap = max(maxHeight, LAAPlatform.current.canvas.rowMinHeight * 2)
         Group {
             if contentHeight > cap {
                 ScrollView(.vertical) { measured }
@@ -722,18 +716,21 @@ struct LAAProfileImage: View {
     @Environment(\.laaPalette) private var palette
 
     var body: some View {
-        Group {
-            if let profile {
-                profile.resizable().scaledToFill()
-            } else {
-                Text(verbatim: initial)
-                    .laaFont(LAAPlatform.current.canvas.heading, weight: .semibold)
-                    .foregroundStyle(palette.text)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(palette.wash)
+        let canvas = LAAPlatform.current.canvas
+        let initialSize = size <= LAAPlatform.current.iconControl.icon ? canvas.small : canvas.heading
+        return (profile == nil ? palette.wash : Color.clear)
+            .frame(width: size, height: size)
+            .overlay(alignment: .center) {
+                if let profile {
+                    profile.resizable().scaledToFill()
+                } else {
+                    Text(verbatim: initial)
+                        .laaFont(initialSize, weight: .semibold)
+                        .foregroundStyle(palette.text)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                }
             }
-        }
-        .frame(width: size, height: size)
-        .clipShape(Circle())
+            .clipShape(Circle())
     }
 }

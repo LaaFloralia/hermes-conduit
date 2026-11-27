@@ -1,4 +1,5 @@
 #if LAA_BUILD
+import LAAKit
 import SwiftUI
 
 /// Who said a message, the same way in Chat, groups and Work: the speaker's
@@ -40,40 +41,6 @@ enum LAASender {
     }
 }
 
-/// The speaker's name above a bubble, in the group chat's name style.
-struct LAASenderName: View {
-    let text: String
-    var body: some View {
-        Text(verbatim: text)
-            .laaTextStyle(.secondary)
-            .foregroundStyle(LAAColor.secondaryText)
-            .lineLimit(1)
-            .laaPhotoSupportingText()
-    }
-}
-
-/// "Administration", beside the owner's name only.
-struct LAAAdministrationBadge: View {
-    var body: some View { LAARoleBadge(role: LAAOwnerIdentity.role) }
-}
-
-/// The owner's name and role, read by VoiceOver as "LAA、Administration".
-struct LAAOwnerHeader: View {
-    var badgeFirst = false
-
-    var body: some View {
-        HStack(spacing: badgeFirst ? 8 : 6) {
-            if badgeFirst { LAAAdministrationBadge() }
-            LAASenderName(text: LAAOwnerIdentity.name)
-            if !badgeFirst { LAAAdministrationBadge() }
-        }
-        // One phrase in place of the two texts, so the role is never a
-        // second element of its own.
-        .accessibilityRepresentation { Text(verbatim: LAAOwnerIdentity.spokenHeader) }
-        .accessibilityIdentifier("chat.sender.owner")
-    }
-}
-
 /// An owner's message: the header above, the picture beside it on the
 /// trailing side. `continues` drops both for the next message in a run, and
 /// keeps the bubble's edge where the first one's was.
@@ -88,7 +55,7 @@ struct LAAOwnerMessageRow<Content: View>: View {
             if !continues {
                 HStack(spacing: 8) {
                     LAAMessageTime(timestamp: timestamp)
-                    LAAOwnerHeader(badgeFirst: true)
+                    LAAOwnerHeader(name: LAAOwnerIdentity.name, badgeFirst: true)
                     LAAOwnerAvatarView().frame(width: 30, height: 30).accessibilityHidden(true)
                 }
             }
