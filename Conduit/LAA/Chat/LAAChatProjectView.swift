@@ -55,23 +55,8 @@ struct LAAChatProjectDetail: View {
 
     private func header(_ project: LAAChatProject) -> some View {
         HStack(spacing: LAASpacing.x2) {
-            LAAModelEffortPickers(model: project.model.rawValue, provider: project.model.provider, effort: project.model.effort,
-                                  name: project.model.name, identifier: "laa.chatProject") {
-                ForEach(LAAChatProject.Model.choices, id: \.self) { model in
-                    Button {
-                        do { try store.selectModel(model, in: id); issue = nil }
-                        catch { issue = .init(.localStorage) }
-                    } label: {
-                        if project.model == model { Label(model.name, systemImage: "checkmark") }
-                        else { Text(verbatim: model.name) }
-                    }
-                    .disabled(project.model == model)
-                }
-            } effortMenu: {
-                // The Hermes Projects contract allows one effort per route.
-                LAAEffortMenu.Row(effort: project.model.effort, selected: true) {}.disabled(true)
-            }
-            .disabled(running || project.pending != nil)
+            modelPicker(for: project)
+                .disabled(running || project.pending != nil)
             Spacer(minLength: 0)
             Menu {
                 Button(LAACopy.ChatProjects.edit) { showEdit = true }
@@ -87,6 +72,25 @@ struct LAAChatProjectDetail: View {
         }
         .padding(.horizontal, LAASpacing.x4)
         .padding(.bottom, LAASpacing.x2)
+    }
+
+    private func modelPicker(for project: LAAChatProject) -> some View {
+        LAAModelEffortPickers(model: project.model.rawValue, provider: project.model.provider, effort: project.model.effort,
+                              name: project.model.name, identifier: "laa.chatProject") {
+            ForEach(LAAChatProject.Model.choices, id: \.self) { model in
+                Button {
+                    do { try store.selectModel(model, in: id); issue = nil }
+                    catch { issue = .init(.localStorage) }
+                } label: {
+                    if project.model == model { Label(model.name, systemImage: "checkmark") }
+                    else { Text(verbatim: model.name) }
+                }
+                .disabled(project.model == model)
+            }
+        } effortMenu: {
+            // The Hermes Projects contract allows one effort per route.
+            LAAEffortMenu.Row(effort: project.model.effort, selected: true) {}.disabled(true)
+        }
     }
 
     private func transcript(_ project: LAAChatProject) -> some View {
