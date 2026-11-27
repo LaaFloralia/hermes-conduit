@@ -15,11 +15,19 @@ export function text(value, field, max, { optional = false } = {}) {
 }
 export const requestKey = (value) => text(value, 'requestId', 200);
 
+// Owner-only kinds (2026-11-28 owner: 「ブランドの好み以外ばいいです」): the brand
+// preference (final choice of a name or look) and the owner's own physical
+// operation or authentication. Every other kind, even when filed as
+// 【必ず社長：お金】 etc., is answered by Monet with its recommended option.
+const OWNER_ONLY_KIND = /ブランド|好み|見た目|物理|本人の?操作|本人の?認証|^本人$|brand|preference|aesthetic|look|logo|physical|authenticat|passkey|biometric|identity|owner'?s?(operation|action)/iu;
+export const ownerOnlyKind = (kind) => OWNER_ONLY_KIND.test(String(kind).normalize('NFKC').replace(/[\s・、,／/]/gu, ''));
 export function decisionCategory(impact) {
   const kind = typeof impact === 'string' && /^【必ず社長：([^【】\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+)】/u.exec(impact)?.[1].trim();
-  return kind ? { category: 'owner', ownerKind: kind }
-    : { category: typeof impact === 'string' && impact.startsWith('【任せられる】') ? 'delegable' : 'unmarked', ownerKind: null };
+  if (kind) return { category: ownerOnlyKind(kind) ? 'owner' : 'delegable', ownerKind: kind };
+  return { category: typeof impact === 'string' && impact.startsWith('【任せられる】') ? 'delegable' : 'unmarked', ownerKind: null };
 }
+// Records written before 2026-11-28 stored every 【必ず社長：…】 kind as owner.
+const legacyCategory = (impact) => { const c = decisionCategory(impact); return c.ownerKind ? { ...c, category: 'owner' } : c; };
 
 const withCategory = (r) => Object.assign(r, decisionCategory(r.impact));
 function proxyReason(value) {
@@ -80,7 +88,8 @@ export function createDecisionStore({ dir, now = () => Date.now() }) {
       if (Object.entries(normalized).some(([k, v]) => JSON.stringify(r[k]) !== JSON.stringify(v))) return false;
       if (r.images !== undefined && !validDecisionImages(r.images, r.options.length)) return false;
       const { category, ownerKind } = decisionCategory(r.impact);
-      if ((r.category !== undefined || r.ownerKind !== undefined) && (r.category !== category || r.ownerKind !== ownerKind)) return false;
+      if ((r.category !== undefined || r.ownerKind !== undefined) && r.ownerKind !== ownerKind) return false;
+      if (r.category !== undefined && r.category !== category && r.category !== legacyCategory(r.impact).category) return false;
       if (r.status !== 'answered') return r.answer === null && r.delivery === null && r.monetAnswer === undefined && r.overturned === undefined;
       const a = r.answer, d = r.delivery;
       if (r.overturned !== undefined && (r.overturned !== true || !validAnswer(r, r.monetAnswer) || r.monetAnswer.answeredBy !== 'monet' || a?.answeredBy !== 'owner')) return false;
@@ -192,13 +201,18 @@ export function createDecisionStore({ dir, now = () => Date.now() }) {
     },
     add(body, imageInputs = []) {
       if (decisionCategory(body?.impact).category === 'unmarked') throw new BridgeError(428, 'decision_category_required',
-        '影響の先頭に【必ず社長：種類】または【任せられる】を付けてください。社長への通知は【必ず社長】だけです。');
+        '影響の先頭に【必ず社長：種類】または【任せられる】を付けてください。社長だけが答えるのはブランドの好み・本人の操作／本人認証で、ほかはMonetが回答します。');
       const value = withCategory(input(body));
       const staged = access(() => images.stage(imageInputs, optionOrder(body.options)));
       try {
         return mutate((s) => {
           const existing = s.records.find((r) => r.requestId === value.requestId && r.source.paseoAgentId === value.source.paseoAgentId);
           if (existing) return { decision: existing, replayed: true };
+          // The same conversation asking again about the same subject replaces
+          // its open ask instead of adding a second board item (2026-11-28).
+          const superseded = value.source.paseoAgentId ? s.records.filter((r) => r.status === 'open'
+            && r.source.paseoAgentId === value.source.paseoAgentId && r.title === value.title) : [];
+          for (const r of superseded) { r.status = 'withdrawn'; r.updatedAt = stamp(); }
           const r = { id: `dec_${randomBytes(8).toString('hex')}`, ref: null, status: 'open', ...value, createdAt: stamp(), updatedAt: stamp(), answer: null, delivery: null };
           if (staged) {
             // Publish before the JSON write under the same lock. If that write
@@ -207,7 +221,7 @@ export function createDecisionStore({ dir, now = () => Date.now() }) {
             r.images = staged.images;
           }
           s.records.push(r);
-          return { decision: r, replayed: false };
+          return { decision: r, replayed: false, ...(superseded.length ? { superseded: superseded.map((x) => x.id) } : {}) };
         });
       } finally { if (staged) access(staged.cleanup); }
     },

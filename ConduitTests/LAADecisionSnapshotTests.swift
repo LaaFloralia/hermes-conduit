@@ -4,8 +4,8 @@ import UIKit
 import XCTest
 @testable import Conduit
 
-/// 440 × 956 pt light and dark captures of the decision board: the list, a
-/// detail, the empty board, an answer that did not arrive, an older Mac and
+/// 440 × 956 pt light and dark captures of the decision board: the list
+/// (with the closed 回答済み of the last day), a detail, the empty board, an answer that did not arrive, an older Mac and
 /// the short "sent" moment. Attachments are exported from the result bundle.
 @MainActor
 final class LAADecisionSnapshotTests: XCTestCase {
@@ -29,7 +29,19 @@ final class LAADecisionSnapshotTests: XCTestCase {
             undelivered,
             LAADecision(kind: .session, id: "ses_2222222222222222", title: "LAAアプリ｜通知の文面", summary: "どちらの文面にしますか？",
                         createdAt: iso(-30), sessionId: "ses_2222222222222222"),
+            // Settled within the day: under the closed 回答済み.
+            settled("dec_0000000000000a04", title: "検証の進め方を決める", label: "差分だけ検証する", by: "monet",
+                    reason: "影響が小さく、戻せる範囲です", hours: -2),
+            settled("dec_0000000000000a05", title: "保存先を決める", label: "Driveに保存", by: "owner", reason: nil, hours: -6),
         ]
+    }
+
+    private func settled(_ id: String, title: String, label: String, by: String, reason: String?, hours: Double) -> LAADecision {
+        LAADecision(id: id, status: "answered", title: title, summary: "",
+                    options: [.init(label: label, recommended: true)], createdAt: iso(hours - 1),
+                    answer: .init(optionIndex: 0, label: label, note: nil, answeredAt: iso(hours), answeredBy: by, reason: reason),
+                    delivery: .init(state: "delivered", attempts: 1, deliveredAt: iso(hours), error: nil),
+                    category: by == "monet" ? "delegable" : "owner")
     }
 
     private var undelivered: LAADecision {

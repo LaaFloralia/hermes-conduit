@@ -160,13 +160,19 @@ struct LAADecisionDetailView: View {
     /// just-sent answer on the phone; an answered record stays put.
     @ViewBuilder private func answeredLine(_ answer: LAADecision.Answer) -> some View {
         if answer.answeredBy == "monet" {
-            Text(verbatim: "Monetが代理回答").laaTextStyle(.secondary)
+            Text(verbatim: LAADecisionSettled.monetMark).laaTextStyle(.secondary)
+                .foregroundStyle(LAAColor.secondaryText)
                 .accessibilityIdentifier("work.decision.monet-answer")
         } else if item.deliveryFailed || item.delivery?.state == "pending" {
             Text(verbatim: "回答は保存済みです")
                 .laaTextStyle(.secondary)
                 .accessibilityIdentifier("work.decision.recorded")
         } else {
+            if item.overturned, stored == nil {
+                Text(verbatim: LAADecisionSettled.overturnedMark).laaTextStyle(.secondary)
+                    .foregroundStyle(LAAColor.secondaryText)
+                    .accessibilityIdentifier("work.decision.overturned")
+            }
             let finish: (() -> Void)? = stored != nil && !laaDesktop ? { onFinished(false) } : nil
             LAADecisionCelebration(stored: stored == true || item.delivery?.state == "stored",
                                    answeredAt: LAAWorkFreshness.date(answer.answeredAt),
@@ -522,7 +528,10 @@ struct LAADecisionDetailView: View {
                     deadline: item.deadline, source: item.source, sourceRef: item.sourceRef, createdAt: item.createdAt,
                     answer: .init(optionIndex: optionIndex, label: label, note: note,
                                   answeredAt: ISO8601DateFormatter().string(from: Date())),
-                    delivery: item.delivery, sessionId: item.sessionId, category: item.category, images: item.images)
+                    delivery: item.delivery, sessionId: item.sessionId, category: item.category, images: item.images,
+                    // Choosing again over Monet's answer is an overturn.
+                    overturned: item.answeredByMonet || item.overturned,
+                    monetAnswer: item.answeredByMonet ? item.answer : item.monetAnswer)
     }
 }
 #endif

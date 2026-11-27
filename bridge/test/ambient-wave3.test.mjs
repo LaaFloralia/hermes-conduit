@@ -102,7 +102,7 @@ test('C-2/C-3: live verified Monet report, two parent finishes, one child finish
   assert.equal(delivered.length, priorEvents);
   assert.equal(observed.filter((k) => k === 'session.finished').length, 2);
   assert.equal((await current()).body.data.requirementSummary.rate, 0);
-  const open = await addDecision(h, 'same-project', ['--agent', 'a1', '--impact', '【必ず社長：お金】支払いが発生します']);
+  const open = await addDecision(h, 'same-project', ['--agent', 'a1', '--impact', '【必ず社長：ブランドの好み】ロゴを選びます']);
   assert.equal(open.status, 0);
   for (const [i, id] of ids.entries()) {
     const updated = await update(id, { status: 'completed', verifiedBy: 'monet', note: '実行結果を確認', evidence: 'raw fixture evidence\nsecond line' });

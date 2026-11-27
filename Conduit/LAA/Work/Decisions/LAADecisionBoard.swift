@@ -20,7 +20,9 @@ import UserNotifications
     }
 
     @Published private(set) var items: [LAADecision] = []
-    @Published private(set) var monetAnswers: [LAADecision] = []
+    /// Settled answers of the last 24 hours (Monet's and the owner's), for
+    /// the closed 回答済み section. Failed and pending deliveries stay in `items`.
+    @Published private(set) var settled: [LAADecision] = []
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var loading = false
     /// The hub picks the board once, the first time it has something waiting.
@@ -57,12 +59,12 @@ import UserNotifications
 
     func reset() {
         loadsStarted += 1 // Discard a read initiated for the previous pairing.
-        items = []; monetAnswers = []; records = [:]; phase = .idle; loadedAt = nil; answeredHere = []
+        items = []; settled = []; records = [:]; phase = .idle; loadedAt = nil; answeredHere = []
     }
 
     func restoreIfNeeded(_ cached: [LAADecision]) {
         guard phase == .idle, items.isEmpty else { return }
-        items = LAADecisionOrder.sorted(cached)
+        items = LAADecisionOrder.sorted(cached.filter { !$0.isSettled })
     }
 
     /// The hub's first read: true once, when the board has something waiting
@@ -89,11 +91,7 @@ import UserNotifications
         do {
             let page: LAADecisionPage = try await bridge.read("/v1/decisions")
             guard !Task.isCancelled, start == loadsStarted else { return }
-            // Monet's stage-3 answers stay listed apart until their delivery is gone.
-            monetAnswers = page.items.filter(\.answeredByMonet)
-            let fresh = Self.visible(page.items.filter { !$0.answeredByMonet }, answeredHere: answeredHere)
-            for item in fresh { records[item.id] = item }
-            items = LAADecisionOrder.sorted(fresh)
+            apply(page.items)
             phase = .loaded
             loadedAt = Date()
             if start > lastLoadStart { lastLoadStart = start }
@@ -108,19 +106,48 @@ import UserNotifications
         }
     }
 
+    /// One read's rows: settled answers of the last day go to `settled`, the
+    /// rest (open, failed or pending) stay on the board.
+    private func apply(_ page: [LAADecision], now: Date = Date()) {
+        let split = Self.split(page, answeredHere: answeredHere, now: now)
+        // Every settled record is known, even past the section's 24 hours, so a
+        // stale card can never answer it again.
+        let known = page.filter { $0.isSettled && !($0.canOverturn && answeredHere.contains($0.id)) }
+        for item in split.board + known { records[item.id] = item }
+        items = LAADecisionOrder.sorted(split.board)
+        settled = split.settled
+    }
+
+    /// The board's rows and the 回答済み rows of one read. A Monet answer this
+    /// device has since replaced is a read that crossed the overturn: it is
+    /// left out rather than shown over the owner's choice.
+    static func split(_ page: [LAADecision], answeredHere: Set<String>,
+                      now: Date = Date()) -> (board: [LAADecision], settled: [LAADecision]) {
+        let board = visible(page.filter { !$0.isSettled }, answeredHere: answeredHere)
+        let settled = page.filter {
+            $0.isSettled && $0.answered(now: now) && !($0.canOverturn && answeredHere.contains($0.id))
+        }
+        return (board, LAADecisionSettled.rows(board: settled, local: [], linkedOnly: [], onBoard: [], now: now))
+    }
+
+    /// An answer this device settled: listed under 回答済み at once, ahead of
+    /// the next read.
+    /// A record that is not settled (a failed or pending overturn) leaves it.
+    private func noteSettled(_ decision: LAADecision) {
+        settled.removeAll { $0.id == decision.id }
+        if decision.isSettled && decision.answered() { settled.insert(decision, at: 0) }
+    }
+
     #if DEBUG
     /// Snapshot and unit tests set a state directly.
-    func setForTesting(_ items: [LAADecision], phase: Phase = .loaded) {
-        self.items = LAADecisionOrder.sorted(items); self.phase = phase
-        for item in items { records[item.id] = item }
+    func setForTesting(_ items: [LAADecision], phase: Phase = .loaded, now: Date = Date()) {
+        apply(items, now: now); self.phase = phase
     }
 
     /// Unit tests: a board read that finished, as `load` records it.
-    func finishLoadForTesting(_ items: [LAADecision]) {
+    func finishLoadForTesting(_ items: [LAADecision], now: Date = Date()) {
         loadsStarted += 1
-        let fresh = Self.visible(items, answeredHere: answeredHere)
-        for item in fresh { records[item.id] = item }
-        self.items = LAADecisionOrder.sorted(fresh); phase = .loaded
+        apply(items, now: now); phase = .loaded
         lastLoadStart = loadsStarted
     }
 
@@ -246,8 +273,9 @@ import UserNotifications
               !Task.isCancelled, bridge.revision == revision,
               writeRevisions[id, default: 0] == writeRevision else { return nil }
         records[id] = record
-        if record.isGone { items.removeAll { $0.id == id } }
+        if record.isGone { items.removeAll { $0.id == id }; settled.removeAll { $0.id == id } }
         else if let index = items.firstIndex(where: { $0.id == id }) { items[index] = record }
+        else if let index = settled.firstIndex(where: { $0.id == id }) { settled[index] = record }
         return record
     }
 
@@ -256,8 +284,10 @@ import UserNotifications
         if (decision.answer != nil && !decision.canOverturn) || decision.isGone { board.answeredHere.insert(decision.id) }
         if decision.isGone {
             board.items.removeAll { $0.id == item.id }
+            board.settled.removeAll { $0.id == item.id }
             return .gone(LAADecisionCopy.gone(decision))
         }
+        board.noteSettled(decision)
         switch decision.delivery?.state {
         case "failed", "pending":
             // Keep the row with its new delivery state; it stays on the board.
@@ -267,7 +297,8 @@ import UserNotifications
                                      source: decision.source, sourceRef: decision.sourceRef ?? item.sourceRef,
                                      createdAt: decision.createdAt ?? item.createdAt, answer: decision.answer,
                                      delivery: decision.delivery, category: decision.category,
-                                     images: decision.images.isEmpty ? item.images : decision.images)
+                                     images: decision.images.isEmpty ? item.images : decision.images,
+                                     overturned: decision.overturned, monetAnswer: decision.monetAnswer)
             if let index = board.items.firstIndex(where: { $0.id == item.id }) { board.items[index] = merged }
             else { board.items.append(merged) }
             board.items = LAADecisionOrder.sorted(board.items)

@@ -15,6 +15,10 @@ export const DECISIONS_USAGE = `laa-bridge decide — 判断ボード
              --impact <t> [--recommended <1-based index>] [--deadline <ISO>]
              [--image <absolute path>] (repeat up to 6 times)
              [--no-other] [--agent <paseo id>] [--name <title>] --request-id <id> [--json]
+             --impact starts with 【必ず社長：ブランドの好み】 or 【必ず社長：本人の操作】 (the owner
+             answers; name/look final choice, physical operation, own authentication) or
+             【任せられる】 (Monet answers: money, contracts, deletion, publishing, stop, scope…).
+             Asking again with the same --title from the same conversation replaces the open item.
   decide status <id|ref> [--json]
   decide withdraw <id|ref> --reason <t> [--json]
   decide answer <id|ref> (--option <1-based>|--note <text>) --by monet --reason <one line> [--json]
@@ -90,7 +94,7 @@ export async function decisionsCommand(argv, flags, io = {}) {
       result = { items: (await service.list({ local: true })).items };
     }
     if (flags.json) write(`${JSON.stringify({ ok: true, ...result })}\n`);
-    else if (sub === 'add') write(`判断ボードへ登録しました（${result.decision.ref ? `${result.decision.ref} · ` : ''}${result.decision.id}）。${result.decision.category === 'owner' ? '社長' : 'Monet'}の回答はこの会話に届きます。ここで手番を終えてください。\n`);
+    else if (sub === 'add') write(`判断ボードへ登録しました（${result.decision.ref ? `${result.decision.ref} · ` : ''}${result.decision.id}）。${result.decision.category === 'owner' ? '社長' : 'Monet'}の回答はこの会話に届きます。${result.superseded?.length ? '同じ件名の前の判断を置き換えました。' : ''}ここで手番を終えてください。\n`);
     else if (sub === 'stats') for (const [key, count] of Object.entries(result)) write(`${key}: ${count}\n`);
     else if (flags['monet-log']) for (const r of result.items) write(`${r.time}  ${r.subject}  ${r.chosenOption}  ${r.reason}\n`);
     else if (result.decision) write(`${result.decision.id}  ${result.decision.status}  ${result.decision.title}\n回答: ${result.decision.answer?.label ?? '未回答'}\n配達: ${result.decision.delivery?.state ?? '未回答'}${result.decision.delivery?.waiting ? '（会話が空き次第、自動で届けます）' : ''}\n`);

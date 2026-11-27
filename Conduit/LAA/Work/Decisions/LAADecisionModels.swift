@@ -96,17 +96,21 @@ struct LAADecision: Codable, Identifiable, Equatable {
     let sessionId: String?
     /// Pictures in the record's order; missing on older records.
     let images: [Image]
+    /// The owner chose again after Monet answered (an overturn); false on older records.
+    let overturned: Bool
+    /// Monet's earlier answer, kept by the Bridge beside an overturn.
+    let monetAnswer: Answer?
 
     init(kind: Kind = .board, id: String, ref: String? = nil, status: String = "open", title: String, summary: String,
          options: [Option] = [], allowOther: Bool = true, impact: String? = nil, deadline: String? = nil,
          source: Source? = nil, sourceRef: String? = nil, createdAt: String? = nil,
          answer: Answer? = nil, delivery: Delivery? = nil, sessionId: String? = nil, category: String? = nil,
-         images: [Image] = []) {
+         images: [Image] = [], overturned: Bool = false, monetAnswer: Answer? = nil) {
         self.kind = kind; self.id = id; self.ref = ref; self.status = status; self.title = title; self.summary = summary
         self.options = options; self.allowOther = allowOther; self.impact = impact; self.deadline = deadline
         self.source = source; self.sourceRef = sourceRef; self.createdAt = createdAt
         self.answer = answer; self.delivery = delivery; self.sessionId = sessionId; self.category = category
-        self.images = images
+        self.images = images; self.overturned = overturned; self.monetAnswer = monetAnswer
     }
 
     init(from decoder: Decoder) throws {
@@ -140,6 +144,8 @@ struct LAADecision: Codable, Identifiable, Equatable {
         category = try c.decodeIfPresent(String.self, forKey: .category)
         answer = try c.decodeIfPresent(Answer.self, forKey: .answer)
         delivery = try c.decodeIfPresent(Delivery.self, forKey: .delivery)
+        overturned = (try? c.decodeIfPresent(Bool.self, forKey: .overturned)) ?? false
+        monetAnswer = try? c.decodeIfPresent(Answer.self, forKey: .monetAnswer)
         // An image's option index follows its option through the reorder
         // above; an index the record does not have makes it a general picture.
         let moved = Dictionary(uniqueKeysWithValues: order.enumerated().map { ($0.element, $0.offset) })
@@ -150,7 +156,7 @@ struct LAADecision: Codable, Identifiable, Equatable {
     }
     private enum CodingKeys: String, CodingKey {
         case kind, id, ref, status, title, summary, options, allowOther, impact, deadline, source, sourceRef
-        case createdAt, category, answer, delivery, sessionId, images
+        case createdAt, category, answer, delivery, sessionId, images, overturned, monetAnswer
     }
 
     /// General pictures, then each option's picture in option order: the
@@ -180,6 +186,21 @@ struct LAADecision: Codable, Identifiable, Equatable {
         kind == .board && category == "owner" && status == "open"
     }
 
+    /// The owner answered it (an older Bridge sends no `answeredBy`).
+    var answeredByOwner: Bool { answer != nil && (answer?.answeredBy == nil || answer?.answeredBy == "owner") }
+    /// Answered and done: nothing failed, nothing is still on its way, and the
+    /// asker is still there. Only these go under 回答済み; a failed or pending
+    /// delivery keeps its place on the board.
+    var isSettled: Bool {
+        kind == .board && answer != nil && !isGone && !deliveryFailed && delivery?.state != "pending"
+    }
+    /// The answer was recorded less than `window` ago. A record without a
+    /// readable time is not shown, since its age cannot be told.
+    func answered(within window: TimeInterval = LAADecisionSettled.window, now: Date = Date()) -> Bool {
+        guard let date = LAAWorkFreshness.date(answer?.answeredAt) else { return false }
+        return now.timeIntervalSince(date) < window
+    }
+
     /// Answered, and the Bridge delivers it by itself once the conversation is free.
     var deliveryWaiting: Bool { delivery?.state == "pending" && delivery?.waiting == true }
     /// The board's original option order is recommended-first; the answer's
@@ -195,6 +216,44 @@ struct LAADecision: Codable, Identifiable, Equatable {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let parts = [kind == .session ? ref : sourceRef, name].compactMap { $0?.isEmpty == false ? $0 : nil }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+}
+
+/// The board's 回答済み section: settled answers of the last 24 hours, closed
+/// at first on the phone and the Mac.
+enum LAADecisionSettled {
+    static let window: TimeInterval = 24 * 60 * 60
+    static let expandedByDefault = false
+    /// The same English label as the board's other section (batch3, work-good).
+    static var title: String { LAADecisionCopy.answeredSection }
+    static let monetMark = "Monetの回答"
+    static let overturnedMark = "社長が変更"
+
+    /// The Bridge's settled rows within the window, then this device's own
+    /// copies (just answered, or opened from a link) that the Bridge does not
+    /// list yet; newest answer first. A link's record stays whatever its age
+    /// while it is the one opened. Rows still on the board are left out.
+    static func rows(board: [LAADecision], local: [LAADecision], linkedOnly: Set<String>,
+                     onBoard: Set<String>, now: Date = Date()) -> [LAADecision] {
+        var seen = onBoard
+        let kept = (board + local).filter { item in
+            guard seen.insert(item.id).inserted else { return false }
+            return linkedOnly.contains(item.id) || (item.isSettled && item.answered(now: now))
+        }
+        return kept.enumerated().sorted { lhs, rhs in
+            let a = LAAWorkFreshness.date(lhs.element.answer?.answeredAt) ?? .distantPast
+            let b = LAAWorkFreshness.date(rhs.element.answer?.answeredAt) ?? .distantPast
+            if a != b { return a > b }
+            return lhs.offset < rhs.offset
+        }.map(\.element)
+    }
+
+    /// The row's quiet line: `Monetの回答 · <label>`, `社長が変更 · <label>`,
+    /// or the label alone for the owner's own answer.
+    static func mark(_ item: LAADecision) -> String? {
+        if item.answeredByMonet { return monetMark }
+        if item.overturned { return overturnedMark }
+        return nil
     }
 }
 
@@ -280,7 +339,9 @@ enum LAADecisionCopy {
         var parts = ["判断"]
         if item.kind == .board, let ref = LAAWorkRef.display(item.ref) { parts.append(ref) }
         parts.append(item.title)
+        if let mark = LAADecisionSettled.mark(item) { parts.append(mark) }
         if let answer = item.answer { parts.append("回答 \(answer.label)") }
+        if item.answeredByMonet, let reason = item.answer?.reason, !reason.isEmpty { parts.append(reason) }
         else if let label = item.recommended?.label { parts.append("推奨 \(label)") }
         if item.deliveryFailed { parts.append(notDelivered) }
         if item.deliveryWaiting { parts.append(waiting) }

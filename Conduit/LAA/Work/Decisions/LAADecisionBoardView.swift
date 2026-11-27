@@ -29,16 +29,15 @@ struct LAADecisionBoardView: View {
     @FocusState private var listFocused: Bool
     /// A picture viewer is open over the detail: Esc is the viewer's.
     @State private var viewerOpen = false
+    /// 回答済み is closed until the owner opens it, on the phone and the Mac.
+    @State private var settledExpanded = LAADecisionSettled.expandedByDefault
     #if DEBUG
     /// Snapshots draw the list without a network read.
     var loadsOnAppear = true
     #endif
 
     var body: some View {
-        VStack(spacing: 0) {
-            content
-            if !board.monetAnswers.isEmpty { monetAnswersList }
-        }
+        content
             .background(LAAColor.background)
             .tint(LAAColor.link)
             .refreshable { await board.load(bridge) }
@@ -50,7 +49,7 @@ struct LAADecisionBoardView: View {
             }
             .onChange(of: board.linkedID, initial: true) { _, _ in openLinked() }
             .onChange(of: board.items) { _, _ in openLinked() }
-            .onChange(of: rowIDs, initial: true) { _, ids in selectFirstIfNeeded(ids) }
+            .onChange(of: knownIDs, initial: true) { _, _ in selectFirstIfNeeded() }
             .onChange(of: board.lastLoadStart) { _, start in pruneAnswered(after: start) }
             .sheet(item: $selected) { item in
                 NavigationStack {
@@ -76,7 +75,7 @@ struct LAADecisionBoardView: View {
         case .idle where board.loading:
             LAALoadingDots().padding(20)
         default:
-            if openItems.isEmpty && answeredItems.isEmpty && !board.loading {
+            if openItems.isEmpty && inFlightItems.isEmpty && settledItems.isEmpty && !board.loading {
                 message(title: LAADecisionCopy.empty, identifier: "work.decisions.empty")
             } else if laaDesktop {
                 desktopBoard
@@ -86,51 +85,33 @@ struct LAADecisionBoardView: View {
         }
     }
 
-    // MARK: Monet's answers
-
-    /// Stage 3 (AI-OPERATING-MODEL 「判断の移譲」): items filed 【任せられる】 are
-    /// answered by Monet with a one-line reason. They are listed apart, read-only.
-    private var monetAnswersList: some View {
-        DisclosureGroup {
-            ScrollView {
-                VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                    ForEach(board.monetAnswers) { item in
-                        VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                            Text(verbatim: item.title).laaTextStyle(.body)
-                            if let answer = item.answer {
-                                Text(verbatim: [answer.label, answer.reason].compactMap { $0 }.joined(separator: " · "))
-                                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .accessibilityElement(children: .combine)
-                    }
-                }
-            }
-            .frame(maxHeight: 160)
-        } label: { sectionText("Monetが決めた件", count: board.monetAnswers.count) }
-        .padding(LAASpacing.x3)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(LAAColor.surface)
-        .accessibilityIdentifier("laa.decisions.monetAnswers")
-    }
-
     // MARK: Rows
 
     private var openItems: [LAADecision] { board.items.filter { $0.answer == nil } }
 
-    /// Delivered here first, then the ones the Bridge kept after a failed
-    /// delivery; both carry an answer.
-    private var answeredItems: [LAADecision] {
-        var seen = Set<String>()
-        return (answered + board.items.filter { $0.answer != nil }).filter { seen.insert($0.id).inserted }
+    /// Answers the Bridge still holds: a failed delivery with its retry, or
+    /// one on its way. They stay in view under Open, never folded away.
+    private var inFlightItems: [LAADecision] { board.items.filter { $0.answer != nil } }
+
+    /// The one 回答済み area: the Bridge's settled answers of the last day,
+    /// with this device's just-sent answers and linked records.
+    private var settledItems: [LAADecision] {
+        LAADecisionSettled.rows(board: board.settled, local: answered, linkedOnly: linkedOnly,
+                                onBoard: Set(board.items.map(\.id)))
     }
 
-    private var rowIDs: [String] { (openItems + answeredItems).map(\.id) }
+    /// The rows the arrow keys walk: a closed 回答済み is skipped.
+    private var rowIDs: [String] {
+        (openItems + inFlightItems + (settledExpanded ? settledItems : [])).map(\.id)
+    }
+
+    /// Every row that can stay selected, folded or not.
+    private var knownIDs: [String] { (openItems + inFlightItems + settledItems).map(\.id) }
 
     private var selectedItem: LAADecision? {
         guard let selectedID else { return nil }
-        return answered.first { $0.id == selectedID } ?? board.items.first { $0.id == selectedID }
+        return board.items.first { $0.id == selectedID } ?? settledItems.first { $0.id == selectedID }
+            ?? answered.first { $0.id == selectedID }
     }
 
     /// Ruled rows on the paper under English section labels, like Tasks and
@@ -148,18 +129,34 @@ struct LAADecisionBoardView: View {
                     .listRowSeparator(.hidden)
                 }
             }
-            if !openItems.isEmpty {
+            if openItems.isEmpty && inFlightItems.isEmpty {
                 Section {
-                    ForEach(openItems) { item in phoneRow(item) }
+                    Text(verbatim: LAADecisionCopy.empty)
+                        .laaTextStyle(.body).foregroundStyle(LAAColor.secondaryText)
+                        .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
+                        .listRowInsets(EdgeInsets(top: 0, leading: LAASpacing.horizontal, bottom: 0, trailing: LAASpacing.horizontal))
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .accessibilityIdentifier("work.decisions.empty")
+                }
+            }
+            if !openItems.isEmpty || !inFlightItems.isEmpty {
+                Section {
+                    ForEach(openItems + inFlightItems) { item in phoneRow(item) }
                 } header: {
                     phoneHeader(LAADecisionCopy.openSection, count: openItems.count)
                 }
             }
-            if !answeredItems.isEmpty {
+            if !settledItems.isEmpty {
                 Section {
-                    ForEach(answeredItems) { item in phoneRow(item) }
+                    if settledExpanded {
+                        ForEach(settledItems) { item in phoneRow(item) }
+                    }
                 } header: {
-                    phoneHeader(LAADecisionCopy.answeredSection, count: answeredItems.count)
+                    settledHeader
+                        .padding(.horizontal, LAASpacing.horizontal)
+                        .listRowInsets(EdgeInsets())
+                        .background(LAAColor.background)
                 }
             }
         }
@@ -219,16 +216,26 @@ struct LAADecisionBoardView: View {
                             }
                             .padding(LAASpacing.x3)
                         }
-                        if !openItems.isEmpty {
-                            sectionTitle(LAADecisionCopy.openSection, count: openItems.count)
-                            ForEach(openItems) { item in
+                        if openItems.isEmpty && inFlightItems.isEmpty {
+                            Text(verbatim: LAADecisionCopy.empty)
+                                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                                .padding(.horizontal, LAASpacing.x2 + LAASpacing.x3)
+                                .padding(.vertical, LAASpacing.x3)
+                                .accessibilityIdentifier("work.decisions.empty")
+                        } else {
+                            sectionTitle(LAADecisionCopy.openSection, count: openItems.isEmpty ? nil : openItems.count)
+                            ForEach(openItems + inFlightItems) { item in
                                 row(item, selected: selectedID == item.id)
                             }
                         }
-                        if !answeredItems.isEmpty {
-                            sectionTitle(LAADecisionCopy.answeredSection)
-                            ForEach(answeredItems) { item in
-                                row(item, selected: selectedID == item.id)
+                        if !settledItems.isEmpty {
+                            settledHeader
+                                .padding(.horizontal, LAASpacing.x2 + LAASpacing.x3)
+                                .padding(.top, LAASpacing.x3)
+                            if settledExpanded {
+                                ForEach(settledItems) { item in
+                                    row(item, selected: selectedID == item.id)
+                                }
                             }
                         }
                     }
@@ -239,6 +246,15 @@ struct LAADecisionBoardView: View {
             .focusable()
             .focused($listFocused)
             .onAppear { listFocused = true }
+            // A Mac outline's keys: → opens 回答済み, ← closes it.
+            .onKeyPress(.rightArrow) {
+                guard !settledItems.isEmpty, !settledExpanded else { return .ignored }
+                setSettled(true); return .handled
+            }
+            .onKeyPress(.leftArrow) {
+                guard settledExpanded else { return .ignored }
+                setSettled(false); return .handled
+            }
             .onKeyPress(.upArrow) { move(-1); return .handled }
             .onKeyPress(.downArrow) { move(1); return .handled }
             .onKeyPress(.return) { if selectedID == nil { selectedID = rowIDs.first }; return .handled }
@@ -275,9 +291,44 @@ struct LAADecisionBoardView: View {
             .accessibilityAddTraits(.isHeader)
     }
 
+    /// `回答済み 3` with a chevron that turns when open; the whole line toggles.
+    private var settledHeader: some View {
+        Button { setSettled(!settledExpanded) } label: {
+            HStack(spacing: LAASpacing.x2) {
+                // The phone's header as batch3 writes it (name in ink, count muted);
+                // the Mac's as its other section label.
+                Text(verbatim: LAADecisionSettled.title)
+                    .laaTextStyle(.section).fontWeight(laaDesktop ? .semibold : .regular)
+                    .foregroundStyle(laaDesktop ? LAAColor.secondaryText : LAAColor.text)
+                Text(verbatim: "\(settledItems.count)")
+                    .laaTextStyle(laaDesktop ? .section : .secondary).monospacedDigit()
+                    .foregroundStyle(LAAColor.secondaryText)
+                Spacer(minLength: LAASpacing.x2)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(LAAColor.secondaryText)
+                    .rotationEffect(.degrees(settledExpanded ? 90 : 0))
+                    .accessibilityHidden(true)
+            }
+            .frame(minHeight: LAASpacing.minimumTouchTarget)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .textCase(nil)
+        .accessibilityLabel(Text(verbatim: "\(LAADecisionSettled.title)、\(settledItems.count)件"))
+        .accessibilityValue(Text(verbatim: settledExpanded ? "Expanded" : "Collapsed"))
+        .accessibilityHint(Text(verbatim: settledExpanded ? "Collapse" : "Expand"))
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityIdentifier("work.decisions.settled")
+    }
+
+    private func setSettled(_ open: Bool) {
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { settledExpanded = open }
+    }
+
     private func row(_ item: LAADecision, selected: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
-            LAADecisionRow(item: item, meta: metaLine(item), selected: selected,
+            LAADecisionRow(item: item, meta: metaLine(item), reason: settledReason(item), selected: selected,
                            desktop: laaDesktop, open: { show(item) })
                 .contextMenu { rowMenu(item) }
                 .accessibilityElement(children: .ignore)
@@ -306,8 +357,16 @@ struct LAADecisionBoardView: View {
     /// Source and deadline, or how the answer went back; no summary of what
     /// the screen already says.
     private func metaLine(_ item: LAADecision) -> AttributedString {
+        if item.isSettled, let answer = item.answer { return Self.settledLine(item, answer: answer) }
         if let answer = item.answer { return Self.answeredLine(item, answer: answer) }
         return Self.meta(item) ?? AttributedString()
+    }
+
+    /// Monet's one-line reason under its settled answer.
+    private func settledReason(_ item: LAADecision) -> String? {
+        guard item.isSettled, item.answeredByMonet, let reason = item.answer?.reason?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !reason.isEmpty else { return nil }
+        return reason
     }
 
     private func undelivered(_ item: LAADecision) -> some View {
@@ -366,7 +425,10 @@ struct LAADecisionBoardView: View {
         if laaDesktop {
             // A record read from a link is not in the list yet; keep it so the
             // detail column has something to show.
-            if !board.items.contains(where: { $0.id == item.id }) { store(item) }
+            if !board.items.contains(where: { $0.id == item.id }) {
+                if !board.settled.contains(where: { $0.id == item.id }) { store(item) }
+                setSettled(true)
+            }
             selectedID = item.id
         } else {
             selected = item
@@ -396,8 +458,8 @@ struct LAADecisionBoardView: View {
 
     /// Drops the Answered rows a read that began after them no longer lists.
     private func pruneAnswered(after start: Int) {
-        let keep = Self.keptAnswered(answered, marks: answeredMark, linkedOnly: linkedOnly,
-                                     selectedID: selectedID, boardIDs: Set(board.items.map(\.id)), lastLoadStart: start)
+        let keep = Self.keptAnswered(answered, marks: answeredMark, linkedOnly: linkedOnly, selectedID: selectedID,
+                                     boardIDs: Set((board.items + board.settled).map(\.id)), lastLoadStart: start)
         guard keep.count != answered.count else { return }
         let kept = Set(keep.map(\.id))
         withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(duration: 0.35)) { answered = keep }
@@ -416,10 +478,12 @@ struct LAADecisionBoardView: View {
         }
     }
 
-    private func selectFirstIfNeeded(_ ids: [String]) {
+    /// A selection inside a closed 回答済み stays; a vanished one moves to the
+    /// first row the keys can reach.
+    private func selectFirstIfNeeded() {
         guard laaDesktop else { return }
-        if let selectedID, ids.contains(selectedID) { return }
-        selectedID = ids.first
+        if let selectedID, knownIDs.contains(selectedID) { return }
+        selectedID = rowIDs.first
     }
 
     private func move(_ delta: Int) {
@@ -476,7 +540,8 @@ struct LAADecisionBoardView: View {
                     answer: item.answer,
                     delivery: .init(state: "delivered", attempts: item.delivery?.attempts,
                                     deliveredAt: item.delivery?.deliveredAt, error: nil),
-                    sessionId: item.sessionId, category: item.category, images: item.images)
+                    sessionId: item.sessionId, category: item.category, images: item.images,
+                    overturned: item.overturned, monetAnswer: item.monetAnswer)
     }
 
     // MARK: Text
@@ -518,7 +583,7 @@ struct LAADecisionBoardView: View {
         }
         if answer.answeredBy == "monet" {
             if !line.characters.isEmpty { line += AttributedString(" · ") }
-            var piece = AttributedString("Monetが代理回答")
+            var piece = AttributedString(LAADecisionSettled.monetMark)
             piece.foregroundColor = LAAColor.secondaryText
             line += piece
         }
@@ -544,6 +609,21 @@ struct LAADecisionBoardView: View {
         return line
     }
 
+    /// A settled row's line: `Monetの回答 · <label>`, `社長が変更 · <label>`, or
+    /// the owner's label alone. The mark is quiet; the choice is in the ink.
+    static func settledLine(_ item: LAADecision, answer: LAADecision.Answer) -> AttributedString {
+        var line = AttributedString()
+        if let mark = LAADecisionSettled.mark(item) {
+            var piece = AttributedString(mark + " · ")
+            piece.foregroundColor = LAAColor.secondaryText
+            line += piece
+        }
+        var label = AttributedString(answer.label)
+        label.foregroundColor = LAAColor.text
+        line += label
+        return line
+    }
+
     /// `20:40` for a stamped answer, nil when the record carries no time.
     static func clock(_ stamp: String?) -> String? {
         guard let date = LAAWorkFreshness.date(stamp) else { return nil }
@@ -565,6 +645,8 @@ struct LAADecisionBoardView: View {
 private struct LAADecisionRow: View {
     let item: LAADecision
     let meta: AttributedString
+    /// Monet's reason under a settled answer.
+    var reason: String? = nil
     let selected: Bool
     let desktop: Bool
     let open: () -> Void
@@ -595,7 +677,8 @@ private struct LAADecisionRow: View {
                         }
                         if item.kind == .board { LAAWorkRefLabel(ref: item.ref) }
                         Text(verbatim: item.title)
-                            .laaTextStyle(.body).fontWeight(.semibold)
+                            // A settled answer recedes: the title in the regular weight.
+                            .laaTextStyle(.body).fontWeight(item.isSettled ? .regular : .semibold)
                             .foregroundStyle(selected ? LAAColor.link : LAAColor.text)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
@@ -609,6 +692,10 @@ private struct LAADecisionRow: View {
                     }
                     if !meta.characters.isEmpty {
                         Text(meta).laaTextStyle(.secondary).lineLimit(1)
+                    }
+                    if let reason {
+                        Text(verbatim: reason).laaTextStyle(.secondary)
+                            .foregroundStyle(LAAColor.secondaryText).lineLimit(1)
                     }
                 }
                 .padding(.vertical, desktop ? LAASpacing.x3 : LAASpacing.x2)

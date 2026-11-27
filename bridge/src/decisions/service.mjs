@@ -10,8 +10,11 @@ const SYNC_RETRY_MS = 5_000, MAX_NOTIFICATION_RETRY_MS = 5 * 60_000;
 // 50 refused sends; Paseo may be unreachable for five minutes of that.
 export const WAIT_LIMITS = Object.freeze({ fastMs: 15_000, fastForMs: 600_000, slowMs: 60_000, maxMs: 86_400_000, maxHolds: 50, unavailableMs: 300_000 });
 export const isWaiting = (r) => r.status === 'answered' && r.delivery?.state === 'pending' && r.delivery.waitingSince !== undefined;
-export const onDecisionBoard = (r) => r.status === 'open' || (r.status === 'answered' && r.delivery?.state === 'failed') || isWaiting(r)
-  || (r.answer?.answeredBy === 'monet' && r.delivery?.state !== 'gone');
+// Answered items stay listed for a day (the app's 「回答済み」, 2026-11-28 owner):
+// Monet's answers so the owner can overturn them, the owner's own for reference.
+export const ANSWERED_SHOWN_MS = 86_400_000;
+export const onDecisionBoard = (r, time = Date.now()) => r.status === 'open' || (r.status === 'answered' && r.delivery?.state === 'failed') || isWaiting(r)
+  || (r.status === 'answered' && r.delivery?.state !== 'gone' && time - Date.parse(r.answer?.answeredAt) < ANSWERED_SHOWN_MS);
 import { ownerBadgeCount } from './badge.mjs';
 
 export function mayDeliverDecisionNotice(kind, link, store) {
@@ -130,7 +133,7 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
       await reconcile();
       await sync();
     }
-    const items = store.all().filter(onDecisionBoard).map((r) => ({ kind: 'board', ...view(r) }));
+    const items = store.all().filter((r) => onDecisionBoard(r, now())).map((r) => ({ kind: 'board', ...view(r) }));
     for (const r of (local || sessions) ? sessionStore?.all() ?? [] : []) {
       if (!awaitingNative(r)) continue;
       // Native requests stay in their persisted session records and use the
@@ -254,7 +257,7 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
     stats(since) {
       const cutoff = sinceTime(since);
       const within = (answer) => answer && Date.parse(answer.answeredAt) >= cutoff;
-      const counts = { answeredByMonet: 0, overturnedByOwner: 0, ownerOnlyOpen: 0, ownerAnswered: 0 };
+      const counts = { answeredByMonet: 0, overturnedByOwner: 0, ownerOnlyOpen: 0, monetOpen: 0, ownerAnswered: 0 };
       for (const r of store.all()) {
         if (within(proxyAnswer(r))) counts.answeredByMonet++;
         if (r.answer?.answeredBy !== 'monet' && within(r.answer)) {
@@ -262,6 +265,7 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
           if (r.overturned) counts.overturnedByOwner++;
         }
         if (r.category === 'owner' && r.status === 'open') counts.ownerOnlyOpen++;
+        else if (r.status === 'open' && r.category === 'delegable') counts.monetOpen++;
       }
       return counts;
     },
