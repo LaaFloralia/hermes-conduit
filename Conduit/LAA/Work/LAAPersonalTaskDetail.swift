@@ -246,9 +246,9 @@ struct LAAPersonalTaskDetailView: View {
                 }
             }
             if let project = task.project?.name { property("folder", "Project") { Text(verbatim: project) } }
-            if let milestone = task.milestone?.name { property("flag", "マイルストーン") { Text(verbatim: milestone) } }
+            if let milestone = task.milestone?.name { property("flag", "Milestone") { Text(verbatim: milestone) } }
             if let cycle = task.cycle?.name ?? task.cycle?.number.map(String.init) {
-                property("arrow.triangle.2.circlepath", "サイクル") { Text(verbatim: cycle) }
+                property("arrow.triangle.2.circlepath", "Cycle") { Text(verbatim: cycle) }
             }
             if let estimate = task.estimate { property("gauge.with.dots.needle.33percent", "Estimate") { Text(verbatim: estimate.formatted(.number)) } }
             if let parent = task.parent {

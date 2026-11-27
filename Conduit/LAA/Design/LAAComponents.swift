@@ -312,16 +312,19 @@ struct LAAScreenToolbar: ToolbarContent {
     let settings: () -> Void
     @ToolbarContentBuilder var body: some ToolbarContent {
         if #available(iOS 26.0, *) {
-            if canCreate { createItem.sharedBackgroundVisibility(.hidden) }
+            createItem.sharedBackgroundVisibility(.hidden)
             if !desktop && LAASettingsEntry.showsToolbarGear { settingsItem.sharedBackgroundVisibility(.hidden) }
         } else {
-            if canCreate { createItem }
+            createItem
             if !desktop && LAASettingsEntry.showsToolbarGear { settingsItem }
         }
     }
     private var createItem: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
+            // Disabled, not removed: a "+" that vanished while the calendars
+            // loaded or failed made the header jump between states.
             LAAToolbarIconButton(systemName: "plus", label: createLabel, identifier: createIdentifier, action: create)
+                .disabled(!canCreate)
         }
     }
     private var settingsItem: some ToolbarContent {

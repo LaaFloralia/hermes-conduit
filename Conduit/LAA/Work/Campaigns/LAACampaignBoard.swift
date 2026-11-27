@@ -558,14 +558,14 @@ struct LAACampaignBoardView: View {
             HStack(spacing: LAASpacing.x4) {
                 Menu {
                     Picker(selection: $categoryRaw) {
-                        Text(verbatim: "すべての種類").tag("")
+                        Text(verbatim: "All Types").tag("")
                         ForEach(board.categories, id: \.self) { category in
                             Text(verbatim: categoryName(category)).tag(category.rawValue)
                         }
                     } label: { Text(verbatim: "Type") }
                     .pickerStyle(.inline)
                 } label: {
-                    menuLabel(selectedCategory.map(categoryName) ?? "すべての種類")
+                    menuLabel(selectedCategory.map(categoryName) ?? "All Types")
                 }
                 .accessibilityIdentifier("work.campaigns.category")
                 Spacer(minLength: 0)
@@ -573,7 +573,7 @@ struct LAACampaignBoardView: View {
                     Picker(selection: $appliedOnly) {
                         Text(verbatim: "通常").tag(false)
                         Text(verbatim: LAACampaignCopy.appliedFilter).tag(true)
-                    } label: { Text(verbatim: "状態") }
+                    } label: { Text(verbatim: "Status") }
                     .pickerStyle(.inline)
                     Divider()
                     Picker(selection: $orderRaw) {

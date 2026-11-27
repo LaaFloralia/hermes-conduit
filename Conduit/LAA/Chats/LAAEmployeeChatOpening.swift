@@ -103,14 +103,14 @@ struct LAAEmployeeChatOpeningView: View {
     }
     private var previewComposer: some View {
         var field = ReturnKeyTextEditor(text: $draft, isFocused: $focused,
-            accessibilityLabel: "メッセージ", accessibilityIdentifier: "laa.chats.preview.composer",
+            accessibilityLabel: LAACopy.chatMessage, accessibilityIdentifier: "laa.chats.preview.composer",
             maxLines: 8, canSubmitFromReturn: canQueue, onSubmitFromReturn: queueSend)
         field.onCompositionChanged = { value in
             composing = value
             handoffIfReady()
         }
         return field.frame(minHeight: 22).background(alignment: .topLeading) {
-            if draft.isEmpty { Text(verbatim: "メッセージ").foregroundStyle(LAAColor.secondaryText).allowsHitTesting(false) }
+            if draft.isEmpty { Text(verbatim: LAACopy.chatMessage).foregroundStyle(LAAColor.secondaryText).allowsHitTesting(false) }
         }
     }
     var body: some View {

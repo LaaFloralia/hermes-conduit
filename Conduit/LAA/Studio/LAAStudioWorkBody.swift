@@ -265,16 +265,8 @@ private struct LAAStudioGallery: View {
             if let index = items.firstIndex(where: { $0.id == selection }) {
                 HStack {
                     Text(verbatim: items[index].name).laaTextStyle(.secondary).fontWeight(.semibold).lineLimit(1)
-                    Spacer()
-                    if items.count > 1 {
-                        HStack(spacing: 6) {
-                            ForEach(items) { item in
-                                Circle().fill(item.id == selection ? LAAColor.text : LAAColor.secondaryText.opacity(0.4))
-                                    .frame(width: 8, height: 8)
-                            }
-                        }.accessibilityHidden(true)
-                    }
-                    Spacer()
+                    // The count alone says where the gallery is; page dots repeated it.
+                    Spacer(minLength: LAASpacing.x2)
                     Text(verbatim: "\(index + 1) / \(items.count)").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 }
             }

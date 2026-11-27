@@ -359,8 +359,16 @@ struct LAALinearTasksView: View {
                     Text(verbatim: archivedDescription)
                 }.listRowBackground(Color.clear)
             }
-            Section {} footer: {
-                Text(verbatim: archivedFooter).frame(maxWidth: .infinity, alignment: .center)
+            // A row, not a section footer: a plain list draws its footer on an
+            // opaque band, so the caption would sit on white below the last row.
+            Section {
+                Text(verbatim: archivedFooter)
+                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .listRowInsets(EdgeInsets(top: LAASpacing.x4, leading: LAASpacing.horizontal,
+                                              bottom: LAASpacing.x4, trailing: LAASpacing.horizontal))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
             }
         }
         // Ruled rows on the paper, not a card per section (work-good).

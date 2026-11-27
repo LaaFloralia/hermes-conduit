@@ -20,12 +20,11 @@ struct LAACalendarDetail: View {
                 Section {
                     Text(verbatim: event.title).laaTextStyle(.title).textSelection(.enabled)
                     .accessibilityIdentifier("laa.calendar.detail.title")
-                Text(verbatim: LAADateText.string(event.start, event.allDay ? .day : .dayTime)
-                             + " – " + LAADateText.string(event.end, event.allDay ? .day : .dayTime))
+                Text(verbatim: whenText)
                 if let location = event.location, !location.isEmpty {
                     Text(verbatim: location).textSelection(.enabled)
                     if let url = URL(string: "https://maps.apple.com/?q=" + (location.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")) {
-                        Link(destination: url) { Text(verbatim: "Open Map") }
+                        Link(destination: url) { Text(verbatim: "Open Map").foregroundStyle(LAAColor.link) }
                     }
                 }
                 if let link = event.meetingLink, let url = safeURL(link) { Link(destination: url) { Text(verbatim: "Join Meeting") } }
@@ -41,8 +40,9 @@ struct LAACalendarDetail: View {
                         Text(verbatim: "この回だけを変更します").laaTextStyle(.note)
                         Button { Task { await openSeries() } } label: { Text(verbatim: "Open Series") }.disabled(busy)
                     }
-                    Button { editing = true } label: { Text(verbatim: "Edit") }.disabled(busy)
-                    Button(role: .destructive) { confirmDelete = true } label: { Text(verbatim: "Delete") }.disabled(busy)
+                    // Actions read as actions, not as data rows; Delete carries the warning colour.
+                    Button { editing = true } label: { Text(verbatim: "Edit").foregroundStyle(LAAColor.link) }.disabled(busy)
+                    Button(role: .destructive) { confirmDelete = true } label: { Text(verbatim: "Delete").foregroundStyle(LAAColor.end) }.disabled(busy)
                 }
                     if let message { Text(verbatim: message).foregroundStyle(LAAColor.attention) }
                 }
@@ -72,6 +72,15 @@ struct LAACalendarDetail: View {
                 Button(role: .destructive) { Task { await remove() } } label: { Text(verbatim: "Delete") }
             } message: { Text(verbatim: "参加者にはGoogleから取消通知が届きます。") }
         }
+    }
+    /// A timed event that ends on its start day names the day once.
+    private var whenText: String {
+        let format: LAADateText.Format = event.allDay ? .day : .dayTime
+        let start = LAADateText.string(event.start, format)
+        if !event.allDay, Calendar.current.isDate(event.start, inSameDayAs: event.end) {
+            return start + " – " + LAADateText.string(event.end, .time)
+        }
+        return start + " – " + LAADateText.string(event.end, format)
     }
     private func safeURL(_ text: String) -> URL? {
         guard let url = URL(string: text), url.scheme == "https", url.user == nil, url.password == nil else { return nil }; return url

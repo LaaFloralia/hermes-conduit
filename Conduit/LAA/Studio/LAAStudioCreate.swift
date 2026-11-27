@@ -213,7 +213,7 @@ struct LAAStudioCreateView: View {
     private var composerKinds: some View {
         ForEach(Self.kinds.dropLast().map(\.key), id: \.self) { kind in
             Button { draft.kind = draft.kind == kind ? nil : kind } label: {
-                Text(verbatim: Self.kindLabel(kind)).studioFilterChip(selected: draft.kind == kind)
+                Text(verbatim: Self.kindLabel(kind)).studioFilterChip(selected: draft.kind == kind, onGlass: true)
             }.buttonStyle(.plain).disabled(editingBlocked)
                 .accessibilityIdentifier("laa.studio.kind.\(kind)")
                 .accessibilityAddTraits(draft.kind == kind ? .isSelected : [])
@@ -350,18 +350,31 @@ private struct LAAStudioInputField: ViewModifier {
 extension View {
     func studioInputField() -> some View { modifier(LAAStudioInputField()) }
 
-    func studioFilterChip(selected: Bool) -> some View {
+    /// `onGlass`: the chip sits inside the glass composer, so it is plain
+    /// text (accent and semibold when chosen), never glass on glass. Elsewhere
+    /// it is the design `control` compact chip (D-29 item 11).
+    @ViewBuilder func studioFilterChip(selected: Bool, onGlass: Bool = false) -> some View {
         let control = LAAControl.IPhone.compact
-        let shape = RoundedRectangle(cornerRadius: control.radius)
-        return laaFont(control.label, weight: .medium)
-            .lineLimit(1).fixedSize()
-            .foregroundStyle(selected ? LAAColor.link : LAAColor.secondaryText)
-            .padding(.horizontal, control.paddingH)
-            .frame(minHeight: control.height)
-            .background(selected ? LAAColor.subtleSurface : LAAColor.surface, in: shape)
-            .overlay { shape.strokeBorder(LAAColor.separator, lineWidth: LAAStroke.rule) }
-            .frame(minWidth: LAAControl.IPhone.hitArea, minHeight: LAAControl.IPhone.hitArea)
-            .contentShape(Rectangle())
+        if onGlass {
+            laaFont(control.label, weight: selected ? .semibold : .regular)
+                // A kind is one word: whole, never one character per line.
+                .lineLimit(1).fixedSize()
+                .foregroundStyle(selected ? LAAColor.link : LAAColor.secondaryText)
+                .padding(.horizontal, LAASpacing.x2)
+                .frame(minHeight: LAAControl.IPhone.hitArea)
+                .contentShape(Rectangle())
+        } else {
+            let shape = RoundedRectangle(cornerRadius: control.radius)
+            laaFont(control.label, weight: .medium)
+                .lineLimit(1).fixedSize()
+                .foregroundStyle(selected ? LAAColor.link : LAAColor.secondaryText)
+                .padding(.horizontal, control.paddingH)
+                .frame(minHeight: control.height)
+                .background(selected ? LAAColor.subtleSurface : LAAColor.surface, in: shape)
+                .overlay { shape.strokeBorder(LAAColor.separator, lineWidth: LAAStroke.rule) }
+                .frame(minWidth: LAAControl.IPhone.hitArea, minHeight: LAAControl.IPhone.hitArea)
+                .contentShape(Rectangle())
+        }
     }
 }
 #endif
