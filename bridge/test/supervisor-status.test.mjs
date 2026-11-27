@@ -60,6 +60,40 @@ test('status projects safe metrics, reports a writer stall, and becomes stale on
   assert.equal((await api.request('/v1/status', { token })).body.data.supervisor.status, 'stale');
 });
 
+test('status keeps degraded supervisor visible through its deadline with a safe reason', async (t) => {
+  let now = deadline;
+  const { api, path } = await rig(t, () => now);
+  const token = await api.token();
+  const reason = 'judgement_worker_error,swap_saturated';
+  writeFileSync(path, JSON.stringify({ ...fixture('degraded'), reason }));
+  const read = async () => {
+    const res = await api.request('/v1/status', { token });
+    assert.equal(res.status, 200);
+    const { status, reason: safeReason } = res.body.data.supervisor;
+    return { status, reason: safeReason };
+  };
+  assert.deepEqual(await read(), { status: 'degraded', reason });
+  now++;
+  assert.deepEqual(await read(), { status: 'stale', reason });
+});
+
+test('status omits invalid supervisor reason without hiding degraded status', async (t) => {
+  const { api, path } = await rig(t);
+  const token = await api.token();
+  const read = async (reason) => {
+    writeFileSync(path, JSON.stringify({ ...fixture('degraded'), reason }));
+    const response = await api.request('/v1/status', { token });
+    assert.equal(response.status, 200);
+    assert.equal(response.body.data.supervisor.status, 'degraded');
+    return response.body.data.supervisor.reason;
+  };
+  const reason = 'a'.repeat(200);
+  assert.equal(await read(reason), reason);
+  for (const value of [null, 1, reason + 'a', secret, 'UPPER', 'a,,b', 'a\n']) {
+    assert.equal(await read(value), undefined);
+  }
+});
+
 test('status rejects incomplete, invalid and reversed supervisor timestamps without failing the endpoint', async (t) => {
   const { api, path } = await rig(t);
   const token = await api.token();
