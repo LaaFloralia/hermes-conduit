@@ -31,7 +31,7 @@ struct LAAHarness: Hashable, Identifiable {
     /// The product's own name, never translated.
     var name: String {
         if let title { return title }
-        switch kind {
+        return switch kind {
         case .claudeCode: "Claude Code"
         case .codex: "Codex"
         case .pi: "Pi"
