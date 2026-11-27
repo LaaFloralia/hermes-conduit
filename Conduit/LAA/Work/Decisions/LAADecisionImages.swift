@@ -246,9 +246,13 @@ struct LAADecisionImageView: View {
     }
 
     private func placeholder(_ text: String, identifier: String) -> some View {
-        VStack(spacing: LAASpacing.x1) {
-            Image(systemName: "photo").imageScale(.small).accessibilityHidden(true)
-            Text(verbatim: text).multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.8)
+        // A thumbnail too small for the glyph and the words keeps the words.
+        ViewThatFits(in: .vertical) {
+            VStack(spacing: LAASpacing.x1) {
+                Image(systemName: "photo").imageScale(.small).accessibilityHidden(true)
+                Text(verbatim: text).multilineTextAlignment(.center).lineLimit(3).minimumScaleFactor(0.8)
+            }
+            Text(verbatim: text).multilineTextAlignment(.center).lineLimit(4).minimumScaleFactor(0.7)
         }
         .laaTextStyle(.secondary)
         .foregroundStyle(LAAColor.secondaryText)
@@ -299,6 +303,20 @@ struct LAADecisionImageStrip: View {
         .accessibilityHint(Text(verbatim: LAADecisionImageCopy.openHint))
         .accessibilityAddTraits(.isImage)
         .accessibilityIdentifier("work.decision.image.\(index)")
+    }
+}
+
+/// Set while a decision's picture viewer is open, so the board's list leaves
+/// Esc to the viewer instead of clearing the selection under it. An
+/// environment value reaches the split view's detail column.
+private struct LAADecisionViewerOpenKey: EnvironmentKey {
+    static let defaultValue: Binding<Bool>? = nil
+}
+
+extension EnvironmentValues {
+    var laaDecisionViewerOpen: Binding<Bool>? {
+        get { self[LAADecisionViewerOpenKey.self] }
+        set { self[LAADecisionViewerOpenKey.self] = newValue }
     }
 }
 

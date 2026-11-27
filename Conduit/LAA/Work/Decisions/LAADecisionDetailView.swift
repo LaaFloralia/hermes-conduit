@@ -28,6 +28,7 @@ struct LAADecisionDetailView: View {
     @State private var stored: Bool?
     @FocusState private var noteFocused: Bool
     @State private var viewer: LAADecisionImageViewer.Request?
+    @Environment(\.laaDecisionViewerOpen) private var viewerOpen
     @State private var browser: LAADecisionBrowserPage?
 
     init(item: LAADecision, board: LAADecisionBoard, drafts: ComposerDraftStore,
@@ -87,6 +88,7 @@ struct LAADecisionDetailView: View {
             LAADecisionImageViewer(request: request).environmentObject(bridge)
         }
         .laaDecisionLinks($browser)
+        .onChange(of: viewer != nil) { _, open in viewerOpen?.wrappedValue = open }
         .sensoryFeedback(.selection, trigger: choice)
         .sensoryFeedback(.warning, trigger: undelivered) { old, new in old == nil && new != nil }
     }

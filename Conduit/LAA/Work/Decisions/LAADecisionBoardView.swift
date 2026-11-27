@@ -27,6 +27,8 @@ struct LAADecisionBoardView: View {
     @State private var retryFailure: [String: String] = [:]
     @State private var retried = 0
     @FocusState private var listFocused: Bool
+    /// A picture viewer is open over the detail: Esc is the viewer's.
+    @State private var viewerOpen = false
     #if DEBUG
     /// Snapshots draw the list without a network read.
     var loadsOnAppear = true
@@ -211,7 +213,7 @@ struct LAADecisionBoardView: View {
             .onKeyPress(.upArrow) { move(-1); return .handled }
             .onKeyPress(.downArrow) { move(1); return .handled }
             .onKeyPress(.return) { if selectedID == nil { selectedID = rowIDs.first }; return .handled }
-            .onKeyPress(.escape) { selectedID = nil; return .handled }
+            .onKeyPress(.escape) { guard !viewerOpen else { return .ignored }; selectedID = nil; return .handled }
             .accessibilityIdentifier("work.decisions.list")
         } detail: {
             if let item = selectedItem {
@@ -219,6 +221,7 @@ struct LAADecisionBoardView: View {
                     // A retry that went through is a new record: the screen
                     // starts over, so no stale failure line can stay.
                     .id(item.id + ":" + (item.delivery?.state ?? "-"))
+                    .environment(\.laaDecisionViewerOpen, $viewerOpen)
             } else {
                 Text(verbatim: "判断を選んでください")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
