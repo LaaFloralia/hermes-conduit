@@ -1,5 +1,5 @@
 {
-  "kitVersion": "0.3.0",
+  "kitVersion": "0.3.1",
   "tokensVersion": "2026.11.4",
   "tokensStatus": "provisional",
   "tokenHash": "eb8a060496b729dd0d50be6b1f7edfe02392aa2d45df1e2796df0de3112c81eb",
@@ -15,9 +15,9 @@
     "Sources/LAAFonts/Resources/Fonts/ShipporiMincho-Medium.ttf": "700e505afc4cded2338eba29478a041e04c1c2ea5114fbb3e0b04e76c302c5d8",
     "Sources/LAAFonts/Resources/Fonts/ShipporiMincho-SemiBold.ttf": "bc7925544894a91466449adb73c6d943f50c3e53eb1c74d0673fe2dbafcd4d2d",
     "Sources/LAATokens/LAAIcon.generated.swift": "72c775b17437876b6f1b6151ae1c1fd098da3e9740703437f7728129304f9fa6",
-    "Sources/LAATokens/LAATokens.generated.swift": "ed31fb71f302f826aa0a6e042eddb94138e3e32f554a098d2f1904a63b9bbe9d",
-    "web/tokens.css": "1447363a9b83e0f278609143b57fa3d097211f732f8b41559b56619b3a327985",
-    "web/tokens.json": "04cf2a270fef8e3a857ee27ca1a67950f1b9c25838c7dff3d4b4795877436a87",
-    "web/tokens.ts": "695521692ccae9e3595c76939791e81b95b476c063dc64c1dfc2708efba80798"
+    "Sources/LAATokens/LAATokens.generated.swift": "cdf045ec8eefb4f9449b0ad5a7b017c162f703dae84c16dc42a21d598be3a7d9",
+    "web/tokens.css": "89a340e1e9452e2f53b8c674b069c4280fd4dedef2d3d4ccba4d24f75f1fc0a8",
+    "web/tokens.json": "44153bb07e64c3aa6e44d5dac74f35ecc58f82816bbad886437ef7369d417a90",
+    "web/tokens.ts": "84cd3f21200b62020f298ee9e4f0d05ae9210a7dc6327a0186610bbed5215b57"
   }
 }
