@@ -242,14 +242,11 @@ struct LAAAppShell: View {
         // live outside the card's modal scope in UIKit) leaves the accessibility tree; the card and Close stay.
         .accessibilityHidden(settingsCardOpen)
         .environment(\.laaBehindSettingsCard, settingsCardOpen)
-        .laaGlassTabBar(glassTabs, selection: $selectedTab, isExpanded: $settingsCardOpen, isHidden: barHidden,
-                        app: .owner(version: "")) {
-            LAAAdministrationBadge().padding(.bottom, LAASpacing.x2)
-            LAAAppSettingsCard(openSettings: {
-                settingsCardOpen = false
-                onRequestSettings()
-            })
-        }
+        .modifier(LAAHortensiaOwnerCapsule(tabs: glassTabs, selection: $selectedTab,
+                                           expanded: $settingsCardOpen, hidden: barHidden, openSettings: {
+            settingsCardOpen = false
+            onRequestSettings()
+        }))
         .onChange(of: selectedTab) { _, _ in settingsCardOpen = false }
         .onChange(of: scenePhase) { _, phase in if phase != .active { settingsCardOpen = false } }
     }

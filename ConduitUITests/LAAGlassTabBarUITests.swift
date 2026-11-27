@@ -58,6 +58,10 @@ final class LAAGlassTabBarUITests: XCTestCase {
         app.laaSettingsEntry.tap()
         let card = app.descendants(matching: .any)["laa.tabbar.card"]
         XCTAssertTrue(card.waitForExistence(timeout: 10))
+        let owner = card.descendants(matching: .any).matching(identifier: "laa.tabbar.ownerHeader").firstMatch
+        XCTAssertTrue(owner.exists)
+        XCTAssertTrue(owner.label.contains("Administration"))
+        XCTAssertNotEqual(owner.label, "Hortensia")
         for row in ["mac", "mode", "theme", "notifications", "settings"] {
             XCTAssertTrue(card.descendants(matching: .any).matching(identifier: "laa.tabbar.\(row)").firstMatch.exists,
                           "Missing settings card row: \(row)\n\(card.debugDescription)")
