@@ -12113,6 +12113,20 @@ final class AppState: ObservableObject {
             audio.appliedPolicy == .standalonePlayback ? .staffCall : .none
     }
 
+    private func prepareChairedVoice(for room: GroupRoom, epoch: Int) {
+        guard room.supportsChairedVoice else {
+            stopChairedMeeting()
+            chairedVoice.leaveRoom()
+            chairedMeetingReadyEpoch = nil
+            return
+        }
+        if chairedVoice.core.roomID != room.roomID || chairedVoice.core.generation != epoch {
+            chairedVoice.bind(roomID: room.roomID, generation: epoch)
+            _ = chairedVoiceExecutor
+        }
+        chairedMeetingReadyEpoch = epoch
+    }
+
     /// Re-feed the whole current replay; the core dedupes. A silent core
     /// never speaks, so the audio owner is read only once Voice is engaged.
     private func feedChairedVoice(epoch: Int) {
@@ -12618,19 +12632,10 @@ final class AppState: ObservableObject {
         stopChairedMeeting()
         chairedMeeting.note = nil
         chairedMeetingReadyEpoch = nil
+        chairedVoice.leaveRoom()
 #endif
         groupRoomEpoch &+= 1
         let epoch = groupRoomEpoch
-#if LAA_BUILD
-        if room.name.contains("壁打ち"), room.name.contains("Voice"), room.members.contains(where: {
-            $0.profile == "laa-monet" || $0.profile == "laa-monet-work"
-        }) {
-            chairedVoice.bind(roomID: room.roomID, generation: epoch)
-            _ = chairedVoiceExecutor
-        } else {
-            chairedVoice.leaveRoom()
-        }
-#endif
         groupRoomPollTask?.cancel()
         // The room banner renders the shared errorMessage: a stale session
         // error must not greet the user inside the room.
@@ -12694,10 +12699,10 @@ final class AppState: ObservableObject {
             guard groupRoomEpoch == epoch else { return }
             var replay = GroupRoomReplay(roomID: room.roomID)
             replay.adoptInitialTail(page: page)
-            activeRoomReplay = replay
 #if LAA_BUILD
-            chairedMeetingReadyEpoch = epoch
+            prepareChairedVoice(for: state, epoch: epoch)
 #endif
+            activeRoomReplay = replay
             if let report, replay.events.contains(where: { $0.eventID == report.eventID && $0.seq == report.seq }) {
                 roomNotificationFocusEventID = report.eventID
             }
@@ -12828,10 +12833,12 @@ final class AppState: ObservableObject {
         #if LAA_BUILD && DEBUG && targetEnvironment(simulator)
         if LAAMeetingLab.isEnabled, activeRoomSurface?.room.roomID == LAAMeetingLab.roomID {
             let seq = activeRoomReplay.cursor + 1
-            chairedMeeting.registerRound("u\(seq)")
-            appendChairedFixtureEvents([LAAMeetingLab.user(seq: seq, text: text)])
+            let clientEventID = "u\(seq)"
+            let event = LAAMeetingLab.user(seq: seq, text: text)
+            chairedMeeting.registerRound(clientEventID: clientEventID)
+            appendChairedFixtureEvents([event])
             if text != "会議を終了。要点を3行で" {
-                appendChairedFixtureEvents(LAAMeetingLab.settled(seq: seq + 1, text: "合成の返事です。短い確認です。", roundID: "u\(seq)"))
+                appendChairedFixtureEvents(LAAMeetingLab.settled(seq: seq + 1, text: "合成の返事です。短い確認です。", roundID: event.eventID))
             }
             onRegistered?()
             return true
@@ -12878,7 +12885,7 @@ final class AppState: ObservableObject {
         }
         pendingRoomMessage = groupRoomOutbox.pending
 #if LAA_BUILD
-        chairedMeeting.registerRound(logical.eventID)
+        chairedMeeting.registerRound(clientEventID: logical.eventID)
 #endif
         onRegistered?()
         let sendKey = Self.roomKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)
@@ -13011,6 +13018,9 @@ final class AppState: ObservableObject {
                 client, roomID: state.roomID, sinceSeq: start, limit: window)
             guard groupRoomEpoch == epoch else { return }
             fresh.adoptInitialTail(page: tail)
+#if LAA_BUILD
+            prepareChairedVoice(for: state, epoch: epoch)
+#endif
             activeRoomReplay = fresh
             settlePendingRoomSend(from: fresh.events)
 #if LAA_BUILD
@@ -13124,10 +13134,24 @@ final class AppState: ObservableObject {
             errorMessage = AppLocalization.string("Connect to Hermes to create a group chat.")
             return false
         }
-        guard bots.count >= 2, bots.count <= 6 else {
+#if LAA_BUILD
+        let maximum = LAAGroupSelection.maximumMembers
+        guard (2...maximum).contains(bots.count) else {
+            errorMessage = LAACopy.groupSelectEmployees
+            return false
+        }
+        if bots.count == maximum {
+            guard groupCapabilities?.supportsRoomChair == true, bots.contains(where: { $0.name == "laa-monet" }) else {
+                errorMessage = LAACopy.groupAllHandsUnavailable
+                return false
+            }
+        }
+#else
+        guard (2...6).contains(bots.count) else {
             errorMessage = AppLocalization.string("Pick 2 to 6 bots for a group chat.")
             return false
         }
+#endif
         guard !trimmedName.isEmpty else { return false }
         // The create sheet renders the shared errorMessage: clear the last
         // attempt's (or an unrelated surface's) failure before this one.

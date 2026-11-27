@@ -57,8 +57,23 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertNotEqual(GroupCreateAttempt.roomID(for: changed, current: "room-1", attempted: original), "room-1")
     }
 
+    func testVoiceEligibilityUsesTheMonetSeatAndDoesNotRequireAMagicRoomName() throws {
+        func room(name: String, chair: String? = nil) throws -> GroupRoom {
+            var payload: [String: Any] = ["room_id": "r", "name": name,
+                "members": [["profile": "laa-monet", "member_id": "chair-seat"],
+                            ["profile": "laa-cfo", "member_id": "finance"]]]
+            payload["chair"] = chair
+            return try XCTUnwrap(GroupDecoders.room(any(payload)))
+        }
+        XCTAssertTrue(try room(name: "All hands", chair: "chair-seat").supportsChairedVoice)
+        XCTAssertFalse(try room(name: "All hands").supportsChairedVoice)
+        XCTAssertFalse(try room(name: "壁打ち Voice", chair: "finance").supportsChairedVoice)
+        XCTAssertTrue(try room(name: "壁打ち Voice").supportsChairedVoice)
+    }
+
     func testCreateNegotiatesChairAndPrivacyIndependently() {
         let members = [["profile": "laa-monet", "member_id": "chair-seat"]]
+            + ["cto", "cfo", "cos", "cio", "argus", "cso"].map { ["profile": "laa-\($0)", "member_id": $0] }
         func params(_ features: [String]) -> [String: Any] {
             let capabilities = GroupCapabilities(protocolVersion: 2, driverReady: true, authorityGatewayID: "gw",
                 features: features, methods: GroupWire.requiredMethods, maxLogLimit: 500)
@@ -69,6 +84,7 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertNil(params(["room_confidential"])["chair"])
         XCTAssertNil(params(["room_chair"])["confidential"])
         let negotiated = params(["room_chair", "room_confidential"])
+        XCTAssertEqual(negotiated["members"] as? [[String: String]], members)
         XCTAssertEqual(negotiated["chair"] as? String, "chair-seat")
         XCTAssertEqual(negotiated["policy"] as? [String: Int], ["staff_rounds": 1, "max_messages": 10])
         XCTAssertEqual(negotiated["confidential"] as? Bool, true)

@@ -4,17 +4,19 @@ import SwiftUI
 /// The hosted-room contract freezes membership on creation. This local
 /// selection is used only to create a room, never to pretend an edit worked.
 struct LAAGroupSelection {
+    static let maximumMembers = 7
+
     private(set) var selected: Set<String> = []
     let available: Set<String>
 
     mutating func toggle(_ profile: String) {
         guard available.contains(profile) else { return }
         if selected.contains(profile) { selected.remove(profile) }
-        else if selected.count < 6 { selected.insert(profile) }
+        else if selected.count < Self.maximumMembers { selected.insert(profile) }
     }
     func canCreate(name: String) -> Bool {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && (2...6).contains(selected.count) && selected.isSubset(of: available)
+            && (2...Self.maximumMembers).contains(selected.count) && selected.isSubset(of: available)
     }
 }
 
@@ -146,6 +148,11 @@ struct LAAGroupCreateView: View {
                     Text(verbatim: section.title)
                 }
             }
+            if selected.contains("laa-monet"), capabilities?.supportsRoomChair == true {
+                Text(verbatim: LAACopy.groupMonetChair).laaTextStyle(.note).foregroundStyle(.secondary)
+            } else if selected.count == LAAGroupSelection.maximumMembers {
+                Text(verbatim: LAACopy.groupAllHandsUnavailable).laaTextStyle(.note).foregroundStyle(.secondary)
+            }
             if failed { Text(verbatim: "作成できませんでした。接続先と選択した社員を確認して再試行してください。")
                 .foregroundStyle(.red) }
         }
@@ -166,7 +173,8 @@ struct LAAGroupCreateView: View {
                         creating = false
                     }
                 }
-                .disabled(creating || !selection.canCreate(name: name))
+                .disabled(creating || !selection.canCreate(name: name)
+                          || (selection.selected.count == LAAGroupSelection.maximumMembers && capabilities?.supportsRoomChair != true))
                 .accessibilityIdentifier("groups.create.submit")
             }
         }

@@ -368,13 +368,14 @@ struct GroupChatView: View {
                                 continuesRun: previous.map { GroupEventRow.sameSpeaker($0, event) } ?? false)
 #if LAA_BUILD
         if event.isMemberMessage, let chair = surface?.room.chair, chair == event.actor.id,
-           event.payload["meeting_phase"]?.stringValue == "conclusion" {
+           let phase = event.payload["meeting_phase"]?.stringValue,
+           phase == "agenda" || phase == "conclusion" {
             VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                Text(verbatim: LAACopy.groupConclusion)
+                Text(verbatim: phase == "agenda" ? LAACopy.groupAgenda : LAACopy.groupConclusion)
                     .laaTextStyle(.section)
                     .foregroundStyle(LAAColor.text)
                     .accessibilityAddTraits(.isHeader)
-                    .accessibilityIdentifier("room.meeting.conclusion")
+                    .accessibilityIdentifier("room.meeting.\(phase)")
                 GroupEventRow(event: event, members: members)
             }
         } else { row }

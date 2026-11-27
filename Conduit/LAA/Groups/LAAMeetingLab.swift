@@ -27,7 +27,8 @@ enum LAAMeetingLab {
                                 authorityEpoch: 1, revision: 1, createdAt: 0, updatedAt: 0, disbandedAt: nil, latestSeq: 3)
 
     static func user(seq: Int, text: String) -> GroupEvent {
-        event(seq: seq, kind: "message.user", id: "u\(seq)", payload: ["text": .string(text)])
+        event(seq: seq, kind: "message.user", id: GroupRoomOutbox.serverEventID(forClientEventID: "u\(seq)"),
+              payload: ["text": .string(text)])
     }
 
     static func settled(seq: Int, text: String, roundID: String = "historical") -> [GroupEvent] {
