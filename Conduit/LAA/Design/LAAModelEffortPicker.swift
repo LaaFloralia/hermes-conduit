@@ -70,9 +70,12 @@ struct LAAModelEffortPickers<HarnessMenu: View, ModelMenu: View, EffortMenu: Vie
         self.harnessMenu = harnessMenu; self.modelMenu = modelMenu; self.effortMenu = effortMenu
     }
 
-    private var modelText: String { LAAModelCapsule.text(model: model, provider: provider, name: name, current: current) }
+    private var modelText: String {
+        LAAModelCapsule.text(model: model, provider: provider, name: name, current: current,
+                             missing: LAAModelCapsule.unknownSpokenValue)
+    }
     private var effortText: String {
-        let shown = LAAEffort.name(effort) ?? LAAModelCapsule.unknown
+        guard let shown = LAAEffort.name(effort) else { return LAAModelCapsule.unknownSpokenValue }
         return current ? shown : "Last Verified: " + shown
     }
 
@@ -218,10 +221,11 @@ struct LAAModelCapsule: View {
     /// mark (Claude Code running Claude, Codex running GPT): one mark, not two.
     var showsFace = true
 
-    static let unknown = "Unknown"
+    static let unknownSpokenValue = "Unknown"
 
-    static func text(model: String?, provider: String?, name: String?, current: Bool) -> String {
-        let shown = name.map(fullName) ?? displayName(model: model, provider: provider) ?? unknown
+    static func text(model: String?, provider: String?, name: String?, current: Bool,
+                     missing: String = LAAShape.unknown) -> String {
+        guard let shown = name.map(fullName) ?? displayName(model: model, provider: provider) else { return missing }
         return current ? shown : "Last Verified: " + shown
     }
 
@@ -275,7 +279,8 @@ struct LAAModelCapsule: View {
                     .accessibilityHidden(true)
             }
             Text(verbatim: shown)
-                .foregroundStyle(LAAColor.text)
+                .foregroundStyle(shown == LAAShape.unknown ? LAAColor.secondaryText : LAAColor.text)
+                .accessibilityHidden(shown == LAAShape.unknown)
                 .fontWeight(.semibold)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
@@ -349,7 +354,7 @@ struct LAAModelCapsule: View {
     }
 }
 
-/// The effort capsule: its name, or 「不明」, and the chevron, with no meter
+/// The effort capsule: its name, or a hollow mark, and the chevron, with no meter
 /// beside it (owner, 2026-11-14). XHigh and above hold marble veins inside
 /// the glass; after a requested change they spread across it once
 /// (LAAMarbleLook).
@@ -386,7 +391,9 @@ struct LAAEffortCapsule: View {
             if let known {
                 LAAEffortLabel(effort: known, current: current)
             } else {
-                Text(verbatim: LAAModelCapsule.unknown).foregroundStyle(LAAColor.secondaryText)
+                Text(verbatim: LAAShape.unknown)
+                    .foregroundStyle(LAAColor.secondaryText)
+                    .accessibilityHidden(true)
             }
             LAAPickerMetrics.chevronView()
         }

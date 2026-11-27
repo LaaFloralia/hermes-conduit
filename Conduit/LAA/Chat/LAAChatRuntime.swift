@@ -5,7 +5,7 @@ import Foundation
 /// them for its live agent (`session.info`, a resume's snapshot,
 /// `model.update`, a `/reasoning` change): never the profile's configured
 /// values. Each value remembers the chat it was reported for, so a chat
-/// just opened reads 「不明」 until Hermes answers for it instead of showing
+/// just opened shows a hollow mark until Hermes answers for it instead of showing
 /// the previous chat's (owner, 2026-11-12).
 struct LAAChatRuntime: Equatable {
     private(set) var modelSessionID: String?
@@ -49,7 +49,7 @@ struct LAAChatRuntime: Equatable {
         var speed: ModelSpeed? = nil
     }
 
-    /// What the chip shows for the chat on screen; nil reads 「不明」.
+    /// What the chip shows for the chat on screen; nil shows a hollow mark.
     func shown(for sessionIDs: Set<String>) -> Shown {
         let modelKnown = modelSessionID.map(sessionIDs.contains) ?? false
         let effortKnown = effortSessionID.map(sessionIDs.contains) ?? false

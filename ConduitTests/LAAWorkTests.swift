@@ -744,14 +744,14 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertEqual(LAAEffort.name("xhigh"), "XHigh")
     }
 
-    func testSharedChipReadsNamesAndSaysUnknown() {
+    func testSharedChipReadsNamesAndSpeaksUnknown() {
         XCTAssertEqual(LAAModelCapsule.displayName(model: "claude-opus-4-8", provider: "claude"), "Claude Opus 4.8")
         XCTAssertEqual(LAAModelCapsule.displayName(model: "gpt-6.1-sol", provider: "codex"), "GPT 6.1 Sol")
         XCTAssertEqual(LAAModelCapsule.displayName(model: "Claude Fable 5.2", provider: nil), "Claude Fable 5.2")
         XCTAssertEqual(LAAModelCapsule.displayName(model: #"["opencode-go","deepseek-v4.1-flash"]"#, provider: "dsh"),
                        "DeepSeek V4.1 Flash")
         XCTAssertNil(LAAModelCapsule.displayName(model: nil, provider: "claude"))
-        XCTAssertEqual(LAAModelCapsule.unknown, "Unknown")
+        XCTAssertEqual(LAAModelCapsule.unknownSpokenValue, "Unknown")
     }
 
     func testClaudeAPIHasItsOwnModelGroupAndProfile() throws {

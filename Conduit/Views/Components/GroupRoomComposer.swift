@@ -405,7 +405,7 @@ struct GroupRoomComposer: View {
     }
     private var messagePlaceholder: String {
 #if LAA_BUILD
-        "メッセージ"
+        LAACopy.chatMessage
 #else
         AppLocalization.string("Message the room")
 #endif

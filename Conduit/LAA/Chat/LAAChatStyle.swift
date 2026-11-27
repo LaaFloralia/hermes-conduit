@@ -6,6 +6,7 @@ extension LAACopy {
     static let chatYesterday = "Yesterday"
     static let chatAttach = "Attach"
     static let chatSend = "Send"
+    static let chatMessage = "Message"
     static let chatExpandEditor = "Expand Composer"
     static let chatCopy = "Copy"
     static let chatCopied = "Copied"

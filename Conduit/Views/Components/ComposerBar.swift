@@ -844,7 +844,8 @@ struct ComposerBar: View, Equatable {
             let currentEditorIdentity = editorIdentity
             if text.isEmpty {
 #if LAA_BUILD
-                let placeholder = Text(verbatim: "メッセージ")
+                let placeholder = Text(verbatim: LAACopy.chatMessage)
+                    .accessibilityIdentifier("composer.placeholder")
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
 #else
@@ -1002,7 +1003,7 @@ struct ComposerBar: View, Equatable {
 
     private var fullEditorPlaceholder: String {
 #if LAA_BUILD
-        "メッセージ"
+        LAACopy.chatMessage
 #else
         appState.composerPlaceholder
 #endif
