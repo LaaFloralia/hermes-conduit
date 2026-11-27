@@ -6,45 +6,45 @@ import UIKit
 
 extension LAACopy {
     enum Studio {
-        static let works = "作品"
-        static let requests = "依頼"
-        static let requestDetail = "依頼"
-        static let newRequest = "制作を依頼"
+        static let works = "Projects"
+        static let requests = "Request"
+        static let requestDetail = "Request"
+        static let newRequest = "Request Project"
         static let newWork = "New"
-        static let work = "作品"
-        static let existingWork = "既存の作品"
-        static let title = "題名"
-        static let prompt = "依頼"
-        static let principle = "原則"
-        static let none = "なし"
+        static let work = "Projects"
+        static let existingWork = "Existing Projects"
+        static let title = "Title"
+        static let prompt = "Request"
+        static let principle = "Principles"
+        static let none = "None"
         static let choose = "Select"
         static let yes = "はい"
         static let no = "いいえ"
-        static let send = "依頼する"
+        static let send = "Send Request"
         static let retry = "Retry"
         static let refresh = "Refresh"
-        static let check = "状態を確認"
+        static let check = "Check Status"
         static let stop = "Stop"
         static let cancel = "Cancel"
         static let allow = "許可"
         static let deny = "許可しない"
         static let persist = "この依頼で許可"
-        static let askAgain = "直しを頼む"
-        static let active = "進行中"
+        static let askAgain = "Request Revision"
+        static let active = "In Progress"
         static let finished = "完了した依頼"
-        static let queued = "受付済み"
-        static let notReceived = "受付待ち"
-        static let accepted = "受付済み"
-        static let running = "制作中"
-        static let needsApproval = "確認待ち"
-        static let completed = "完了"
-        static let failed = "失敗"
-        static let stopped = "停止済み"
-        static let interrupted = "中断"
-        static let unknownStatus = "未確認"
-        static let deliverables = "納品"
-        static let assets = "素材"
-        static let pages = "ページ"
+        static let queued = "Accepted"
+        static let notReceived = "Pending"
+        static let accepted = "Accepted"
+        static let running = "In Production"
+        static let needsApproval = "Awaiting Review"
+        static let completed = "Done"
+        static let failed = "Failed"
+        static let stopped = "Stopped"
+        static let interrupted = "Stop"
+        static let unknownStatus = "Unknown"
+        static let deliverables = "Delivery"
+        static let assets = "Assets"
+        static let pages = "Page"
         static let disconnected = "Studioに接続できません"
         static let notAccepting = "Studioは制作中です"
         static let workBusy = "Studioが使用中です。少し待ってから送り直してください。"
@@ -212,15 +212,15 @@ enum LAAStudioData {
         let projectID = fixtureProjectID
         let questionID = "5e2c1c2e-6f1a-4c55-9d43-0d5f6f3b8a11"
         let text = mode == "long" ? String(repeating: "制作の進捗を確認しています。", count: 150) : "資料の構成を確認しています。"
-        let fields = [LAAStudioApproval.Field(name: "format", title: "形式", type: "string", required: true, options: ["PDF", "Slides"]),
-                      LAAStudioApproval.Field(name: "copies", title: "枚数", type: "integer", required: true, options: nil)]
+        let fields = [LAAStudioApproval.Field(name: "format", title: "Format", type: "string", required: true, options: ["PDF", "Slides"]),
+                      LAAStudioApproval.Field(name: "copies", title: "Page Count", type: "integer", required: true, options: nil)]
         let approval = LAAStudioApproval(id: questionID, message: mode == "unsupported" ? "有料生成の確認が必要です。" : "出力形式を選んでください。", supported: mode != "unsupported", allowSession: true, fields: fields)
         let report = LAAStudioReport(id: requestID, bootId: projectID, sequence: 2, status: "approval", text: text, revision: nil, approvals: [approval], computerCalls: nil)
         let request = LAAStudioRequest(id: requestID, projectId: projectID, expectedRevision: 3, prompt: "新しい紹介資料を作ってください。", create: nil, principle: nil)
         let record = LAAStudioRecord(request: request, status: mode == "v2-completed" ? "completed" : "approval", bootId: projectID, updatedAt: "2026-10-31T09:00:00Z", report: mode == "v2-completed" ? nil : report)
         let pages: [LAAStudioPage] = mode.hasPrefix("v2") ? [
-            .init(id: "page1", name: "A案", preview: fixtureCoverPath("a")),
-            .init(id: "page2", name: "B案", preview: fixtureCoverPath("b"))
+            .init(id: "page1", name: "Option A", preview: fixtureCoverPath("a")),
+            .init(id: "page2", name: "Option B", preview: fixtureCoverPath("b"))
         ] : [.init(id: "page1", name: "Cover", preview: nil)]
         let project = LAAStudioProject(id: projectID, title: "サービス紹介資料", revision: 3,
                                        pages: pages, assets: [], syncedAt: "2026-10-31T09:00:00Z", driveUrl: "https://drive.google.com/file/d/1234567890/view", deliveredRevision: 3)
@@ -228,7 +228,7 @@ enum LAAStudioData {
         if mode == "grouped" {
             let mockProjects = ["image", "motion", "video", "model3d", "audio"].map { kind in
                 LAAStudioProject(id: "fixture-\(kind)", title: ["image": "表紙写真", "motion": "工程図", "video": "紹介映像",
-                    "model3d": "製品モデル", "audio": "ナレーション"][kind] ?? kind, revision: 1, pages: [],
+                    "model3d": "製品モデル", "audio": "Narration"][kind] ?? kind, revision: 1, pages: [],
                     assets: [.init(id: kind, name: kind, kind: kind, url: nil, poster: nil, unavailable: nil, previewOnly: nil)],
                     syncedAt: nil, driveUrl: nil, deliveredRevision: 1)
             }

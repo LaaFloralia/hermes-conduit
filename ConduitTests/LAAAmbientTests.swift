@@ -189,14 +189,14 @@ final class LAAAmbientTests: XCTestCase {
         let now = Date(timeIntervalSince1970: 1_000_000)
         let decisions = LAAWatchAmbientPlan.make(LAAWatchAmbient(waiting: 2, reportAt: now), now: now)
         XCTAssertEqual(decisions.kind, .decisions)
-        XCTAssertEqual(decisions.line, "判断待ち 2件")
+        XCTAssertEqual(decisions.line, "2 Pending")
         XCTAssertEqual(decisions.score, 82)
         XCTAssertEqual(LAAWatchAmbientPlan.make(LAAWatchAmbient(waiting: 40, reportAt: nil), now: now).score, 85)
 
         let hourAgo = now.addingTimeInterval(-3600)
         let report = LAAWatchAmbientPlan.make(LAAWatchAmbient(waiting: 0, reportAt: hourAgo), now: now)
         XCTAssertEqual(report.kind, .report)
-        XCTAssertTrue(report.line.hasPrefix("報告 "))
+        XCTAssertTrue(report.line.hasPrefix("Report "))
         XCTAssertEqual(report.until, hourAgo.addingTimeInterval(LAAWatchAmbientPlan.reportWindow))
         XCTAssertTrue(report.score > 0 && report.score < 80)
         let older = LAAWatchAmbientPlan.make(LAAWatchAmbient(waiting: 0, reportAt: now.addingTimeInterval(-5 * 3600)), now: now)
@@ -207,7 +207,7 @@ final class LAAAmbientTests: XCTestCase {
             let idle = LAAWatchAmbientPlan.make(ambient, now: now)
             XCTAssertEqual(idle.kind, .idle)
             XCTAssertEqual(idle.score, 0)
-            XCTAssertEqual(idle.line, "話しかける")
+            XCTAssertEqual(idle.line, "Talk")
         }
     }
 

@@ -159,7 +159,7 @@ struct LAAOwnerTasksView: View {
                                 }
                                 HStack {
                                     if request.conflict == true {
-                                        Button(String("下書きに戻す")) { pendingAction = PendingAction(kind: .restoreConflict, item: item) }
+                                        Button(String("Restore Draft")) { pendingAction = PendingAction(kind: .restoreConflict, item: item) }
                                             .disabled(sending.contains(request.taskID))
                                     } else {
                                         Button(String("Retry")) { pendingAction = PendingAction(kind: .retry, item: item) }
@@ -183,7 +183,7 @@ struct LAAOwnerTasksView: View {
                             } label: {
                                 VStack(alignment: .leading) {
                                     Text(verbatim: draft.title.isEmpty ? "題名なしの下書き" : draft.title)
-                                    Text(verbatim: "端末内の下書き").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                                    Text(verbatim: "Local Drafts").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                                 }
                             }
                         } else { Text(verbatim: "読み取れない下書きがあります。") }
@@ -225,7 +225,7 @@ struct LAAOwnerTasksView: View {
             if action.kind == .retry, let item = action.item {
                 Button(LAAOwnerTaskCopy.retryRequest) { Task { await send(item) } }
             } else if action.kind == .restoreConflict, let item = action.item {
-                Button(String("下書きに戻す")) {
+                Button(String("Restore Draft")) {
                     guard let latest = LAAOwnerTaskOutbox.entries(in: drafts).first(where: { $0.id == item.id }),
                           let request = LAAOwnerTaskOutbox.request(latest), request.conflict == true,
                           request.deviceID == bridge.deviceID, !sending.contains(request.taskID),

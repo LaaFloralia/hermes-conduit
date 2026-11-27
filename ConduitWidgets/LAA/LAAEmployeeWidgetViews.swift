@@ -95,8 +95,8 @@ struct LAAEmployeeWidget: Widget {
 private extension LAACopy {
     static let widgetDisplayName = "LAA Employee"
     static let widgetDescription = "Open employee chats and calls, and check AI usage."
-    static let widgetCall = "電話"
-    static let widgetChat = "会話"
+    static let widgetCall = "Call"
+    static let widgetChat = "Chat"
     static let widgetBrand = "LAA"
 }
 
@@ -291,7 +291,7 @@ struct LAAEmployeeWidgetView: View {
     }
 
     static func displayValue(_ meter: WidgetUsageMeter, entryDate: Date, renderedAt: Date, anchor: Date? = nil) -> String {
-        guard meter.hasRecordedValue(at: renderedAt) else { return "未取得" }
+        guard meter.hasRecordedValue(at: renderedAt) else { return "Unknown" }
         let note = freshnessText(meter, at: max(entryDate, renderedAt), anchor: anchor ?? entryDate)
         return valueText(meter) + (note.map { " · " + $0 } ?? "")
     }
@@ -299,7 +299,7 @@ struct LAAEmployeeWidgetView: View {
     static func freshnessText(_ meter: WidgetUsageMeter, at now: Date, anchor: Date? = nil) -> String? {
         guard meter.hasRecordedValue(at: now) else { return nil }
         if meter.resetsAt.map({ !(now < $0) }) == true, let observed = meter.observedAt {
-            return LAAUsageAge.text(observed, at: now) + "・リセット済み"
+            return LAAUsageAge.text(observed, at: now) + " · Reset"
         }
         guard meter.isPast(at: now, anchor: anchor), let observed = meter.observedAt else { return nil }
         return LAAUsageAge.text(observed, at: now)
@@ -341,7 +341,7 @@ struct LAAEmployeeWidgetView: View {
                     HStack(spacing: LAASpacing.x2) {
                         LAAIconImage(hasCall ? .call : .chat, size: 16)
                         Text(verbatim: accessoryLabel)
-                            .font(.system(size: 13, weight: .medium))
+                            .font(LAAKit.LAAType.operating(.small)).fontWeight(.medium)
                     }
                     .foregroundStyle(LAAColor.text)
                     .padding(.top, LAASpacing.x1)
@@ -406,8 +406,8 @@ struct LAAWidgetUsageColumn: View {
     let renderedAt: Date
     var renderingMode: WidgetRenderingMode = .fullColor
     @Environment(\.laaThemeID) private var themeID
-    @ScaledMetric(relativeTo: .caption) private var labelSize: CGFloat = 12
-    @ScaledMetric(relativeTo: .caption2) private var noteSize: CGFloat = 11
+    @ScaledMetric(relativeTo: .caption) private var labelSize = LAACanvas.iphone.label
+    @ScaledMetric(relativeTo: .footnote) private var readingSize = LAACanvas.iphone.small
     @ScaledMetric(relativeTo: .caption) private var providerWidth: CGFloat = 46
     @ScaledMetric(relativeTo: .caption) private var periodWidth: CGFloat = 31
     @ScaledMetric(relativeTo: .caption) private var rowPitch: CGFloat = 22
@@ -449,7 +449,7 @@ struct LAAWidgetUsageColumn: View {
             }
             if hidden > 0 {
                 Text(verbatim: "+\(hidden)")
-                    .font(.system(size: noteSize, weight: .medium)).monospacedDigit()
+                    .font(.system(size: labelSize, weight: .medium)).monospacedDigit()
                     .foregroundStyle(LAAColor.secondaryText).lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .trailing)
                     .fixedSize(horizontal: false, vertical: true)
@@ -512,7 +512,7 @@ struct LAAWidgetUsageColumn: View {
                 .font(.system(size: labelSize))
             if let value {
                 Text(verbatim: LAAEmployeeWidgetView.percentageText(value.amount))
-                    .font(.system(size: labelSize, weight: .semibold)).monospacedDigit()
+                    .font(.system(size: readingSize, weight: .semibold)).monospacedDigit()
                     .foregroundStyle(LAAColor.text)
             }
         }
@@ -524,7 +524,7 @@ struct LAAWidgetUsageColumn: View {
         guard let value else { return LAAShape.unknown }
         let text = LAAEmployeeWidgetView.displayValue(value, entryDate: entry.date, renderedAt: renderedAt,
                                                      anchor: entry.freshnessAnchor)
-        return reset.map { text + "、リセット " + LAAUsageResetText.full($0, now: renderedAt) } ?? text
+        return reset.map { text + ", Reset " + LAAUsageResetText.full($0, now: renderedAt) } ?? text
     }
 }
 #endif

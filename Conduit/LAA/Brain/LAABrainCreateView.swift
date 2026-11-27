@@ -115,7 +115,7 @@ struct LAABrainCreateView: View {
                     if LAABrainData.isTestFixture {
                         Button {
                             UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                        } label: { Text(verbatim: "キーボードを閉じる") }
+                        } label: { Text(verbatim: "Dismiss Keyboard") }
                         .accessibilityIdentifier("laa.brain.fixture.dismissKeyboard")
                     }
                     if LAABrainData.isMarkedTextFixture {

@@ -210,7 +210,7 @@ enum LAADecisionCopy {
     static let replied = "返答済み"
     /// The same line when the answer was stored, not delivered.
     static let recorded = "記録済み"
-    static let empty = "判断待ちはありません"
+    static let empty = "No Pending Decisions"
     static let unsupported = "Macのアップデート待ち"
     static let unsupportedDetail = "判断ボードを使うには、MacのLAAアプリを最新にしてください。"
 

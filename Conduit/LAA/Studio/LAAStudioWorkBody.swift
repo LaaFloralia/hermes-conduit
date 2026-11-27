@@ -30,6 +30,16 @@ private struct LAAStudioWorkItem: Identifiable {
 
 private enum LAAStudioFilter: String, CaseIterable, Identifiable {
     case all = "すべて", pages = "ページ", images = "画像", video = "動画", model = "3D", audio = "音声"
+    var label: String {
+        switch self {
+        case .all: "All"
+        case .pages: "Pages"
+        case .images: "Images"
+        case .video: "Video"
+        case .model: "3D"
+        case .audio: "Audio"
+        }
+    }
     var id: String { rawValue }
     func includes(_ item: LAAStudioWorkItem) -> Bool {
         switch self {
@@ -84,13 +94,13 @@ struct LAAStudioWorkBody: View {
                 }
                 VStack(alignment: .leading, spacing: LAASpacing.x2) {
                     if laaDesktop {
-                        Text(verbatim: current.title).font(LAAType.title(current.title, size: 22, relativeTo: .title2))
+                        Text(verbatim: current.title).laaTextStyle(.heading)
                             .foregroundStyle(LAAColor.text)
                         Text(verbatim: summary).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     }
                     if let note = activeSnapshot?.requests.first(where: { $0.request.projectId == current.id })?.report?.text,
                        !note.isEmpty {
-                        Text(verbatim: note).font(.system(size: 15)).foregroundStyle(LAAColor.secondaryText).lineLimit(2)
+                        Text(verbatim: note).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText).lineLimit(2)
                     }
                 }
                 if let error { LAAStudioConnectionLine(message: error) { Task { await load() } } }
@@ -102,7 +112,7 @@ struct LAAStudioWorkBody: View {
                 }
                 if !versions.isEmpty || LAAStudioMedia.driveURL(driveURL) != nil {
                     VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                        Text(verbatim: "納品").font(.footnote.weight(.semibold)).foregroundStyle(LAAColor.secondaryText)
+                        Text(verbatim: "Delivery").laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
                         ForEach(versions) { item in
                             NavigationLink { LAAStudioItemView(items: versions, startIndex: versions.firstIndex { $0.id == item.id } ?? 0,
                                 project: current, snapshot: activeSnapshot, reviews: detail?.reviews ?? [], driveURL: driveURL, allowsReview: detail != nil) } label: {
@@ -111,21 +121,21 @@ struct LAAStudioWorkBody: View {
                         }
                         if let url = LAAStudioMedia.driveURL(driveURL) {
                             ShareLink(String("Share"), item: url).frame(minHeight: 44)
-                            Link("Driveで開く", destination: url).frame(minHeight: 44)
+                            Link("Open in Drive", destination: url).frame(minHeight: 44)
                         }
                     }
                 }
                 if !items.isEmpty {
                     VStack(alignment: .leading, spacing: LAASpacing.x2) {
                         HStack {
-                            Text(verbatim: "ページと素材").font(.footnote.weight(.semibold)).foregroundStyle(LAAColor.secondaryText)
+                            Text(verbatim: "Pages & Assets").laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
                             Spacer()
                             if Set(allItems.map(\.kind)).count > 1 {
                                 Menu {
-                                    Picker(String("種類"), selection: $filter) {
-                                        ForEach(LAAStudioFilter.allCases) { Text(verbatim: $0.rawValue).tag($0) }
+                                    Picker(String("Type"), selection: $filter) {
+                                        ForEach(LAAStudioFilter.allCases) { Text(verbatim: $0.label).tag($0) }
                                     }
-                                } label: { Image(systemName: "line.3.horizontal.decrease").frame(width: 44, height: 44) }.accessibilityLabel(String("種類"))
+                                } label: { Image(systemName: "line.3.horizontal.decrease").frame(width: 44, height: 44) }.accessibilityLabel(String("Type"))
                             }
                         }
                         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: LAASpacing.x2), count: 3), spacing: LAASpacing.x3) {
@@ -147,7 +157,7 @@ struct LAAStudioWorkBody: View {
                     ForEach(displacedDrafts) { draft in
                         NavigationLink(String("保存した講評の下書き")) {
                             LAAStudioReviewView(snapshot: snapshot, project: current, target: draft.target,
-                                targetName: draft.targetName ?? "保存した版", revision: draft.revision ?? current.revision,
+                                targetName: draft.targetName ?? "Saved Version", revision: draft.revision ?? current.revision,
                                 reviews: detail?.reviews ?? [], unavailableInListing: true)
                         }.frame(minHeight: 44).accessibilityIdentifier("laa.studio.displaced.\(draft.id)")
                     }
@@ -161,8 +171,8 @@ struct LAAStudioWorkBody: View {
                     LAABackToolbar(action: { dismiss() })
                     ToolbarItem(placement: .principal) {
                         VStack(spacing: 2) {
-                            Text(verbatim: current.title).font(.system(size: 17, weight: .semibold)).lineLimit(1)
-                            Text(verbatim: summary).font(.system(size: 12)).foregroundStyle(LAAColor.secondaryText).lineLimit(1)
+                            Text(verbatim: current.title).laaTextStyle(.heading).lineLimit(1)
+                            Text(verbatim: summary).laaTextStyle(.note).foregroundStyle(LAAColor.secondaryText).lineLimit(1)
                         }
                     }
                 }
@@ -246,7 +256,7 @@ private struct LAAStudioGallery: View {
                         LAAStudioPlayerView(asset: .init(id: item.id, name: item.name, kind: "video", url: item.media,
                             poster: item.poster, unavailable: item.unavailable, previewOnly: item.previewOnly), path: path)
                     } else if item.preparing {
-                        Text(verbatim: "閲覧用コピーを準備中").foregroundStyle(LAAColor.secondaryText)
+                        Text(verbatim: "Preparing Preview").foregroundStyle(LAAColor.secondaryText)
                     } else if let unavailable = item.unavailable {
                         Text(verbatim: unavailable).foregroundStyle(LAAColor.secondaryText)
                     } else if item.kind == "pdf" {
@@ -274,7 +284,7 @@ private struct LAAStudioGallery: View {
                         }.accessibilityHidden(true)
                     }
                     Spacer()
-                    Text(verbatim: "\(index + 1) / \(items.count)").font(.system(size: 13)).foregroundStyle(LAAColor.secondaryText)
+                    Text(verbatim: "\(index + 1) / \(items.count)").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 }
             }
         }
@@ -303,11 +313,11 @@ private struct LAAStudioItemView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: LAASpacing.x4) {
                 HStack {
-                    Button { index -= 1 } label: { Label { Text(verbatim: "前へ") } icon: { Image(systemName: "chevron.left") }.frame(minHeight: LAASpacing.minimumTouchTarget) }.disabled(index == 0)
+                    Button { index -= 1 } label: { Label { Text(verbatim: "Back") } icon: { Image(systemName: "chevron.left") }.frame(minHeight: LAASpacing.minimumTouchTarget) }.disabled(index == 0)
                     Spacer()
                     Text(verbatim: "\(index + 1) / \(items.count)").laaTextStyle(.secondary)
                     Spacer()
-                    Button { index += 1 } label: { Label { Text(verbatim: "次へ") } icon: { Image(systemName: "chevron.right") }.frame(minHeight: LAASpacing.minimumTouchTarget) }.disabled(index + 1 == items.count)
+                    Button { index += 1 } label: { Label { Text(verbatim: "Next") } icon: { Image(systemName: "chevron.right") }.frame(minHeight: LAASpacing.minimumTouchTarget) }.disabled(index + 1 == items.count)
                 }
                 Text(verbatim: item.name).font(LAAType.title(item.name)).foregroundStyle(LAAColor.text)
                 Text(verbatim: "\(item.kind.capitalized) · Revision \(item.revision)").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
@@ -315,7 +325,7 @@ private struct LAAStudioItemView: View {
                     Text(verbatim: "\(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)) · \(LAAWorkPresentation.date(item.createdAt))")
                         .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 }
-                if item.previewOnly { Text(verbatim: "閲覧用コピー").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
+                if item.previewOnly { Text(verbatim: "Preview Copy").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
                 if item.preparing { Text(verbatim: "閲覧用コピーを準備中です。時間をおいて作品を更新してください。").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
                 content.id(item.id)
                 if allowsReview, let snapshot, snapshot.supportsV2 {
@@ -323,7 +333,7 @@ private struct LAAStudioItemView: View {
                         initialPrompt: "「" + item.name + "」の直し: ", draftID: project.id, inline: true)
                 }
             }.padding(LAASpacing.horizontal).laaPageWidth()
-        }.background(LAAColor.background.ignoresSafeArea()).navigationTitle(Text(verbatim: "閲覧"))
+        }.background(LAAColor.background.ignoresSafeArea()).navigationTitle(Text(verbatim: "Preview"))
             .navigationBarTitleDisplayMode(.inline).tint(LAAColor.link)
             .onAppear {
                 guard allowsReview else { return }
@@ -343,7 +353,7 @@ private struct LAAStudioItemView: View {
         } else {
             Text(verbatim: reason).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             if let url = LAAStudioMedia.driveURL(driveURL) {
-                Link(destination: url) { Label { Text(verbatim: "Driveで開く") } icon: { Image(systemName: "arrow.up.right.square") }.frame(minHeight: LAASpacing.minimumTouchTarget) }
+                Link(destination: url) { Label { Text(verbatim: "Open in Drive") } icon: { Image(systemName: "arrow.up.right.square") }.frame(minHeight: LAASpacing.minimumTouchTarget) }
             }
         }
     }

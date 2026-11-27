@@ -35,8 +35,8 @@ struct LAASettingsButton: View {
 
     var body: some View {
         if !laaDesktop, LAASettingsEntry.showsToolbarGear {
-            LAAToolbarIconButton(systemName: "gearshape", label: "設定", action: action)
-                .accessibilityLabel(Text(verbatim: "設定"))
+            LAAToolbarIconButton(systemName: "gearshape", label: "Settings", action: action)
+                .accessibilityLabel(Text(verbatim: "Settings"))
                 .accessibilityIdentifier("laa.settings.open")
                 .macTooltip(LAACopy.settings)
         }

@@ -106,7 +106,7 @@ struct LAAStudioFilePreview: View {
                     Button { attempt += 1 } label: { Text(verbatim: LAACopy.Studio.retry).frame(minHeight: LAASpacing.minimumTouchTarget) }
                 }
                 if let url = LAAStudioMedia.driveURL(driveURL) {
-                    Link(destination: url) { Label { Text(verbatim: "Driveで開く") } icon: { Image(systemName: "arrow.up.right.square") }.frame(minHeight: LAASpacing.minimumTouchTarget) }
+                    Link(destination: url) { Label { Text(verbatim: "Open in Drive") } icon: { Image(systemName: "arrow.up.right.square") }.frame(minHeight: LAASpacing.minimumTouchTarget) }
                 }
             }
         }.task(id: "\(path ?? "")-\(attempt)") { await loader.load(path: path, bridge: bridge) }

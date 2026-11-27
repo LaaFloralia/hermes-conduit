@@ -227,7 +227,7 @@ struct LAADrivePlayerContent: View {
                 .accessibilityIdentifier("laa.drive.player")
                 #if DEBUG
                 .accessibilityValue(Text(verbatim: LAADriveData.fixture != nil && hasPresentedFrame && owner.source.position > 0
-                    ? "映像再生を確認" : ""))
+                    ? "Check Playback" : ""))
                 #endif
             switch owner.state {
             case .loading:
@@ -239,17 +239,17 @@ struct LAADrivePlayerContent: View {
                         .accessibilityIdentifier("laa.drive.player.retry")
                 }
             case .ended:
-                Button(String("もう一度再生")) { owner.playback.replay() }
+                Button(String("Replay")) { owner.playback.replay() }
                     .accessibilityIdentifier("laa.drive.player.replay")
             case .paused, .playing:
                 EmptyView()
             }
             if let presentationItem {
                 VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                    Text(verbatim: presentationItem.name).font(.system(size: 22, weight: .semibold)).lineLimit(2)
+                    Text(verbatim: presentationItem.name).laaTextStyle(.heading).lineLimit(2)
                     if let size = presentationItem.size {
                         Text(verbatim: ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
-                            .font(.footnote).foregroundStyle(LAAColor.secondaryText)
+                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     }
                 }
                 .padding(.horizontal, 20)

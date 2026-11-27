@@ -29,24 +29,24 @@ struct LAAHabitEditor: View {
         NavigationStack {
             Form {
                 Section {
-                    Picker(selection: $kind) { Text(verbatim: "習慣").tag("do"); Text(verbatim: "禁止習慣").tag("avoid") } label: { Text(verbatim: "種類") }.disabled(habit != nil).accessibilityIdentifier("laa.habits.kind")
+                    Picker(selection: $kind) { Text(verbatim: "Habit").tag("do"); Text(verbatim: "禁止習慣").tag("avoid") } label: { Text(verbatim: "Type") }.disabled(habit != nil).accessibilityIdentifier("laa.habits.kind")
                     LabeledContent {
                         // An empty prompt gives the field no width on Mac, where it then cannot be clicked.
-                        TextField(text: $title, prompt: Text(verbatim: "必須")) { Text(verbatim: "名前") }
+                        TextField(text: $title, prompt: Text(verbatim: "Required")) { Text(verbatim: "Name") }
                             .multilineTextAlignment(.trailing).accessibilityIdentifier("laa.habits.title")
-                    } label: { Text(verbatim: "名前") }
+                    } label: { Text(verbatim: "Name") }
                     Stepper(value: $target, in: (kind == "do" ? 1 : 0)...7) { Text(verbatim: kind == "do" ? "週\(target)日" : (target == 0 ? "しない" : "週\(target)日まで")) }.accessibilityIdentifier("laa.habits.target")
                     LabeledContent {
                         HStack(spacing: LAASpacing.x1) {
-                            TextField(text: $minutes, prompt: Text(verbatim: "任意")) { Text(verbatim: "1回の目安") }
+                            TextField(text: $minutes, prompt: Text(verbatim: "Optional")) { Text(verbatim: "Session Length") }
                                 .keyboardType(.numberPad).multilineTextAlignment(.trailing)
                             Text(verbatim: "分").foregroundStyle(LAAColor.secondaryText)
                         }
-                    } label: { Text(verbatim: "1回の目安") }
+                    } label: { Text(verbatim: "Session Length") }
                     LabeledContent {
-                        TextField(text: $minimum, prompt: Text(verbatim: "任意"), axis: .vertical) { Text(verbatim: "余力がない日の最小の形") }
+                        TextField(text: $minimum, prompt: Text(verbatim: "Optional"), axis: .vertical) { Text(verbatim: "余力がない日の最小の形") }
                             .multilineTextAlignment(.trailing)
-                    } label: { Text(verbatim: "最小の形") }
+                    } label: { Text(verbatim: "Minimum") }
                 }
                 Section {
                     Picker(selection: $support) {
@@ -56,9 +56,9 @@ struct LAAHabitEditor: View {
                 }
                 Section {
                     LabeledContent {
-                        TextField(text: $note, prompt: Text(verbatim: "任意"), axis: .vertical) { Text(verbatim: "メモ") }
+                        TextField(text: $note, prompt: Text(verbatim: "Optional"), axis: .vertical) { Text(verbatim: "Notes") }
                             .lineLimit(1...8).multilineTextAlignment(.trailing)
-                    } label: { Text(verbatim: "メモ") }
+                    } label: { Text(verbatim: "Notes") }
                 }
                 if let message { LAAInlineFailure(reason: message) { Task { await save() } } }
                 if habit != nil {
@@ -67,7 +67,7 @@ struct LAAHabitEditor: View {
                     }
                 }
             }.disabled(busy).scrollContentBackground(.hidden).background(LAAColor.background).laaTextStyle(.body)
-                .navigationTitle(Text(verbatim: habit == nil ? "習慣を追加" : "習慣を編集")).navigationBarTitleDisplayMode(.inline)
+                .navigationTitle(Text(verbatim: habit == nil ? "Add Habit" : "Edit Habit")).navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button { dismiss() } label: { Text(verbatim: "Cancel") }.disabled(busy) }
                     ToolbarItem(placement: .confirmationAction) { Button { Task { await save() } } label: { Text(verbatim: "Save") }.disabled(!valid || busy).accessibilityIdentifier("laa.habits.save") }

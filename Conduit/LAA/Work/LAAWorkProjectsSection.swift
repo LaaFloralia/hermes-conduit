@@ -34,7 +34,7 @@ struct LAAWorkProjectsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x4) {
-            LAAWorkPrimaryButton(title: "新しいプロジェクト", systemImage: "plus") { showNew = true }
+            LAAWorkPrimaryButton(title: "New Project", systemImage: "plus") { showNew = true }
                 .accessibilityIdentifier("work.projects.new")
             if let failure { LAAWorkFailure(text: failure) { Task { await load() } } }
             if loading && projects.isEmpty { LAALoadingDots() }

@@ -102,7 +102,7 @@ struct LAAChairedVoiceBar: View {
     }
 }
 
-#Preview("壁打ち Voice") {
+#Preview("Voice") {
     // Inert actions: a preview never engages, so no mic and no TTS.
     VStack(spacing: 12) {
         LAAChairedVoiceBar(state: .off, actions: .inert)

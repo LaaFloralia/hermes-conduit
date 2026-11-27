@@ -9,8 +9,8 @@ struct LAAStudioCatalogView: View {
     @State private var loading = false
     @State private var loadID: UUID?
     @State private var error: String?
-    @State private var category = "すべて"
-    private var categories: [String] { ["すべて"] + Array(Set(catalog?.documents.map(\.category) ?? [])).sorted() }
+    @State private var category: String?
+    private var categories: [String] { Array(Set(catalog?.documents.map(\.category) ?? [])).sorted() }
     var body: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x4) {
             if let error {
@@ -41,6 +41,9 @@ struct LAAStudioCatalogView: View {
                 Text(verbatim: "正式資料 · \(catalog.documents.count)").laaTextStyle(.section).fontWeight(.semibold)
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: LAASpacing.x2) {
+                        Button { category = nil } label: {
+                            Text(verbatim: "All").studioFilterChip(selected: category == nil)
+                        }.buttonStyle(.plain).accessibilityAddTraits(category == nil ? .isSelected : [])
                         ForEach(categories, id: \.self) { item in
                             Button { category = item } label: {
                                 Text(verbatim: item).studioFilterChip(selected: category == item)
@@ -48,7 +51,7 @@ struct LAAStudioCatalogView: View {
                         }
                     }
                 }.scrollClipDisabled()
-                ForEach(catalog.documents.filter { category == "すべて" || $0.category == category }) { document in
+                ForEach(catalog.documents.filter { category == nil || $0.category == category }) { document in
                     NavigationLink { LAAStudioDocumentView(document: document) } label: {
                         VStack(alignment: .leading, spacing: LAASpacing.x1) {
                             Text(verbatim: document.title).laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.text)
@@ -98,7 +101,7 @@ private struct LAAStudioPrincipleView: View {
                 } label: {
                     Text(verbatim: "この原則で始める")
                 }.laaGlassButton(prominent: true)
-                heading("色")
+                heading("Color")
                 ForEach(Array(principle.colors.enumerated()), id: \.offset) { _, color in
                     HStack(alignment: .top, spacing: LAASpacing.x3) {
                         colorSwatch(color.value).frame(width: 44, height: 44).clipShape(RoundedRectangle(cornerRadius: 8))
@@ -106,16 +109,16 @@ private struct LAAStudioPrincipleView: View {
                             Text(verbatim: "\(color.name) · \(color.value)").laaTextStyle(.body).fontWeight(.semibold)
                             if let rgb = color.rgb { detail("RGB", rgb.text) }
                             if let oklch = color.oklch { detail("OKLCH", oklch.text) }
-                            if let cmyk = color.cmykApprox { detail("CMYK（目安）", cmyk.text) }
+                            if let cmyk = color.cmykApprox { detail("CMYK (Approx.)", cmyk.text) }
                         }
                     }
                 }
-                heading("書体")
+                heading("Typeface")
                 ForEach(Array(principle.fonts.enumerated()), id: \.offset) { _, font in
                     Text(verbatim: "\(font.name) · \(font.family) · \(font.weight.formatted()) / \(font.size.formatted())")
                         .laaTextStyle(.body)
                 }
-                heading("参考画像")
+                heading("Reference Image")
                 ForEach(Array(principle.references.enumerated()), id: \.offset) { _, reference in
                     VStack(alignment: .leading, spacing: LAASpacing.x2) {
                         LAAStudioThumbnail(path: reference.media, symbol: "photo").aspectRatio(1.6, contentMode: .fit)
@@ -126,7 +129,7 @@ private struct LAAStudioPrincipleView: View {
                 heading("型")
                 ForEach(Array(principle.templates.enumerated()), id: \.offset) { _, template in Text(verbatim: template).laaTextStyle(.body) }
                 if let priorities = principle.priorities, !priorities.isEmpty {
-                    heading("優先事項")
+                    heading("Priorities")
                     ForEach(Array(priorities.enumerated()), id: \.offset) { _, priority in
                         VStack(alignment: .leading, spacing: LAASpacing.x1) {
                             Text(verbatim: priority.title).laaTextStyle(.body).fontWeight(.semibold)
@@ -135,7 +138,7 @@ private struct LAAStudioPrincipleView: View {
                     }
                 }
             }.padding(LAASpacing.horizontal).laaPageWidth()
-        }.background(LAAColor.background.ignoresSafeArea()).navigationTitle(Text(verbatim: "原則"))
+        }.background(LAAColor.background.ignoresSafeArea()).navigationTitle(Text(verbatim: "Principles"))
             .navigationBarTitleDisplayMode(.inline).tint(LAAColor.link)
     }
     private func heading(_ title: String) -> some View { Text(verbatim: title).laaTextStyle(.section).fontWeight(.semibold) }
@@ -158,13 +161,13 @@ private struct LAAStudioDocumentView: View {
                 Text(verbatim: document.title).font(LAAType.title(document.title)).foregroundStyle(LAAColor.text)
                 Text(verbatim: "\(document.category) · \(document.detail)").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 if let url = LAAStudioMedia.driveURL(document.driveUrl) {
-                    Link(destination: url) { Label { Text(verbatim: "Driveで開く") } icon: { Image(systemName: "arrow.up.right.square") }.frame(minHeight: LAASpacing.minimumTouchTarget) }
+                    Link(destination: url) { Label { Text(verbatim: "Open in Drive") } icon: { Image(systemName: "arrow.up.right.square") }.frame(minHeight: LAASpacing.minimumTouchTarget) }
                         .accessibilityIdentifier("laa.studio.document.drive")
                 }
                 if LAAStudioMedia.bridgePath(document.media, allowed: ["pdf"]) != nil { LAAStudioFilePreview(path: document.media, driveURL: document.driveUrl) }
                 else { Text(verbatim: "アプリ用の資料を読み込めません。Driveで開いてください。").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
             }.padding(LAASpacing.horizontal).laaPageWidth()
-        }.background(LAAColor.background.ignoresSafeArea()).navigationTitle(Text(verbatim: "正式資料"))
+        }.background(LAAColor.background.ignoresSafeArea()).navigationTitle(Text(verbatim: "Official Documents"))
             .navigationBarTitleDisplayMode(.inline).tint(LAAColor.link)
     }
 }

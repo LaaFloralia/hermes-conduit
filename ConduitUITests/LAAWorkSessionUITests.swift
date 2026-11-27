@@ -191,7 +191,7 @@ final class LAAWorkSessionUITests: XCTestCase {
         XCTAssertTrue((model.value as? String ?? "").contains("最終確認"))
         let fast = app.descendants(matching: .any)["work.session.fast"].firstMatch
         XCTAssertTrue(fast.waitForExistence(timeout: 10))
-        XCTAssertEqual(fast.value as? String, "最終確認: オン")
+        XCTAssertEqual(fast.value as? String, "Last Verified: On")
         XCTAssertTrue(app.staticTexts["委譲先の状態を観測できていません。表示は最後に確認できた記録です。"].exists)
     }
 
@@ -216,7 +216,7 @@ final class LAAWorkSessionUITests: XCTestCase {
         let copyName = app.buttons["work.initialInstruction.copyName"]
         XCTAssertTrue(copyName.isHittable)
         copyName.tap()
-        XCTAssertEqual(copyName.label, "コピーしました")
+        XCTAssertEqual(copyName.label, "Copied")
         let text = app.descendants(matching: .any)["work.initialInstruction.text"].firstMatch
         XCTAssertTrue(text.waitForExistence(timeout: 15))
         XCTAssertTrue((text.label + (text.value as? String ?? "")).contains("最初の指示の全文です。"))
@@ -224,8 +224,8 @@ final class LAAWorkSessionUITests: XCTestCase {
         if !copy.isHittable { app.scrollViews.firstMatch.swipeUp() }
         XCTAssertTrue(copy.isHittable)
         copy.tap()
-        XCTAssertEqual(copy.label, "コピーしました")
-        XCTAssertEqual(copyName.label, "名前をコピー")
+        XCTAssertEqual(copy.label, "Copied")
+        XCTAssertEqual(copyName.label, "Copy Name")
         let shot = XCTAttachment(screenshot: app.screenshot())
         shot.name = screenshot; shot.lifetime = .keepAlways
         add(shot)
@@ -298,7 +298,7 @@ final class LAAWorkSessionUITests: XCTestCase {
         open(decisionID, app)
         let composer = field(app)
         XCTAssertTrue(wait(composer, hittable: true))
-        XCTAssertTrue(headerContaining("判断待ち", app).exists)
+        XCTAssertTrue(headerContaining("Awaiting Decision", app).exists)
 
         composer.tap()
         composer.typeText("queued follow-up")
@@ -308,7 +308,7 @@ final class LAAWorkSessionUITests: XCTestCase {
         let queued = app.descendants(matching: .any)["work.session.echo"].firstMatch
         XCTAssertTrue(queued.waitForExistence(timeout: 10))
         XCTAssertTrue(queued.label.contains("順番待ち"), "A pending decision queues a follow-up without answering it")
-        XCTAssertTrue(headerContaining("判断待ち", app).exists)
+        XCTAssertTrue(headerContaining("Awaiting Decision", app).exists)
     }
 
     /// A picture that arrives while the owner is reading older turns must not
@@ -442,7 +442,7 @@ final class LAAWorkSessionUITests: XCTestCase {
         XCTAssertLessThanOrEqual(send.frame.maxX, app.frame.maxX - 4)
         XCTAssertGreaterThan(photo.frame.minX, 4)
         // The values stay whole: only the model text truncates.
-        XCTAssertEqual(fast.label, "Fastモード")
+        XCTAssertEqual(fast.label, "Fast Mode")
         XCTAssertEqual(send.label, "Send")
         XCTAssertEqual(stop.label, "Stop")
         // No dictation control anywhere on this screen.
@@ -464,9 +464,9 @@ final class LAAWorkSessionUITests: XCTestCase {
         tapRow(readOnlyFastID, app)
         let fast = app.descendants(matching: .any)["work.session.fast"].firstMatch
         XCTAssertTrue(fast.waitForExistence(timeout: 15))
-        XCTAssertEqual(fast.value as? String, "オン")
+        XCTAssertEqual(fast.value as? String, "On")
         XCTAssertFalse(app.buttons["work.session.fast"].exists, "a value the Bridge cannot change must not be a button")
-        XCTAssertEqual(fast.label, "Fastモード")
+        XCTAssertEqual(fast.label, "Fast Mode")
         // The mismatch between request and observation is at the top of the
         // conversation, where the heading card used to be.
         XCTAssertTrue(app.descendants(matching: .any)["work.session.modelMismatch"].waitForExistence(timeout: 10))
@@ -478,7 +478,7 @@ final class LAAWorkSessionUITests: XCTestCase {
         open(runningID, app)
         let fast = app.buttons["work.session.fast"].firstMatch
         XCTAssertTrue(fast.waitForExistence(timeout: 15))
-        XCTAssertEqual(fast.value as? String, "オフ")
+        XCTAssertEqual(fast.value as? String, "Off")
         fast.tap()
         let on = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "オン"), object: fast)
         XCTAssertEqual(XCTWaiter.wait(for: [on], timeout: 15), .completed, "the Fast change was not read back")

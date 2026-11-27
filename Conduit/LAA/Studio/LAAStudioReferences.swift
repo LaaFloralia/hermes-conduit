@@ -43,9 +43,9 @@ struct LAAStudioReferencePicker: View {
                     if browser.error != nil { LAAStudioConnectionLine(message: "Driveを読み込めません") { Task { await load() } } }
                     if browser.loading && browser.items.isEmpty { LAALoadingDots() }
                 }.padding(LAASpacing.horizontal)
-            }.background(LAAColor.background).searchable(text: $search, prompt: "検索")
+            }.background(LAAColor.background).searchable(text: $search, prompt: "Search")
                 .onSubmit(of: .search) { Task { await load() } }
-                .navigationTitle(String("参考を添付")).navigationBarTitleDisplayMode(.inline)
+                .navigationTitle(String("Attach Reference")).navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button(String("Cancel")) { dismiss() } } }
                 .task(id: bridge.revision) { browser.invalidate(); folder = nil; parents = []; await load() }
         }.tint(LAAColor.link)

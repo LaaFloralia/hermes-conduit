@@ -79,7 +79,7 @@ struct LAABrainDesktopNoteRow: View {
                             .foregroundStyle(LAAColor.secondaryText).lineLimit(1).truncationMode(.head)
                     }
                     if file.conflictOriginalPath != nil {
-                        Text(verbatim: "競合コピー").laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
+                        Text(verbatim: "Conflict Copy").laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
                     }
                     if file.unreadable != nil {
                         Text(verbatim: "本文を読み込めません").laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
@@ -165,7 +165,7 @@ struct LAABrainDesktopHeader: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(isRefreshing)
-                    .help("再読み込み (⌘R)")
+                    .help("Reload (⌘R)")
                     .accessibilityLabel(Text(verbatim: "再読み込み"))
                 }
                 if canCreate {

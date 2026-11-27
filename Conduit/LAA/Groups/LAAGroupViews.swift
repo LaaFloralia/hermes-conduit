@@ -43,7 +43,7 @@ struct LAAGroupListView: View {
                     Text(verbatim: "グループを開くにはMacに接続してください。")
                 } else {
                     switch appState.groupChatPhase {
-                    case .idle, .loading: ProgressView(String("グループを読み込み中"))
+                    case .idle, .loading: ProgressView(String("Loading Group"))
                     case .gatewayUnsupported: Text(verbatim: "この接続先はグループに対応していません。")
                     case .failed(let message): Text(verbatim: "グループを読み込めませんでした：\(message)")
                     case .available:
@@ -66,7 +66,7 @@ struct LAAGroupListView: View {
                                         VStack(alignment: .leading) {
                                             Text(room.name)
                                             Text(room.members.compactMap(\.displayName).joined(separator: "、"))
-                                                .font(.caption).foregroundStyle(.secondary)
+                                                .laaTextStyle(.note).foregroundStyle(.secondary)
                                         }
                                     }
                                 }
@@ -135,7 +135,7 @@ struct LAAGroupCreateView: View {
                             HStack {
                                 Text(verbatim: LAAChatPerson.name(staff.name))
                                 Spacer()
-                                if !isAvailable { Text(verbatim: "接続先にいません").font(.caption).foregroundStyle(.secondary) }
+                                if !isAvailable { Text(verbatim: "接続先にいません").laaTextStyle(.note).foregroundStyle(.secondary) }
                                 else { Image(systemName: selected.contains(profile) ? "checkmark.circle.fill" : "circle") }
                             }
                         }
@@ -239,9 +239,9 @@ struct LAAGroupSettingsContent: View {
                 .disabled(!canRename || saving || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || name == room.name)
                 .accessibilityIdentifier("groups.rename.submit")
                 if !canRename { Text(verbatim: "この接続先では名前を変更できません。過去の履歴は保持されます。")
-                    .font(.footnote).foregroundStyle(.secondary) }
+                    .laaTextStyle(.secondary).foregroundStyle(.secondary) }
                 if failed { Text(verbatim: "変更できませんでした。接続を確認して再試行してください。")
-                    .font(.footnote).foregroundStyle(.red) }
+                    .laaTextStyle(.secondary).foregroundStyle(.red) }
             }
             Section {
                 ForEach(room.members, id: \.identityKey) { member in

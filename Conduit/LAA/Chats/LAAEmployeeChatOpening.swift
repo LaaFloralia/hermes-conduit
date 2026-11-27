@@ -50,14 +50,14 @@ struct LAAEmployeeChatOpeningView: View {
     }
     private var previewComposer: some View {
         var field = ReturnKeyTextEditor(text: $draft, isFocused: $focused,
-            accessibilityLabel: "メッセージ", accessibilityIdentifier: "laa.chats.preview.composer",
+            accessibilityLabel: "Message", accessibilityIdentifier: "laa.chats.preview.composer",
             maxLines: 8, canSubmitFromReturn: canQueue, onSubmitFromReturn: queueSend)
         field.onCompositionChanged = { value in
             composing = value
             handoffIfReady()
         }
         return field.frame(minHeight: 22).background(alignment: .topLeading) {
-            if draft.isEmpty { Text(verbatim: "メッセージ").foregroundStyle(LAAColor.secondaryText).allowsHitTesting(false) }
+            if draft.isEmpty { Text(verbatim: "Message").foregroundStyle(LAAColor.secondaryText).allowsHitTesting(false) }
         }
     }
     var body: some View {
@@ -108,7 +108,7 @@ struct LAAEmployeeChatOpeningView: View {
             // conversation's, so nothing moves when it takes over.
             .v2EdgeBar(.top) {
                 LAAEmployeeHeader(profile: profile, name: name,
-                    status: preview.failure == nil ? "接続中…" : "Macに接続できません",
+                    status: preview.failure == nil ? "Connecting" : "Macに接続できません",
                     compact: dynamicTypeSize.isAccessibilitySize)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity)
@@ -119,7 +119,7 @@ struct LAAEmployeeChatOpeningView: View {
                 VStack(spacing: LAASpacing.x2) {
                     if preview.failure != nil {
                         Button { appState.laaRetryEmployeeChat() } label: {
-                            Label { Text(verbatim: "接続を再試行") } icon: { Image(systemName: "arrow.clockwise") }
+                            Label { Text(verbatim: "Reconnect") } icon: { Image(systemName: "arrow.clockwise") }
                         }.accessibilityIdentifier("laa.chats.preview.retry")
                     }
                     previewComposer

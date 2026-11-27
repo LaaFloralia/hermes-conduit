@@ -160,8 +160,8 @@ extension LAALinearTask {
         case "queued": base = "取得待ち"
         case "running": base = "実施中"
         case "awaiting_decision": base = "判断待"
-        case "done": base = "完了"
-        case "stopped": base = "停止"
+        case "done": base = "Done"
+        case "stopped": base = "Stop"
         case "failed": base = "Failed"
         default: base = state
         }

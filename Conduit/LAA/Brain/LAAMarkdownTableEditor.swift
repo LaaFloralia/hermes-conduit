@@ -52,14 +52,14 @@ struct LAAMarkdownTableEditor: View {
             }
             HStack(spacing: LAASpacing.x3) {
                 Button { changeStructure { $0.addRow() } } label: {
-                    Label { Text(verbatim: "行を追加") } icon: { Image(systemName: "plus") }
+                    Label { Text(verbatim: "Add Row") } icon: { Image(systemName: "plus") }
                         .laaTextStyle(.secondary)
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(LAAColor.link)
                 .accessibilityIdentifier("laa.markdown.table.addRow")
                 Button { changeStructure { $0.addColumn() } } label: {
-                    Label { Text(verbatim: "列を追加") } icon: { Image(systemName: "plus") }
+                    Label { Text(verbatim: "Add Column") } icon: { Image(systemName: "plus") }
                         .laaTextStyle(.secondary)
                 }
                 .buttonStyle(.plain)
@@ -67,7 +67,7 @@ struct LAAMarkdownTableEditor: View {
                 .accessibilityIdentifier("laa.markdown.table.addColumn")
                 Spacer(minLength: LAASpacing.x2)
                 Button(role: .destructive) { confirmingRemoval = true } label: {
-                    Label { Text(verbatim: "表を削除") } icon: { Image(systemName: "trash") }
+                    Label { Text(verbatim: "Delete Table") } icon: { Image(systemName: "trash") }
                         .laaTextStyle(.secondary)
                 }
                 .buttonStyle(.plain)
@@ -79,7 +79,7 @@ struct LAAMarkdownTableEditor: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("laa.markdown.table")
         .confirmationDialog(Text(verbatim: "この表を削除しますか？"), isPresented: $confirmingRemoval, titleVisibility: .visible) {
-            Button(role: .destructive) { model.removeTable(segmentID) } label: { Text(verbatim: "表を削除") }
+            Button(role: .destructive) { model.removeTable(segmentID) } label: { Text(verbatim: "Delete Table") }
                 .accessibilityIdentifier("laa.markdown.table.removeConfirm")
             Button(LAACopy.Brain.cancel, role: .cancel) { }
         } message: {
@@ -91,12 +91,12 @@ struct LAAMarkdownTableEditor: View {
         GridRow {
             ForEach(0..<max(1, table.columnCount), id: \.self) { column in
                 cell(row: -1, column: column)
-                    .font(.body.weight(.semibold))
+                    .laaTextStyle(.body).fontWeight(.semibold)
                     .contextMenu {
                         if table.columnCount > 1 {
                             Button(role: .destructive) {
                                 changeStructure { $0.removeColumn(column) }
-                            } label: { Text(verbatim: "この列を削除") }
+                            } label: { Text(verbatim: "Delete Column") }
                         }
                     }
             }
@@ -111,7 +111,7 @@ struct LAAMarkdownTableEditor: View {
                     .contextMenu {
                         Button(role: .destructive) {
                             changeStructure { $0.removeRow(row) }
-                        } label: { Text(verbatim: "この行を削除") }
+                        } label: { Text(verbatim: "Delete Row") }
                     }
             }
         }
@@ -122,7 +122,7 @@ struct LAAMarkdownTableEditor: View {
         // field would let one be typed only to be rewritten on save.
         TextField("", text: binding(row: row, column: column))
             .textFieldStyle(.plain)
-            .font(.body)
+            .laaTextStyle(.body)
             .focused($focused, equals: Cell(row: row, column: column))
             .padding(.horizontal, LAASpacing.x2)
             .padding(.vertical, LAASpacing.x2)

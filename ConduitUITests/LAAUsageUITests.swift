@@ -18,12 +18,14 @@ final class LAAUsageUITests: XCTestCase {
         openUsage(app)
         app.buttons["laa.bridge.openPairing"].tap()
         try pair(app)
-        XCTAssertTrue(app.staticTexts["Free 100 GiB"].waitForExistence(timeout: 30))
+        let free = app.descendants(matching: .any).matching(identifier: "laa.usage.capacity.free")
+            .matching(NSPredicate(format: "label == %@", "Free 100 GiB")).firstMatch
+        XCTAssertTrue(free.waitForExistence(timeout: 30))
         screenshot("usage-capacity-live-fixture")
         _ = try helper("mode/stale")
         app.buttons["laa.usage.refresh"].tap()
-        XCTAssertTrue(app.staticTexts["30分前"].firstMatch.waitForExistence(timeout: 15))
-        XCTAssertTrue(app.staticTexts["Free 100 GiB"].exists)
+        XCTAssertTrue(app.staticTexts["30m Ago"].firstMatch.waitForExistence(timeout: 15))
+        XCTAssertTrue(free.exists)
         XCTAssertFalse(app.staticTexts["更新待ち"].exists)
         screenshot("usage-capacity-outage-30m")
     }
@@ -112,7 +114,7 @@ final class LAAUsageUITests: XCTestCase {
 
         let before = try XCTUnwrap(Int(helper("counts")))
         _ = try helper("mode/stale")
-        XCTAssertTrue(text(containing: "30分前", app: app).waitForExistence(timeout: 15))
+        XCTAssertTrue(text(containing: "30m Ago", app: app).waitForExistence(timeout: 15))
         XCTAssertGreaterThan(Int(try helper("counts")) ?? 0, before)
         XCTAssertTrue(app.staticTexts["62%"].firstMatch.waitForExistence(timeout: 15))
         XCTAssertFalse(app.staticTexts["更新待ち"].exists)
@@ -146,7 +148,7 @@ final class LAAUsageUITests: XCTestCase {
 
         _ = try helper("mode/stale")
         refresh.tap()
-        XCTAssertTrue(text(containing: "30分前", app: app).waitForExistence(timeout: 30))
+        XCTAssertTrue(text(containing: "30m Ago", app: app).waitForExistence(timeout: 30))
         screenshot("usage-ui-stale")
         XCTAssertTrue(enabled(refresh))
 

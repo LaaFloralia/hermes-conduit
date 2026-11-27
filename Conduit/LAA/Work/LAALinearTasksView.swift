@@ -106,7 +106,7 @@ struct LAALinearTasksView: View {
     }
 
     private var emptyTitle: String {
-        archivedOnly ? "アーカイブはありません" : searching || quick != .all ? "一致するタスクはありません" : "タスクはありません"
+        archivedOnly ? "No Archive" : searching || quick != .all ? "No Matching Tasks" : "No Tasks"
     }
 
     var body: some View {
@@ -439,7 +439,7 @@ struct LAALinearTasksView: View {
             VStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: LAASpacing.x2) {
                     controls
-                    LAASearchField(placeholder: "番号・題名で検索", text: $desktopSearch,
+                    LAASearchField(placeholder: "Search", text: $desktopSearch,
                                    identifier: "work.tasks.desktop.search", focus: $searchFocused)
                     messages
                     pendingNotice
@@ -504,7 +504,7 @@ struct LAALinearTasksView: View {
             // ⌘N, ⌘F and ⌘R come from the menu bar, which reads the commands
             // this column publishes.
             .laaMacSectionCommands(LAAMacSectionCommands(
-                newTitle: "新しいタスク",
+                newTitle: "New Task",
                 canCreate: !(busy || pending != nil),
                 create: { editor = Editor(id: UUID().uuidString.lowercased(), task: nil) },
                 canSearch: true,
@@ -909,7 +909,7 @@ struct LAALinearTaskEditor: View {
                 if let message = localFailure ?? failure { Text(verbatim: message).foregroundStyle(LAAColor.attention) }
             }
             .disabled(busy)
-            .navigationTitle(Text(verbatim: task == nil ? "タスクを追加" : "タスクを編集"))
+            .navigationTitle(Text(verbatim: task == nil ? "Add Task" : "Edit Task"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { LAACloseButton { dismiss() }.accessibilityIdentifier("work.task.editor.close") }

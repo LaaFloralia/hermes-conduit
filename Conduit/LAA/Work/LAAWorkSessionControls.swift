@@ -20,8 +20,8 @@ enum LAAWorkFastControl {
     }
 
     static func valueText(_ display: Display) -> String {
-        let state = display.value ? "オン" : "オフ"
-        return display.current ? state : "最終確認: " + state
+        let state = display.value ? "On" : "Off"
+        return display.current ? state : "Last Verified: " + state
     }
 
     static func hint(_ display: Display) -> String {
@@ -70,7 +70,7 @@ struct LAAWorkSessionControls: View {
     /// False when the last read could not reach Paseo. The value we hold is then
     /// the last confirmed one, not the current setting.
     private var observing: Bool { session.observation?.available != false }
-    private var modelText: String? { applied.map { observing ? $0 : "最終確認 " + $0 } }
+    private var modelText: String? { applied.map { observing ? $0 : "Last Verified: " + $0 } }
     private var stopped: Bool { ["stopped", "stop_unconfirmed"].contains(session.phase) }
     private var canChangeEffort: Bool {
         sharedLock == nil && session.capabilities?.effort == true && choices.count > 1
@@ -141,12 +141,12 @@ struct LAAWorkSessionControls: View {
 
     private func pickers(_ modelText: String, name: String, effort: String) -> some View {
         LAAModelEffortPickers(
-            harness: harness, harnessHint: modelLock ?? "実行基盤を変更",
+            harness: harness, harnessHint: modelLock ?? "Change Harness",
             model: currentModel, provider: session.observed?.provider, effort: effort, name: name,
             current: observing, attention: mismatch != nil, changingModel: (changing && changingWhat == .model) || session.modelSwitch != nil,
             changingEffort: changing && changingWhat != .model, identifier: "work.session",
             modelValueSuffix: mismatch.map { "、依頼 " + $0.requested },
-            modelHint: modelLock ?? "モデルを変更", effortHint: effortLock ?? "推論の強さを変更"
+            modelHint: modelLock ?? "Change Model", effortHint: effortLock ?? "Change Effort"
         ) {
             LAAWorkHarnessMenu(groups: harnessGroups, current: harnessGroups.first,
                                chosen: ownModels.first { $0.model == currentModel && $0.provider == session.observed?.provider },
@@ -239,14 +239,14 @@ struct LAAWorkSessionControls: View {
         if pressable {
             Button { changeFast(!display.value) } label: { fastLabel(display, pressable: true) }
                 .buttonStyle(.plain)
-                .accessibilityLabel(Text(verbatim: "Fastモード"))
+                .accessibilityLabel(Text(verbatim: "Fast Mode"))
                 .accessibilityValue(Text(verbatim: LAAWorkFastControl.valueText(display)))
                 .accessibilityHint(Text(verbatim: LAAWorkFastControl.hint(display)))
                 .accessibilityIdentifier("work.session.fast")
         } else {
             fastLabel(display, pressable: false)
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel(Text(verbatim: "Fastモード"))
+                .accessibilityLabel(Text(verbatim: "Fast Mode"))
                 .accessibilityValue(Text(verbatim: LAAWorkFastControl.valueText(display)))
                 .accessibilityHint(Text(verbatim: LAAWorkFastControl.hint(display)))
                 .accessibilityIdentifier("work.session.fast")

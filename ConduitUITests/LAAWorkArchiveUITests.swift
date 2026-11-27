@@ -145,7 +145,7 @@ final class LAAWorkArchiveUITests: XCTestCase {
             XCTFail("the refusal was not shown; the fixture received \(sent.count) archive requests")
             return
         }
-        XCTAssertTrue(refusal.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "実行中")).firstMatch.exists,
+        XCTAssertTrue(refusal.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Running")).firstMatch.exists,
                       "the refusal does not say why")
         shot("4-refused", app)
         let sent = archiveRequests()

@@ -17,7 +17,7 @@ struct LAAInstructionsView: View {
                 .accessibilityIdentifier("laa.instructions.claude")
         }
         .environmentObject(bridge)
-        .navigationTitle(Text(verbatim: "指示ファイル"))
+        .navigationTitle(Text(verbatim: "Instruction Files"))
     }
 }
 
@@ -37,9 +37,9 @@ private struct LAAInstructionEditor: View {
     private var dirty: Bool { document.map { text != $0.text } ?? false }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(verbatim: path).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+            Text(verbatim: path).laaTextStyle(.note).foregroundStyle(.secondary).textSelection(.enabled)
             if let message {
-                Text(verbatim: message).font(.callout).foregroundStyle(LAAColor.attention)
+                Text(verbatim: message).laaTextStyle(.body).foregroundStyle(LAAColor.attention)
             }
             if document == nil {
                 if busy { ProgressView() }
@@ -64,7 +64,7 @@ private struct LAAInstructionEditor: View {
         .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                Button { if dirty { confirmDiscard = true } else { dismiss() } } label: { Text(verbatim: "戻る") }
+                Button { if dirty { confirmDiscard = true } else { dismiss() } } label: { Text(verbatim: "Back") }
             }
             ToolbarItemGroup(placement: .topBarTrailing) {
                 if document != nil {

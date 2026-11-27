@@ -49,7 +49,7 @@ struct LAAWorkCatalogView: View {
                                     LAAWorkRefLabel(ref: skill.ref)
                                     Text(verbatim: skill.name).fontWeight(.medium)
                                 }
-                                Text(verbatim: skill.explanation.isEmpty ? "説明なし" : skill.explanation)
+                                Text(verbatim: skill.explanation.isEmpty ? "No Description" : skill.explanation)
                                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText).lineLimit(2)
                             }.padding(.vertical, LAASpacing.x2)
                         }.listRowBackground(LAAColor.surface)
@@ -58,7 +58,7 @@ struct LAAWorkCatalogView: View {
             }
             if loaded && !loading && !failed && displayedSkills.isEmpty {
                 ContentUnavailableView {
-                    Label { Text(verbatim: "スキルはありません") }
+                    Label { Text(verbatim: "No Skills") }
                     icon: { Image(systemName: "sparkles") }
                 }.listRowBackground(Color.clear)
             }
@@ -139,7 +139,7 @@ private struct LAAWorkSkillDetail: View {
         List {
             Section {
                 LAAWorkRefLabel(ref: skill.ref)
-                Text(verbatim: skill.explanation.isEmpty ? "説明なし" : skill.explanation).fontWeight(.medium)
+                Text(verbatim: skill.explanation.isEmpty ? "No Description" : skill.explanation).fontWeight(.medium)
                 if let detail = skill.detail, !detail.isEmpty, detail != skill.explanation { Text(verbatim: detail) }
             } header: { Text(verbatim: skill.group) }
         }

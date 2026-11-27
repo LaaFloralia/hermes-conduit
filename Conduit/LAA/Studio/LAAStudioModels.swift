@@ -112,8 +112,8 @@ enum LAAStudioPresentation {
 
     static func status(_ value: String) -> String {
         switch value {
-        case "bridge_waiting": "順番待ち"
-        case "expired": "受付期限切れ"
+        case "bridge_waiting": "Queued"
+        case "expired": "Expired"
         case "queued": LAACopy.Studio.queued
         case "unreceived": LAACopy.Studio.notReceived
         case "accepted": LAACopy.Studio.accepted

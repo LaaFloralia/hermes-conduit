@@ -194,7 +194,7 @@ private struct LAAStudioProgressRow: View {
     let title: String
     var body: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
-            Text(verbatim: title).font(.body.weight(.semibold)).foregroundStyle(LAAColor.text).lineLimit(2)
+            Text(verbatim: title).laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.text).lineLimit(2)
             Text(verbatim: LAAStudioPresentation.status(record.status))
                 .laaTextStyle(.secondary)
                 .foregroundStyle(record.status == "approval" ? LAAColor.attention : LAAColor.secondaryText)
@@ -213,7 +213,7 @@ private struct LAAStudioWorksList: View {
     var body: some View {
         let groups = Dictionary(grouping: projects) { LAAStudioWorkKind(project: $0) }
         if projects.isEmpty {
-            Text(verbatim: "作品はまだありません").laaTextStyle(.body).foregroundStyle(LAAColor.secondaryText)
+            Text(verbatim: "No Projects").laaTextStyle(.body).foregroundStyle(LAAColor.secondaryText)
         } else {
             LazyVStack(alignment: .leading, spacing: LAASpacing.x4) {
                 ForEach(LAAStudioWorkKind.allCases.filter { groups[$0] != nil }, id: \.self) { kind in

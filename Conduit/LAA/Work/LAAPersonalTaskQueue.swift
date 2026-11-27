@@ -314,27 +314,27 @@ extension LAAPersonalOperationResponse.Operation {
     var displayKind: String {
         switch kind {
         case "create": return "作成"
-        case "update": return "更新"
-        case "comment": return "コメント"
+        case "update": return "Updated"
+        case "comment": return "Comment"
         case "relation": return "関連付け"
-        case "attachment", "file": return "添付"
-        case "delete": return "削除"
-        case "abandoned": return "取り消し"
+        case "attachment", "file": return "Attachment"
+        case "delete": return "Delete"
+        case "abandoned": return "Undo"
         default: return kind.hasPrefix("inbox") ? "通知" : "操作"
         }
     }
 
     var displayStatus: String {
         switch status {
-        case "succeeded": return "送信済み"
+        case "succeeded": return "Sent"
         case "resolved": return resolution == "applied" ? "反映済み" : "未反映"
-        case "pending": return "送信中"
-        case "running": return "実行中"
+        case "pending": return "Sending"
+        case "running": return "Running"
         case "preflight_retryable": return "再試行待ち"
         case "outcome_unknown": return "結果不明"
         case "abandoned": return "取り消し済み"
-        case "rejected": return "失敗"
-        default: return "処理中"
+        case "rejected": return "Failed"
+        default: return "Processing"
         }
     }
 }
@@ -370,7 +370,7 @@ struct LAAPersonalDependencyEditor: View {
                 if value.kind == .comment {
                     TextEditor(text: $value.first).frame(minHeight: 180)
                 } else {
-                    TextField(text: $value.first, axis: .vertical) { Text(verbatim: value.kind == .relation ? "関連する課題ID" : "題名") }
+                    TextField(text: $value.first, axis: .vertical) { Text(verbatim: value.kind == .relation ? "関連する課題ID" : "Title") }
                 }
                 if value.kind == .relation {
                     Picker(selection: $value.relationType) {
@@ -378,7 +378,7 @@ struct LAAPersonalDependencyEditor: View {
                         Text(verbatim: "重複").tag("duplicate"); Text(verbatim: "類似").tag("similar")
                     } label: { Text(verbatim: "関連") }
                 } else if value.kind == .link {
-                    TextField(text: $value.second) { Text(verbatim: "リンク") }.keyboardType(.URL).textInputAutocapitalization(.never)
+                    TextField(text: $value.second) { Text(verbatim: "Link") }.keyboardType(.URL).textInputAutocapitalization(.never)
                 }
                 Button() { reserve() } label: { Text(verbatim: "追加依頼を保存") }.disabled(!ready || !value.valid || drafts.persistenceFailed)
             }

@@ -8,13 +8,13 @@ import Foundation
 /// ten-thousandth rather than as a row of zeros.
 enum LAAUsageMoney {
     static func text(_ number: Double?, locale: Locale) -> String {
-        guard let number, number.isFinite else { return "未取得" }
+        guard let number, number.isFinite else { return "Unknown" }
         if number == 0 { return format(0, decimals: 2, locale: locale) }
         let magnitude = abs(number)
         let decimals = magnitude >= 0.1 ? 2 : magnitude >= 0.01 ? 3 : 4
         let scale = pow(10, Double(decimals))
         let rounded = (magnitude * scale).rounded() / scale
-        guard rounded > 0 else { return number > 0 ? "<$0.0001" : "未取得" }
+        guard rounded > 0 else { return number > 0 ? "<$0.0001" : "Unknown" }
         return (number < 0 ? "-" : "") + format(rounded, decimals: decimals, locale: locale)
     }
 

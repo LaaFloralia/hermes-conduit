@@ -67,7 +67,7 @@ final class LAAChatRuntimeChipUITests: XCTestCase {
             XCTAssertTrue(harness.waitForExistence(timeout: 10))
             waitValue(harness, "Antigravity")
             waitValue(model, "Gemini 4 Neon")
-            XCTAssertEqual(harness.label, "実行基盤")
+            XCTAssertEqual(harness.label, "Harness")
             XCTAssertEqual(harness.frame.midY, model.frame.midY, accuracy: 1, "the harness sits on the model's line")
             XCTAssertEqual(harness.frame.height, model.frame.height, accuracy: 1, "at the model's height")
             XCTAssertLessThanOrEqual(harness.frame.maxX, model.frame.minX, "and leads it")

@@ -77,7 +77,7 @@ private struct LAAStaffAmbientCollapsed: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(Text(verbatim: "社員の情報を表示"))
+            .accessibilityLabel(Text(verbatim: "Show Staff Info"))
             .accessibilityIdentifier("laa.mac.staffPanel.expand")
             Spacer()
         }
@@ -129,23 +129,23 @@ struct LAAStaffAmbientPanel: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(Text(verbatim: "社員の情報を隠す"))
+                .accessibilityLabel(Text(verbatim: "Hide Staff Info"))
                 .accessibilityIdentifier("laa.mac.staffPanel.collapse")
             }
             StaffMascotView(profile: model.profile, name: model.name, size: 176 * s)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.top, LAASpacing.x2)
             Text(verbatim: model.name)
-                .font(.system(size: 17 * s, weight: .semibold))
+                .laaTextStyle(.body).fontWeight(.semibold)
                 .foregroundStyle(LAAColor.text)
                 .padding(.top, LAASpacing.x4)
             Text(verbatim: model.role)
-                .font(.system(size: 12 * s, weight: .medium))
+                .laaTextStyle(.note)
                 .foregroundStyle(LAAColor.secondaryText)
                 .padding(.top, LAASpacing.x1)
             VStack(alignment: .leading, spacing: 0) {
-                infoRow("モデル", model.model)
-                infoRow("最後の活動", model.lastActivity)
+                infoRow("Model", model.model)
+                infoRow("Last Activity", model.lastActivity)
             }
             .padding(.top, LAASpacing.x6)
             // The Work tab's name for them, in the app's section header.
@@ -163,11 +163,11 @@ struct LAAStaffAmbientPanel: View {
     private func infoRow(_ label: String, _ value: String?) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Text(verbatim: label)
-                .font(.system(size: 13 * s))
+                .laaTextStyle(.secondary)
                 .foregroundStyle(LAAColor.secondaryText)
             Spacer(minLength: LAASpacing.x3)
             Text(verbatim: value ?? LAAStaffAmbientPanelModel.Mark.unknown.rawValue)
-                .font(.system(size: 13 * s, weight: .medium))
+                .laaTextStyle(.secondary).fontWeight(.medium)
                 .foregroundStyle(value == nil ? LAAColor.secondaryText : LAAColor.text)
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -190,17 +190,17 @@ struct LAAStaffAmbientPanel: View {
             ForEach(list) { routine in
                 HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
                     Text(verbatim: routine.mark.rawValue)
-                        .font(.system(size: 12 * s))
+                        .laaTextStyle(.note)
                         .foregroundStyle(routine.mark == .attention ? LAAColor.attention : LAAColor.link)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(verbatim: routine.title)
-                            .font(.system(size: 13 * s, weight: .medium))
+                            .laaTextStyle(.secondary).fontWeight(.medium)
                             .foregroundStyle(LAAColor.text)
                             .lineLimit(2)
                         if !routine.detail.isEmpty {
                             Text(verbatim: routine.detail)
-                                .font(.system(size: 12 * s))
+                                .laaTextStyle(.note)
                                 .foregroundStyle(LAAColor.secondaryText)
                                 .lineLimit(1)
                         }
@@ -218,7 +218,7 @@ struct LAAStaffAmbientPanel: View {
     /// No routines, or none could be read: the open mark on its ruled row.
     private var routineMarkOnly: some View {
         Text(verbatim: LAAStaffAmbientPanelModel.Mark.unknown.rawValue)
-            .font(.system(size: 12 * s))
+            .laaTextStyle(.note)
             .foregroundStyle(LAAColor.secondaryText)
             .frame(maxWidth: .infinity, minHeight: 32 * s, alignment: .leading)
             .overlay(alignment: .bottom) { Rectangle().fill(LAAColor.separator).frame(height: 1) }

@@ -91,7 +91,7 @@ struct LAAUsageProviderCard<Accessory: View, Extra: View>: View {
                     .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: LAASpacing.x2)
                 if let note {
-                    Text(verbatim: note).font(.caption).monospacedDigit()
+                    Text(verbatim: note).laaTextStyle(.note).monospacedDigit()
                         .foregroundStyle(LAAColor.secondaryText).lineLimit(1)
                 }
                 accessory()
@@ -159,7 +159,7 @@ struct LAAUsageWindowCell: View {
                 Text(verbatim: window.label).laaFont(tokens.windowLabel).foregroundStyle(LAAColor.secondaryText)
                 Spacer(minLength: LAASpace.s4)
                 LAAUsageMeterMark(level: LAAMeterLevel(remainingPercent: window.remainingPercent))
-                    .font(.caption2)
+                    .laaTextStyle(.note)
                 if let remaining = window.remainingPercent {
                     Text(verbatim: LAAEmployeeUsageText.percent(remaining))
                         .laaFont(tokens.windowValue, weight: .medium).monospacedDigit().foregroundStyle(LAAColor.text)

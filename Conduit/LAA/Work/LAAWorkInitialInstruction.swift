@@ -29,9 +29,9 @@ struct LAAWorkInitialInstruction: View {
 
     /// The project the Session is in, and 「プロジェクトを変更」.
     @ViewBuilder private func projectRow(_ current: LAAWorkSession) -> some View {
-        Text(verbatim: "プロジェクト").laaTextStyle(.note).foregroundStyle(LAAColor.secondaryText)
+        Text(verbatim: "Project").laaTextStyle(.note).foregroundStyle(LAAColor.secondaryText)
         HStack(spacing: LAASpacing.x2) {
-            Text(verbatim: projects.first { $0.id == current.projectId }?.name ?? "未確認")
+            Text(verbatim: projects.first { $0.id == current.projectId }?.name ?? "Unknown")
                 .laaTextStyle(.body)
                 .accessibilityIdentifier("work.initialInstruction.project")
             Spacer(minLength: 0)
@@ -61,20 +61,20 @@ struct LAAWorkInitialInstruction: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: LAASpacing.x4) {
-                    Text(verbatim: "名前").laaTextStyle(.note).foregroundStyle(LAAColor.secondaryText)
+                    Text(verbatim: "Name").laaTextStyle(.note).foregroundStyle(LAAColor.secondaryText)
                     Text(verbatim: sessionName)
                         .laaTextStyle(.body)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .accessibilityIdentifier("work.initialInstruction.name")
-                    copyButton(.name, value: sessionName, label: "名前をコピー")
+                    copyButton(.name, value: sessionName, label: "Copy Name")
                         .accessibilityIdentifier("work.initialInstruction.copyName")
                     if let current = moved ?? session {
                         Divider()
                         projectRow(current)
                     }
                     Divider()
-                    Text(verbatim: "最初の指示").laaTextStyle(.note).foregroundStyle(LAAColor.secondaryText)
+                    Text(verbatim: "First Prompt").laaTextStyle(.note).foregroundStyle(LAAColor.secondaryText)
                     if let instruction = response?.instruction {
                         Text(verbatim: "作成日時: " + createdAt(instruction.createdAt)).laaTextStyle(.note)
                         Text(verbatim: "作成経路: " + sourceName(instruction.source)).laaTextStyle(.note)
@@ -83,10 +83,10 @@ struct LAAWorkInitialInstruction: View {
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .accessibilityIdentifier("work.initialInstruction.text")
-                        copyButton(.instruction, value: instruction.text, label: "最初の指示をコピー")
+                        copyButton(.instruction, value: instruction.text, label: "Copy First Prompt")
                             .accessibilityIdentifier("work.initialInstruction.copy")
                     } else if response != nil {
-                        Text(verbatim: "記録なし").laaTextStyle(.body)
+                        Text(verbatim: "No History").laaTextStyle(.body)
                     } else if failed {
                         Text(verbatim: "最初の指示が応答しません。Macとの接続を確認してください。").laaTextStyle(.body)
                         Button("Retry") { Task { await load() } }
@@ -116,7 +116,7 @@ struct LAAWorkInitialInstruction: View {
             Label(copied == kind ? String(localized: "Copied") : String(localized: "Copy"), systemImage: "doc.on.doc")
         }
         .frame(minHeight: LAASpacing.minimumTouchTarget)
-        .accessibilityLabel(Text(verbatim: copied == kind ? "コピーしました" : label))
+        .accessibilityLabel(Text(verbatim: copied == kind ? "Copied" : label))
     }
 
     private func createdAt(_ value: String) -> String {

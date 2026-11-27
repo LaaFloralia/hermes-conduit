@@ -25,8 +25,8 @@ struct LAAWorkSessionImage: View {
                         .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(Text(verbatim: "添付画像"))
-                .accessibilityHint(Text(verbatim: "全画面で開く"))
+                .accessibilityLabel(Text(verbatim: "Attachments"))
+                .accessibilityHint(Text(verbatim: "Open Fullscreen"))
                 .accessibilityIdentifier("work.session.image")
             }
             else if failed { Text(verbatim: "画像が応答しません。接続を確認してください。") }

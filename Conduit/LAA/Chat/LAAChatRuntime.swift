@@ -370,8 +370,8 @@ enum LAAChatRuntimeCopy {
             if let before = result.beforeTokens, let after = result.afterTokens { return "圧縮しました（\(before)→\(after)）" }
             return "圧縮しました。"
         case .nothingToCompact:
-            let fixed = result.fixedTokens.map(String.init) ?? "不明"
-            let recent = result.recentTokens.map(String.init) ?? "不明"
+            let fixed = result.fixedTokens.map(String.init) ?? "Unknown"
+            let recent = result.recentTokens.map(String.init) ?? "Unknown"
             return "圧縮できる部分がありません（固定 \(fixed)・直近 \(recent)）"
         case .inProgress: return nil
         case .failed: return failureNotice(result.failure ?? .init(.internal))
@@ -514,10 +514,10 @@ struct LAAChatModelPickers: View {
         // long (LAAWrapRow); none is ever cut.
         LAAWrapRow {
             LAAModelEffortPickers(
-                harness: harness, harnessHint: modelLock ?? "この会話の実行基盤を変更",
+                harness: harness, harnessHint: modelLock ?? "Change Harness",
                 model: shown.model, provider: shown.provider, effort: shown.effort,
                 changingModel: switching, changingEffort: writingEffort, identifier: "composer.runtime",
-                modelHint: modelLock ?? "この会話のモデルを変更", effortHint: effortLock ?? "この会話の推論の強さを変更"
+                modelHint: modelLock ?? "Change Model", effortHint: effortLock ?? "Change Effort"
             ) {
                 harnessMenu
             } modelMenu: {
@@ -586,7 +586,7 @@ struct LAAChatModelPickers: View {
         if let modelLock { LAAMenuReason(text: modelLock) }
         if phase == .failed {
             Button { Task { await load() } } label: {
-                Label { Text(verbatim: "読み直す") } icon: { Image(systemName: "arrow.clockwise") }
+                Label { Text(verbatim: "Reload") } icon: { Image(systemName: "arrow.clockwise") }
             }
         }
         ForEach(LAAChatModelCatalog.sections(harnessChoices), id: \.name) { section in

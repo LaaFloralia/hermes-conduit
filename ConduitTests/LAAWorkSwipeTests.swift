@@ -47,7 +47,7 @@ final class LAAWorkSwipeTests: XCTestCase {
         let running = LAABridgeHTTPError(status: 409, code: "session_running", message: nil, retryable: false,
                                          details: nil, requestId: nil, currentETag: nil)
         let text = LAAWorkArchivePrompt.refusal(running)
-        XCTAssertTrue(text.contains("実行中"))
+        XCTAssertTrue(text.contains("Running"))
         XCTAssertTrue(text.contains("そのまま残っています"))
         XCTAssertNil(LAAWorkArchivePrompt.refused(running).archive)
     }

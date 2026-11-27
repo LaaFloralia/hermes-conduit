@@ -12,7 +12,7 @@ struct LAAStudioAdoptButton: View {
     private var itemKey: String { "adopt-" + project.id + "-" + String(project.revision) }
     var body: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x1) {
-            Button(adopted ? String("採用済み") : (sending ? "保存中" : "採用")) { Task { await adopt() } }
+            Button(adopted ? String("Adopted") : (sending ? "Saving" : "採用")) { Task { await adopt() } }
                 .buttonStyle(.plain)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(LAAColor.filledButtonText)

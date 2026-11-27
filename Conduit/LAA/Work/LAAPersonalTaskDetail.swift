@@ -44,7 +44,7 @@ struct LAAPersonalTaskDetailView: View {
                         VStack(alignment: .leading, spacing: LAASpacing.x2) {
                             taskMetadata(task)
                             Text(verbatim: task.title)
-                                .font(LAAType.title(task.title, size: laaDesktop ? 30 : 26, relativeTo: .title))
+                                .laaTextStyle(.title)
                                 .foregroundStyle(LAAColor.text)
                                 .fixedSize(horizontal: false, vertical: true)
                                 .accessibilityIdentifier("work.task.detail.title")
@@ -167,9 +167,9 @@ struct LAAPersonalTaskDetailView: View {
     /// is running it says why 完了 is disabled.
     @ViewBuilder private func runCard(_ owner: LAALinearTask) -> some View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
-            Text(verbatim: "実行").fontWeight(.semibold)
-            runRow("担当", owner.assigneeDisplay)
-            if let model = owner.run?.profileLabel ?? owner.run?.profile { runRow("モデル", model) }
+            Text(verbatim: "Run").fontWeight(.semibold)
+            runRow("Assignee", owner.assigneeDisplay)
+            if let model = owner.run?.profileLabel ?? owner.run?.profile { runRow("Model", model) }
             if let status = owner.runStatus {
                 HStack(spacing: LAASpacing.x2) {
                     Text(verbatim: "実施").foregroundStyle(LAAColor.secondaryText)
@@ -181,7 +181,7 @@ struct LAAPersonalTaskDetailView: View {
                     Button {
                         guard let url = URL(string: "laa://work/sessions/\(session)") else { return }
                         LAAWorkLinkRequest.shared.open(url)
-                    } label: { Text(verbatim: "セッションを開く").laaTextStyle(.secondary) }
+                    } label: { Text(verbatim: "Open Session").laaTextStyle(.secondary) }
                         .buttonStyle(.plain)
                 }
             }
@@ -204,13 +204,13 @@ struct LAAPersonalTaskDetailView: View {
     /// not repeated.
     private func properties(_ task: LAAPersonalTask) -> some View {
         Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: LAASpacing.x3, verticalSpacing: LAASpacing.x3) {
-            property("circle.dashed", "状態") { Text(verbatim: task.status?.name ?? "未確認") }
-            property("person", "担当") { Text(verbatim: task.owner?.name ?? "未設定") }
+            property("circle.dashed", "Status") { Text(verbatim: task.status?.name ?? "Unknown") }
+            property("person", "Assignee") { Text(verbatim: task.owner?.name ?? "未設定") }
             if let delegate = task.executor?.name {
-                property("arrow.turn.down.right", "委任先") { Text(verbatim: delegate) }
+                property("arrow.turn.down.right", "Delegate") { Text(verbatim: delegate) }
             }
             if let priority = task.priority, priority != 0 {
-                property("chart.bar", "優先度") {
+                property("chart.bar", "Priority") {
                     HStack(spacing: LAASpacing.x1) {
                         LAATaskPriorityMark(value: priority)
                         Text(verbatim: LAALinearTask.priorityLabel(priority))
@@ -218,23 +218,23 @@ struct LAAPersonalTaskDetailView: View {
                 }
             }
             if let due = LAADateText.dueDay(task.dueDate) {
-                property("calendar", "期限") {
+                property("calendar", "Due Date") {
                     Text(verbatim: due.label)
                         .fontWeight(due.urgent ? .semibold : .regular)
                         .foregroundStyle(due.urgent ? LAAColor.attention : LAAColor.text)
                 }
             }
-            if let project = task.project?.name { property("folder", "プロジェクト") { Text(verbatim: project) } }
+            if let project = task.project?.name { property("folder", "Project") { Text(verbatim: project) } }
             if let milestone = task.milestone?.name { property("flag", "マイルストーン") { Text(verbatim: milestone) } }
             if let cycle = task.cycle?.name ?? task.cycle?.number.map(String.init) {
                 property("arrow.triangle.2.circlepath", "サイクル") { Text(verbatim: cycle) }
             }
-            if let estimate = task.estimate { property("gauge.with.dots.needle.33percent", "見積り") { Text(verbatim: estimate.formatted(.number)) } }
+            if let estimate = task.estimate { property("gauge.with.dots.needle.33percent", "Estimate") { Text(verbatim: estimate.formatted(.number)) } }
             if let parent = task.parent {
-                property("arrow.up.left", "親") { Text(verbatim: parent.identifier ?? parent.title ?? parent.id) }
+                property("arrow.up.left", "Parent") { Text(verbatim: parent.identifier ?? parent.title ?? parent.id) }
             }
             if let labels = task.labels, !labels.isEmpty {
-                property("tag", "ラベル") {
+                property("tag", "Labels") {
                     VStack(alignment: .leading, spacing: LAASpacing.x1) {
                         LAATaskMetaFlow(spacing: 6, lineSpacing: 6) {
                             ForEach(labels) { label in
@@ -254,7 +254,7 @@ struct LAAPersonalTaskDetailView: View {
                     }
                 }
             }
-            property("clock", "更新") { Text(verbatim: LAAWorkPresentation.date(task.updatedAt)) }
+            property("clock", "Updated") { Text(verbatim: LAAWorkPresentation.date(task.updatedAt)) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .workCard()

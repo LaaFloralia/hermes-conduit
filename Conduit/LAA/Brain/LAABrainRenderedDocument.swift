@@ -53,7 +53,7 @@ struct LAABrainRenderedDocument: View {
             return ["png", "jpg", "jpeg", "gif", "heic", "heif", "tif", "tiff", "webp"].contains(ext) ? source : nil
         }
         if isLocal && depth == 0 && !gallery.isEmpty {
-            DisclosureGroup("ギャラリー") {
+            DisclosureGroup("Gallery") {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: LAASpacing.x2) {
                     ForEach(Array(gallery.enumerated()), id: \.offset) { _, source in
                         LAABrainEmbedView(source: source, currentPath: note.path, files: files, local: local,

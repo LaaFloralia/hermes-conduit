@@ -177,10 +177,10 @@ struct LAATaskGenre: Hashable, Identifiable {
 /// The task list's own words: LAA text, never looked up in the catalog.
 enum LAATaskBoardCopy {
     static let genre = "ジャンル"
-    static let due = "期限"
-    static let assignee = "担当"
-    static let priority = "優先度"
-    static let all = "すべて"
+    static let due = "Due Date"
+    static let assignee = "Assignee"
+    static let priority = "Priority"
+    static let all = "All"
     static let soon = "期限が近い"
     static let attention = "要対応"
     static let ai = "AIが担当"
@@ -377,7 +377,7 @@ struct LAATaskBoard: Equatable {
                 ("tomorrow", "明日", "sunrise", LAAColor.link, { $0?.days == 1 }),
                 ("week", "7日以内", "calendar", LAAColor.link, { ($0?.days).map { (2..<7).contains($0) } ?? false }),
                 ("later", "それ以降", "calendar.badge.clock", LAAColor.secondaryText, { ($0?.days ?? -1) >= 7 }),
-                ("none", "期限なし", "tray", LAAColor.secondaryText, { $0 == nil }),
+                ("none", "No Due Date", "tray", LAAColor.secondaryText, { $0 == nil }),
             ]
             return order.compactMap { id, title, symbol, tint, test in
                 let picked = rows.filter { test($0.due) }

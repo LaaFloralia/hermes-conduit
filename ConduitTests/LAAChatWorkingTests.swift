@@ -26,7 +26,7 @@ final class LAAChatWorkingTests: XCTestCase {
         let running = LAAChatWorking.status(isBusy: true, startedAt: start, toolRunning: false, agents: [])
         XCTAssertEqual(running?.word, "Thinking")
         XCTAssertEqual(running?.startedAt, start, "The timer runs from the turn's stable start")
-        XCTAssertEqual(LAAChatWorking.status(isBusy: true, startedAt: start, toolRunning: true, agents: [])?.word, "作業中")
+        XCTAssertEqual(LAAChatWorking.status(isBusy: true, startedAt: start, toolRunning: true, agents: [])?.word, "Working")
     }
 
     func testChildrenOfTheTurn() {
@@ -97,7 +97,7 @@ final class LAAChatWorkingTests: XCTestCase {
         XCTAssertEqual(placements.map(\.afterMessageID), ["m1", "m2"])
         let rows = children.map { LAAWorkChildren.child($0, options: nil) }
         XCTAssertEqual(rows.map(\.state), [.running, .attention, .failed])
-        XCTAssertEqual(rows[1].word, "判断待ち")
+        XCTAssertEqual(rows[1].word, "Awaiting Decision")
         XCTAssertEqual(rows[0].meta, "Opus 5.5 · High")
     }
 

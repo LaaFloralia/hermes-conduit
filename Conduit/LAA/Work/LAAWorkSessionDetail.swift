@@ -841,7 +841,7 @@ struct LAAWorkSessionHeaderPill: View {
                          provider: (session.observed ?? session.requested)?.provider, size: 26)
             VStack(alignment: .center, spacing: 2) {
                 Text(verbatim: session.name)
-                    .font(LAAType.title(session.name, size: 16, relativeTo: .headline))
+                    .laaTextStyle(.body).fontWeight(.semibold)
                     .foregroundStyle(LAAColor.text)
                     .lineLimit(1).truncationMode(.middle)
                     .accessibilityIdentifier("work.session.detail.title")
@@ -851,7 +851,7 @@ struct LAAWorkSessionHeaderPill: View {
                         .foregroundStyle(status.color).accessibilityHidden(true)
                     Text(verbatim: status.displayLabel).foregroundStyle(LAAColor.secondaryText)
                 }
-                .font(.caption).fixedSize()
+                .laaTextStyle(.note).fixedSize()
             }
         }
         .modifier(LAAWorkSessionHeaderGlass(clear: clearGlass))

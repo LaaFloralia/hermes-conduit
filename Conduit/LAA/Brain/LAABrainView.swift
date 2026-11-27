@@ -276,7 +276,7 @@ struct LAABrainView: View {
                              leave: { desktopSelection = nil; Task { await load() } })
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            LAAMacEmptyDetail(symbol: "doc.text", title: "ノートを選ぶ",
+            LAAMacEmptyDetail(symbol: "doc.text", title: "Choose Note",
                               message: "左の一覧からノートを選ぶと、ここに本文を表示します。")
         }
     }
@@ -473,7 +473,7 @@ struct LAABrainView: View {
 
     private func createMenu(parent: String) -> some View {
         Menu {
-            Button(String("今日のノート")) { dailyRequest.enqueue() }
+            Button(String("Today's Note")) { dailyRequest.enqueue() }
                 .accessibilityIdentifier("laa.brain.daily")
             Button("新規ノート", systemImage: "square.and.pencil") { localCreate = LAABrainLocalCreateTarget(parent: parent, kind: .note) }
                 .accessibilityIdentifier("laa.brain.localCreate.note")
@@ -530,7 +530,7 @@ struct LAABrainView: View {
                         Button { dailyRequest.enqueue() } label: {
                             HStack(spacing: LAASpacing.x3) {
                                 Image(systemName: "calendar").foregroundStyle(LAAColor.link)
-                                Text(verbatim: LAADateText.string(.now, .day)).font(.body)
+                                Text(verbatim: LAADateText.string(.now, .day)).laaTextStyle(.body)
                                 Spacer()
                                 Image(systemName: "square.and.pencil").foregroundStyle(LAAColor.secondaryText)
                             }
@@ -647,10 +647,10 @@ struct LAABrainView: View {
                 .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             ForEach(files.filter { $0.conflictOriginalPath != nil }) { conflict in
                 VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                    Text(verbatim: "競合コピー").laaTextStyle(.section).foregroundStyle(LAAColor.attention)
+                    Text(verbatim: "Conflict Copy").laaTextStyle(.section).foregroundStyle(LAAColor.attention)
                     noteLink(conflict)
                     if let original = files.first(where: { $0.path == conflict.conflictOriginalPath }) {
-                        Text(verbatim: "元のノート").laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
+                        Text(verbatim: "Original Note").laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
                         noteLink(original)
                     } else {
                         Text(verbatim: "元のノートが見つかりません。").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
@@ -766,7 +766,7 @@ struct LAABrainView: View {
                     VStack(alignment: .leading, spacing: LAASpacing.x1) {
                         Text(verbatim: LAADateText.noteTitle(file.title)).laaTextStyle(.body).foregroundStyle(LAAColor.text)
                         if !local.isReady { Text(verbatim: file.path).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
-                        if file.conflictOriginalPath != nil { Text(verbatim: local.isReady ? "競合コピー" : "Sync conflict").laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
+                        if file.conflictOriginalPath != nil { Text(verbatim: local.isReady ? "Conflict Copy" : "Sync conflict").laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
                         if file.unreadable != nil { Text(verbatim: "本文を読み込めません").laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
                     }
                     Spacer(minLength: 0)
@@ -784,10 +784,10 @@ struct LAABrainView: View {
 
     @ViewBuilder private var searchResults: some View {
         if let searchError { failure(searchError) }
-        else if isSearching || (local.isReady && isIndexing) { ProgressView().accessibilityLabel(Text(verbatim: "検索中")) }
+        else if isSearching || (local.isReady && isIndexing) { ProgressView().accessibilityLabel(Text(verbatim: "Searching")) }
         else if hits.isEmpty { Text(verbatim: "検索結果はありません。 ").foregroundStyle(LAAColor.secondaryText) }
         else {
-            Text(verbatim: "検索結果").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+            Text(verbatim: "Search Results").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             ForEach(hits) { hit in
                 if let desktop = desktopActions {
                     Button { desktop.select(LAABrainReference(path: hit.path, includeInbox: includeInbox)) } label: {

@@ -1,6 +1,6 @@
 #if LAA_BUILD
 extension LAACopy {
-    static let serverUnavailableTitle = "利用できません"
+    static let serverUnavailableTitle = "Unavailable"
     static let serverFeatureUnavailable = "この機能はこのMacでは利用できません"
 
     /// What this Mac cannot do yet, in one sentence: the feature, not the
@@ -10,7 +10,7 @@ extension LAACopy {
         "このMacでは\(feature)を利用できません"
     }
 
-    static let artifactsUnavailable = notAvailable("成果物の一覧")
+    static let artifactsUnavailable = notAvailable("Deliverables")
     static let workspaceActionsUnavailable = notAvailable("フォルダ内の検索とファイルの作成・移動・削除")
     static let groupFilesUnavailable = notAvailable("グループへのファイル送信")
     static let gptLiveUnavailable = notAvailable("GPT-Live")
@@ -19,15 +19,15 @@ extension LAACopy {
     static let phoneSharingUnavailable = notAvailable("カレンダーと端末の状態の共有")
     static let healthSharingUnavailable = notAvailable("ヘルスケアの共有")
     static let locationSharingUnavailable = notAvailable("位置情報の共有")
-    static let syncedPreferencesUnavailable = notAvailable("設定の端末間同期")
-    static let predictiveUnavailable = notAvailable("予測機能")
-    static let speechServerUnavailable = notAvailable("音声サーバー")
-    static let fastModelUnavailable = notAvailable("高速モデル")
+    static let syncedPreferencesUnavailable = notAvailable("Sync Settings")
+    static let predictiveUnavailable = notAvailable("Predictive Text")
+    static let speechServerUnavailable = notAvailable("Voice Server")
+    static let fastModelUnavailable = notAvailable("Fast Model")
     static let localLiveUnavailable = notAvailable("Local Live")
-    static let voiceHistoryUnavailable = notAvailable("通話の保存") + "。通話はこの端末に保持されています。"
+    static let voiceHistoryUnavailable = notAvailable("Save Calls") + "。通話はこの端末に保持されています。"
     static let shortcutInboxUnavailable = notAvailable("記録の表示と削除")
-    static let shortcutEventKept = notAvailable("記録") + "。このイベントは端末に保持されています。"
-    static let shortcutEventNotKept = notAvailable("記録") + "。このイベントは保持されていません。"
+    static let shortcutEventKept = notAvailable("Records") + "。このイベントは端末に保持されています。"
+    static let shortcutEventNotKept = notAvailable("Records") + "。このイベントは保持されていません。"
     static let unreadableServerResponse = "Macの応答を読み取れません"
     static let unscopedNotificationUnavailable = "この通知には送信元の情報が含まれていないため、このMacではまだ開けません。"
     static let watchVoiceStatusUnavailable = "WatchのGPT-Liveの状態を確認できませんでした。"

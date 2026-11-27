@@ -547,7 +547,7 @@ final class LAAWorkTests: XCTestCase {
         // Observed, and the Bridge accepts a change.
         let on = try XCTUnwrap(LAAWorkFastControl.display(observing: true, observed: true, capable: true))
         XCTAssertEqual(on, LAAWorkFastControl.Display(value: true, current: true, canToggle: true))
-        XCTAssertEqual(LAAWorkFastControl.valueText(on), "オン")
+        XCTAssertEqual(LAAWorkFastControl.valueText(on), "On")
         XCTAssertEqual(LAAWorkFastControl.hint(on), "Fastの切り替え")
 
         // No Fast at all for this model: nothing to show.
@@ -557,7 +557,7 @@ final class LAAWorkTests: XCTestCase {
         // Fast exists, but this Bridge/session cannot change it.
         let readOnly = try XCTUnwrap(LAAWorkFastControl.display(observing: true, observed: false, capable: false))
         XCTAssertEqual(readOnly, LAAWorkFastControl.Display(value: false, current: true, canToggle: false))
-        XCTAssertEqual(LAAWorkFastControl.valueText(readOnly), "オフ")
+        XCTAssertEqual(LAAWorkFastControl.valueText(readOnly), "Off")
         XCTAssertFalse(readOnly.canToggle)
         // An older Bridge that never sent `capabilities.fast` is the same.
         XCTAssertEqual(LAAWorkFastControl.display(observing: true, observed: false, capable: nil)?.canToggle, false)
@@ -566,7 +566,7 @@ final class LAAWorkTests: XCTestCase {
         // freshness is in the value/hint rather than in the word on screen.
         let last = try XCTUnwrap(LAAWorkFastControl.display(observing: false, observed: true, capable: true))
         XCTAssertEqual(last, LAAWorkFastControl.Display(value: true, current: false, canToggle: false))
-        XCTAssertEqual(LAAWorkFastControl.valueText(last), "最終確認: オン")
+        XCTAssertEqual(LAAWorkFastControl.valueText(last), "Last Verified: On")
         XCTAssertEqual(LAAWorkFastControl.hint(last), "最後に確認した値です。現在値は未確認です。")
     }
 
@@ -751,7 +751,7 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertEqual(LAAModelCapsule.displayName(model: #"["opencode-go","deepseek-v4.1-flash"]"#, provider: "dsh"),
                        "DeepSeek V4.1 Flash")
         XCTAssertNil(LAAModelCapsule.displayName(model: nil, provider: "claude"))
-        XCTAssertEqual(LAAModelCapsule.unknown, "不明")
+        XCTAssertEqual(LAAModelCapsule.unknown, "Unknown")
     }
 
     func testClaudeAPIHasItsOwnModelGroupAndProfile() throws {

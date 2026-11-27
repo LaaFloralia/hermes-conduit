@@ -155,18 +155,18 @@ final class LAAEmployeeCallContinuityTests: XCTestCase {
     func testDesignV3StateAndControlCopyIsJapanese() {
         let context = LAAEmployeeCallContext(profile: "laa-monet", name: "Monet", conversationID: nil)
         var snapshot = LAAEmployeeCallSnapshot(context: context, phase: .connecting)
-        XCTAssertEqual(LAAEmployeeCallView.statusText(snapshot), "接続中…")
+        XCTAssertEqual(LAAEmployeeCallView.statusText(snapshot), "Connecting")
         snapshot.phase = .reconnecting
-        XCTAssertEqual(LAAEmployeeCallView.statusText(snapshot), "再接続中…")
+        XCTAssertEqual(LAAEmployeeCallView.statusText(snapshot), "Reconnecting")
         snapshot.phase = .connected
-        XCTAssertEqual(LAAEmployeeCallView.statusText(snapshot), "話せます")
+        XCTAssertEqual(LAAEmployeeCallView.statusText(snapshot), "Ready")
         snapshot.activity = .listening
-        XCTAssertEqual(LAAEmployeeCallView.statusText(snapshot), "聞いています")
+        XCTAssertEqual(LAAEmployeeCallView.statusText(snapshot), "Listening")
         snapshot.activity = .thinking
-        XCTAssertEqual(LAAEmployeeCallView.statusText(snapshot), "考えています")
+        XCTAssertEqual(LAAEmployeeCallView.statusText(snapshot), "Thinking")
         snapshot.phase = .failed("内部の失敗")
-        XCTAssertEqual(LAAEmployeeCallView.statusText(snapshot), "切れました")
-        XCTAssertEqual(LAAEmployeeCallView.controlTitles, ["消音", "スピーカー", "チャット", "終了"])
+        XCTAssertEqual(LAAEmployeeCallView.statusText(snapshot), "Disconnected")
+        XCTAssertEqual(LAAEmployeeCallView.controlTitles, ["Mute", "Speaker", "Chat", "End"])
     }
 }
 #endif

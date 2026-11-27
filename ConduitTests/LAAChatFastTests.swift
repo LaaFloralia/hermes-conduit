@@ -64,7 +64,7 @@ final class LAAChatFastTests: XCTestCase {
     }
 
     func testWordsAndNames() {
-        XCTAssertEqual(ModelSpeed.allCases.map(LAAChatFastControl.name), ["通常", "Fast", "Ultrafast"])
+        XCTAssertEqual(ModelSpeed.allCases.map(LAAChatFastControl.name), ["Standard", "Fast", "Ultrafast"])
         XCTAssertEqual(ModelSpeed.allCases.map(LAAChatFastControl.word), ["Fast", "Fast", "Ultrafast"])
     }
 

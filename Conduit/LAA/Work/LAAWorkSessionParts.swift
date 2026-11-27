@@ -182,7 +182,7 @@ struct LAAWorkImagePreview: View {
             .accessibilityIdentifier("work.image.preview")
             Button { dismiss() } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 15, weight: .semibold))
+                    .laaTextStyle(.body).fontWeight(.semibold)
                     .foregroundStyle(.white)
                     .frame(width: 44, height: 44)
                     .conduitGlassControl(cornerRadius: 22, tint: .black.opacity(0.25), interactive: true)
@@ -225,7 +225,7 @@ private struct LAAZoomableImage: View {
                     if scale > 1 { reset() } else { scale = 2.5; settled = 2.5 }
                 }
             }
-            .accessibilityLabel(Text(verbatim: "添付画像"))
+            .accessibilityLabel(Text(verbatim: "Attachments"))
             .accessibilityAddTraits(.isImage)
     }
 

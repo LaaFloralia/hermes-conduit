@@ -51,7 +51,7 @@ struct LAATodayDesktopView: View {
             // for the menu's per-section new item, and ⌘R reloads from the
             // menu like every other section.
             .laaMacSectionCommands(LAAMacSectionCommands(
-                newTitle: "予定を追加",
+                newTitle: "Add Event",
                 newShortcut: "n",
                 newModifiers: [.command, .shift],
                 canCreate: calendar.calendars.contains(where: \.writable),
@@ -80,24 +80,24 @@ struct LAATodayDesktopView: View {
             HStack(spacing: LAASpacing.x2) {
                 Button { moveDate(-1) } label: { Image(systemName: "chevron.left") }
                     .frame(width: 44, height: 44)
-                    .accessibilityLabel(Text(verbatim: "前へ"))
-                    .macTooltip("前へ")
+                    .accessibilityLabel(Text(verbatim: "Back"))
+                    .macTooltip("Back")
                 DatePicker(selection: $calendar.selectedDate, displayedComponents: .date) {
-                    Text(verbatim: "日付")
+                    Text(verbatim: "Date")
                 }
                 .labelsHidden()
                 .frame(maxWidth: 190)
-                Button { calendar.selectedDate = Date(); selectedEventID = nil } label: { Text(verbatim: "今日") }
+                Button { calendar.selectedDate = Date(); selectedEventID = nil } label: { Text(verbatim: "Today") }
                 Button { moveDate(1) } label: { Image(systemName: "chevron.right") }
                     .frame(width: 44, height: 44)
-                    .accessibilityLabel(Text(verbatim: "次へ"))
-                    .macTooltip("次へ")
+                    .accessibilityLabel(Text(verbatim: "Next"))
+                    .macTooltip("Next")
                 Spacer(minLength: 0)
             }
             }
 
             if !calendar.calendars.isEmpty {
-                LAASectionHeader("カレンダー") {
+                LAASectionHeader("Calendar") {
                     ForEach(calendar.calendars) { item in
                         Button {
                             if calendar.selectedCalendarIDs.contains(item.id) { calendar.selectedCalendarIDs.remove(item.id) }
@@ -129,7 +129,7 @@ struct LAATodayDesktopView: View {
                  ? "今日 · " + LAADateText.string(day, .day)
                  : LAADateText.string(day, .day))
             if events.isEmpty {
-                LAAEmptyState(message: "予定はありません")
+                LAAEmptyState(message: "No Events")
             } else {
                 LAAListSurface {
                     ForEach(Array(events.enumerated()), id: \.element.id) { index, event in
@@ -146,7 +146,7 @@ struct LAATodayDesktopView: View {
             HStack(alignment: .top, spacing: LAASpacing.x3) {
                 RoundedRectangle(cornerRadius: 2).fill(color(for: event)).frame(width: 4)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(verbatim: event.allDay ? "終日" : LAADateText.string(event.start, .time) + "–" + LAADateText.string(event.end, .time))
+                    Text(verbatim: event.allDay ? "All Day" : LAADateText.string(event.start, .time) + "–" + LAADateText.string(event.end, .time))
                         .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     Text(verbatim: event.title).laaTextStyle(.rowTitle)
                         .foregroundStyle(LAAColor.text).lineLimit(2)
@@ -227,11 +227,11 @@ struct LAATodayDesktopView: View {
         } label: {
             VStack(alignment: .leading, spacing: LAASpacing.x1) {
                 Text(verbatim: LAADateText.string(day, .dayNumber))
-                    .font(.system(size: 15, weight: selected ? .semibold : .regular))
+                    .laaTextStyle(.body).fontWeight(selected ? .semibold : .regular)
                     .foregroundStyle(inMonth ? LAAColor.text : LAAColor.secondaryText.opacity(0.55))
                 if count > 0 {
                     Text(verbatim: "\(count)件")
-                        .font(.system(size: 10)).foregroundStyle(LAAColor.link).lineLimit(1)
+                        .laaTextStyle(.note).foregroundStyle(LAAColor.link).lineLimit(1)
                 }
                 Spacer(minLength: 0)
             }

@@ -92,11 +92,11 @@ struct LAAMarkdownEditor: View {
         .sheet(item: $attachmentSelection) { selected in
             NavigationStack {
                 TextEditor(text: $attachmentSource).font(.body.monospaced()).padding(LAASpacing.x4)
-                    .navigationTitle(String("添付のリンク"))
+                    .navigationTitle(String("Attachment Link"))
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) { Button(String("Cancel")) { attachmentSelection = nil } }
                         ToolbarItem(placement: .confirmationAction) {
-                            Button(String("適用")) { model.updateAttachment(selected.id, source: attachmentSource); attachmentSelection = nil }
+                            Button(String("Apply")) { model.updateAttachment(selected.id, source: attachmentSource); attachmentSelection = nil }
                         }
                     }
             }
@@ -134,7 +134,7 @@ struct LAAMarkdownEditor: View {
                 if let attachments { attachments(source) }
                 else { Text(verbatim: source).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
             }.id(segment.id)
-                .contextMenu { Button(String("リンクを編集")) { attachmentSource = source; attachmentSelection = AttachmentSelection(id: segment.id) } }
+                .contextMenu { Button(String("Edit Link")) { attachmentSource = source; attachmentSelection = AttachmentSelection(id: segment.id) } }
         case .table:
             LAAMarkdownTableEditor(model: model, segmentID: segment.id)
                 .id(segment.id)

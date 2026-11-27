@@ -50,7 +50,7 @@ struct LAAPersonalTaskList: View {
     @State private var editing: LAAPersonalTask?
     @State private var revision = 0
     @State private var inboxRevision = 0
-    @State private var inboxSummary = "未確認"
+    @State private var inboxSummary = "Unknown"
     @State private var inboxObservedAt: String?
 
     private var filterID: String { [bridge.deviceID ?? "", String(bridge.revision), view, submittedSearch, project, cycle, customView, String(refreshID), String(revision)].joined(separator: "\u{1f}") }
@@ -83,7 +83,7 @@ struct LAAPersonalTaskList: View {
                 NavigationLink {
                     if let viewerId { LAAPersonalPendingView(drafts: drafts, viewerId: viewerId) }
                     else { LAAPersonalPendingOfflineView(drafts: drafts) }
-                } label: { Text(verbatim: "送信待ち") }
+                } label: { Text(verbatim: "Queued") }
                     .accessibilityIdentifier("work.tasks.pending")
             }
             TextField(LAACopy.WorkTab.searchTasks, text: $search)
@@ -244,7 +244,7 @@ struct LAAPersonalTaskList: View {
         } catch { collectionsIncomplete = true }
     }
     @MainActor private func loadInboxSummary() async {
-        inboxSummary = "未確認"
+        inboxSummary = "Unknown"
         inboxObservedAt = nil
         guard let viewerId else { return }
         do {
@@ -254,7 +254,7 @@ struct LAAPersonalTaskList: View {
             try snapshot.merge(page, reset: true)
             inboxSummary = snapshot.summary
             inboxObservedAt = snapshot.observedAt
-        } catch { if !Task.isCancelled { inboxSummary = "未確認"; inboxObservedAt = nil } }
+        } catch { if !Task.isCancelled { inboxSummary = "Unknown"; inboxObservedAt = nil } }
     }
     @MainActor private func collectionPage(_ path: String, cursor: String?) async throws -> LAAPersonalPage<LAAPersonalChoice> {
         var query = [URLQueryItem(name: "limit", value: "100")]

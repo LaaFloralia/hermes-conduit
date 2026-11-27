@@ -19,37 +19,37 @@ struct LAABrainManageNoteView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField(text: $name) { Text(verbatim: "名前") }
+                    TextField(text: $name) { Text(verbatim: "Name") }
                         .autocorrectionDisabled().textInputAutocapitalization(.never)
                         .accessibilityIdentifier("laa.brain.manage.name")
                     Picker(selection: $folder) {
-                        Text(verbatim: rootName + "直下").tag("")
+                        Text(verbatim: rootName + " Root").tag("")
                         ForEach(folders, id: \.self) { Text(verbatim: $0).tag($0) }
-                    } label: { Text(verbatim: "保存先") }
+                    } label: { Text(verbatim: "Destination") }
                     Text(verbatim: "本文はそのまま移動します。相対リンクや、このノートへのリンクは自動変更されません。")
-                        .font(.footnote).foregroundStyle(.secondary)
-                    Button { perform(trash: false) } label: { Text(verbatim: "移動・名前変更") }
+                        .laaTextStyle(.secondary).foregroundStyle(.secondary)
+                    Button { perform(trash: false) } label: { Text(verbatim: "Move or Rename") }
                         .disabled(name.isEmpty || busy)
                         .accessibilityIdentifier("laa.brain.manage.move")
                 }
                 Section {
-                    Button(role: .destructive) { confirmTrash = true } label: { Text(verbatim: "ゴミ箱へ移動") }
+                    Button(role: .destructive) { confirmTrash = true } label: { Text(verbatim: "Move to Trash") }
                         .accessibilityIdentifier("laa.brain.manage.trash")
                     Text(verbatim: ".trashに移動し、復元履歴にも残します。")
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .laaTextStyle(.secondary).foregroundStyle(.secondary)
                 }
                 if let failure { Text(verbatim: failure).foregroundStyle(LAAColor.attention) }
                 if busy { ProgressView() }
             }
             .disabled(busy)
-            .navigationTitle(Text(verbatim: "ノートの管理"))
+            .navigationTitle(Text(verbatim: "Manage Note"))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     LAACloseButton { dismiss() }.accessibilityIdentifier("laa.brain.manage.close").disabled(busy)
                 }
             }
             .confirmationDialog(Text(verbatim: "このノートをゴミ箱へ移動しますか？"), isPresented: $confirmTrash, titleVisibility: .visible) {
-                Button(role: .destructive) { perform(trash: true) } label: { Text(verbatim: "ゴミ箱へ移動") }
+                Button(role: .destructive) { perform(trash: true) } label: { Text(verbatim: "Move to Trash") }
                     .accessibilityIdentifier("laa.brain.manage.confirmTrash")
                 Button(role: .cancel) {} label: { Text(verbatim: LAACopy.Brain.cancel) }
             }

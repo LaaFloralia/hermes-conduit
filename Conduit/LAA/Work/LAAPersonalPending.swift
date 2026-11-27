@@ -30,9 +30,9 @@ struct LAAPersonalPendingOfflineView: View {
                             .accessibilityIdentifier("work.pending.offline.discard")
                     }
                 }
-            } header: { Text(verbatim: "この端末の保留") }
+            } header: { Text(verbatim: "Local Outbox") }
         }
-        .navigationTitle(Text(verbatim: "送信待ち"))
+        .navigationTitle(Text(verbatim: "Queued"))
         .confirmationDialog(Text(verbatim: "この保留を端末から破棄しますか？"), isPresented: $showDiscard, titleVisibility: .visible) {
             Button(role: .destructive) {
                 if let item = selected {
@@ -105,7 +105,7 @@ struct LAAPersonalPendingView: View {
                                     taskLink(operation)
                                 }
                                 if operation.status == "outcome_unknown" {
-                                    Button() { originalToResolve = item; showOriginalConfirmation = true } label: { Text(verbatim: "状態を確認") }.disabled(busy)
+                                    Button() { originalToResolve = item; showOriginalConfirmation = true } label: { Text(verbatim: "Check Status") }.disabled(busy)
                                 }
                             }
                             Button() { Task { await checkOriginal(item) } } label: { Text(verbatim: "元の要求の状態を確認") }.disabled(busy)
@@ -129,7 +129,7 @@ struct LAAPersonalPendingView: View {
                         } else {
                             if let id = inboxTarget(item) {
                                 Text(verbatim: "Inbox: \(item.draft.text) · \(id)").textSelection(.enabled).laaTextStyle(.secondary)
-                                NavigationLink(destination: LAAPersonalInboxItemView(drafts: drafts, viewerId: viewerId, id: id)) { Text(verbatim: "通知を開く") }
+                                NavigationLink(destination: LAAPersonalInboxItemView(drafts: drafts, viewerId: viewerId, id: id)) { Text(verbatim: "Open Notification") }
                             } else {
                                 Text(verbatim: item.key.sessionID).textSelection(.enabled).laaTextStyle(.secondary)
                             }
@@ -168,9 +168,9 @@ struct LAAPersonalPendingView: View {
                     VStack(alignment: .leading, spacing: LAASpacing.x2) {
                         Text(verbatim: "\(operation.displayKind) · \(operation.displayStatus)").fontWeight(.semibold)
                         if let context = operation.contextId {
-                            NavigationLink(destination: LAAPersonalTaskDetailView(id: context, drafts: drafts)) { Text(verbatim: "課題を開く") }
+                            NavigationLink(destination: LAAPersonalTaskDetailView(id: context, drafts: drafts)) { Text(verbatim: "Open Issue") }
                         } else if operation.kind.hasPrefix("inbox_") {
-                            NavigationLink(destination: LAAPersonalInboxItemView(drafts: drafts, viewerId: viewerId, id: operation.targetId)) { Text(verbatim: "通知を開く") }
+                            NavigationLink(destination: LAAPersonalInboxItemView(drafts: drafts, viewerId: viewerId, id: operation.targetId)) { Text(verbatim: "Open Notification") }
                         } else if ["update", "create"].contains(operation.kind) {
                             taskLink(operation)
                         }
@@ -180,14 +180,14 @@ struct LAAPersonalPendingView: View {
                                 .laaTextStyle(.secondary)
                         }
                         if operation.status == "outcome_unknown" {
-                            Button() { selected = operation; showConfirmation = true } label: { Text(verbatim: "状態を確認") }.disabled(busy)
+                            Button() { selected = operation; showConfirmation = true } label: { Text(verbatim: "Check Status") }.disabled(busy)
                         }
                     }.padding(.vertical, LAASpacing.x1)
                 }
             } header: { Text(verbatim: "Mac側で未解決") }
             Button() { Task { await processQueue() } } label: { Text(verbatim: LAACopy.macRefresh) }.disabled(busy)
         }
-        .navigationTitle(Text(verbatim: "送信待ち"))
+        .navigationTitle(Text(verbatim: "Queued"))
         .task(id: bridge.revision) { verifiedTaskIDs.removeAll(); await processQueue() }
         .confirmationDialog(Text(verbatim: "この保留を端末から破棄しますか？"), isPresented: $showDiscard, titleVisibility: .visible) {
             Button(role: .destructive) {
@@ -213,9 +213,9 @@ struct LAAPersonalPendingView: View {
 
     @ViewBuilder private func taskLink(_ operation: LAAPersonalOperationResponse.Operation) -> some View {
         if let id = verifiedTaskIDs[operation.operationId] {
-            NavigationLink(destination: LAAPersonalTaskDetailView(id: id, drafts: drafts)) { Text(verbatim: "課題を開く") }
+            NavigationLink(destination: LAAPersonalTaskDetailView(id: id, drafts: drafts)) { Text(verbatim: "Open Issue") }
         } else if LAAPersonalReconciliation.taskLookup(operation) != nil {
-            Button() { Task { await verifyTask(operation) } } label: { Text(verbatim: "タスクを読み戻す") }.disabled(busy)
+            Button() { Task { await verifyTask(operation) } } label: { Text(verbatim: "Reload Task") }.disabled(busy)
         }
     }
     @MainActor private func verifyTask(_ operation: LAAPersonalOperationResponse.Operation) async {

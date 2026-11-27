@@ -65,44 +65,44 @@ struct LAAPersonalTaskEditor: View {
                         Button(LAACopy.WorkTab.useCurrent) { choose(remote, pending: pending, mine: false) }
                         Button(LAACopy.WorkTab.saveMine) { choose(remote, pending: pending, mine: true) }
                             .disabled(remote.updatedAt == nil || busy)
-                    } header: { Text(verbatim: "説明を比較") }
+                    } header: { Text(verbatim: "Compare Description") }
                 }
                 Section() {
                     if let parentTask { Text(verbatim: "Parent: \(parentTask.sourceId) · \(parentTask.title)") }
-                    TextField(text: $draft.title, axis: .vertical) { Text(verbatim: "課題の題名") }
+                    TextField(text: $draft.title, axis: .vertical) { Text(verbatim: "Issue Title") }
                         .accessibilityIdentifier("work.task.title")
-                } header: { Text(verbatim: "題名") }.disabled(!ready || pending != nil)
+                } header: { Text(verbatim: "Title") }.disabled(!ready || pending != nil)
                 Section() {
                     TextEditor(text: $draft.description).frame(minHeight: 180)
                         .accessibilityIdentifier("work.task.description")
-                } header: { Text(verbatim: "説明") }.disabled(!ready || pending != nil)
+                } header: { Text(verbatim: "Description") }.disabled(!ready || pending != nil)
                 Section() {
                     Picker(selection: teamBinding) {
-                        Text(verbatim: "チームを選択").tag("")
+                        Text(verbatim: "Choose Team").tag("")
                         ForEach(teams) { Text(verbatim: $0.displayName).tag($0.id) }
-                    } label: { Text(verbatim: "チーム") }
+                    } label: { Text(verbatim: "Team") }
                     Picker(selection: $draft.stateId) {
-                        Text(verbatim: "既定").tag("")
+                        Text(verbatim: "Default").tag("")
                         ForEach(states.filter { $0.team?.id == draft.teamId }) { Text(verbatim: $0.displayName).tag($0.id) }
-                    } label: { Text(verbatim: "状態") }
+                    } label: { Text(verbatim: "Status") }
                     Picker(selection: $draft.assigneeId) {
                         Text(verbatim: "未設定").tag("")
                         ForEach(users.filter { $0.active != false }) { Text(verbatim: $0.displayName).tag($0.id) }
-                    } label: { Text(verbatim: "担当") }
+                    } label: { Text(verbatim: "Assignee") }
                     Picker(selection: $draft.priority) {
                         if let metadata { ForEach(metadata.priorities) { Text(verbatim: $0.label).tag($0.priority) } }
                         else { ForEach(0...4, id: \.self) { Text(verbatim: String($0)).tag($0) } }
-                    } label: { Text(verbatim: "優先度") }
+                    } label: { Text(verbatim: "Priority") }
                     Picker(selection: projectBinding) {
-                        Text(verbatim: "なし").tag("")
+                        Text(verbatim: "None").tag("")
                         ForEach(projects) { Text(verbatim: $0.displayName).tag($0.id) }
-                    } label: { Text(verbatim: "プロジェクト") }
+                    } label: { Text(verbatim: "Project") }
                     Picker(selection: $draft.milestoneId) {
-                        Text(verbatim: "なし").tag("")
+                        Text(verbatim: "None").tag("")
                         ForEach(milestones.filter { $0.project?.id == draft.projectId }) { Text(verbatim: $0.displayName).tag($0.id) }
                     } label: { Text(verbatim: "マイルストーン") }
                     Picker(selection: $draft.cycleId) {
-                        Text(verbatim: "なし").tag("")
+                        Text(verbatim: "None").tag("")
                         ForEach(cycles.filter { $0.team?.id == draft.teamId }) { Text(verbatim: $0.displayName).tag($0.id) }
                     } label: { Text(verbatim: "サイクル") }
                     TextField(text: $draft.estimate) { Text(verbatim: "見積り（整数）") }.keyboardType(.numberPad)
@@ -126,7 +126,7 @@ struct LAAPersonalTaskEditor: View {
                                 })) { Text(verbatim: label.displayName) }
                         }
                     }
-                } header: { Text(verbatim: "ラベル") }.disabled(!ready || pending != nil)
+                } header: { Text(verbatim: "Labels") }.disabled(!ready || pending != nil)
                 Button(initialTask == nil ? LAACopy.WorkTab.create : LAACopy.WorkTab.save) { save() }
                     .disabled(!ready || !identityOK || !hasFullTask || pending != nil || busy || drafts.persistenceFailed)
                     .accessibilityIdentifier("work.task.save")
@@ -185,7 +185,7 @@ struct LAAPersonalTaskEditor: View {
                     Text(verbatim: "再送期限を過ぎています。保存先を確認して照合してください。")
                 }
             }
-        } header: { Text(verbatim: "送信待ち") }
+        } header: { Text(verbatim: "Queued") }
     }
 
     @MainActor private func prepare() async {

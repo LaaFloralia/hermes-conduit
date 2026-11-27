@@ -92,7 +92,7 @@ struct LAAWorkDesktopSessionsView: View {
             VStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: LAASpacing.x3) {
                     HStack {
-                        Text(verbatim: "Sessions").font(.system(size: 13, weight: .semibold)).foregroundStyle(LAAColor.secondaryText)
+                        Text(verbatim: "Sessions").laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
                         Spacer()
                         Menu {
                             Button { projectOrder = false } label: { Text(verbatim: "Recent First") }
@@ -101,7 +101,7 @@ struct LAAWorkDesktopSessionsView: View {
                                 Text(verbatim: showArchived ? "Recent" : "Archived")
                             }
                         } label: { Image(systemName: "ellipsis").frame(width: 44, height: 44) }
-                        .accessibilityLabel(String("一覧の表示")).accessibilityIdentifier("work.sessions.menu")
+                        .accessibilityLabel(String("List View")).accessibilityIdentifier("work.sessions.menu")
                     }
                     LAASearchField(placeholder: "Search", text: $search,
                                    identifier: "work.sessions.desktop.search", focus: $searchFocused)
@@ -122,8 +122,8 @@ struct LAAWorkDesktopSessionsView: View {
                         ForEach(Array(ordered.enumerated()), id: \.element.id) { index, session in
                             if projectOrder, index == 0 || LAAWorkSessionOrder.projectID(ordered[index - 1], in: filtered) != LAAWorkSessionOrder.projectID(session, in: filtered) {
                                 let project = projects.first { $0.id == LAAWorkSessionOrder.projectID(session, in: filtered) }
-                                Text(verbatim: project?.name ?? "プロジェクトなし")
-                                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(LAAColor.secondaryText)
+                                Text(verbatim: project?.name ?? "No Project")
+                                    .laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
                                     .padding(12).frame(maxWidth: .infinity, alignment: .leading)
                                     .contextMenu {
                                         if let project {
@@ -160,7 +160,7 @@ struct LAAWorkDesktopSessionsView: View {
             .onKeyPress(.return) { if selectedID == nil { select(ordered.first?.id) }; return .handled }
             .onKeyPress(.escape) { select(nil); return .handled }
             .laaMacSectionCommands(LAAMacSectionCommands(
-                newTitle: "新しいセッション",
+                newTitle: "New Session",
                 canCreate: bridge.status == .paired,
                 create: { showLauncher = true },
                 canSearch: true,
@@ -422,7 +422,7 @@ struct LAAWorkDesktopProjectsView: View {
                     HStack {
                         Button { showNew = true } label: {
                             Label {
-                                    Text(verbatim: "新しいプロジェクト").foregroundStyle(LAAColor.filledButtonText)
+                                    Text(verbatim: "New Project").foregroundStyle(LAAColor.filledButtonText)
                                 } icon: {
                                     Image(systemName: "plus").foregroundStyle(LAAColor.filledButtonText)
                                 }
@@ -435,10 +435,10 @@ struct LAAWorkDesktopProjectsView: View {
                         Spacer(minLength: 0)
                         Button { reloadID += 1 } label: { Image(systemName: "arrow.clockwise") }
                             .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
-                            .accessibilityLabel(Text(verbatim: "プロジェクトを再読込み"))
+                            .accessibilityLabel(Text(verbatim: "Reload Project"))
                             .macTooltip("Reload (⌘R)")
                     }
-                    LAASearchField(placeholder: "検索", text: $search,
+                    LAASearchField(placeholder: "Search", text: $search,
                                    identifier: "work.projects.desktop.search", focus: $searchFocused)
                     if let failure { Text(verbatim: failure).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
                     if loading && projects.isEmpty { LAALoadingDots() }
@@ -494,7 +494,7 @@ struct LAAWorkDesktopProjectsView: View {
             .onKeyPress(.downArrow) { move(1); return .handled }
             .onKeyPress(.escape) { selectedID = nil; return .handled }
             .laaMacSectionCommands(LAAMacSectionCommands(
-                newTitle: "新しいプロジェクト",
+                newTitle: "New Project",
                 canCreate: bridge.status == .paired,
                 create: { showNew = true },
                 canSearch: true,

@@ -125,7 +125,7 @@ struct LAAWorkMessageForm: View {
             LAAGlassActionFace(systemImage: "photo", role: .neutral, enabled: canAttach)
         }
         .disabled(!canAttach)
-        .accessibilityLabel(Text(verbatim: "画像を添付"))
+        .accessibilityLabel(Text(verbatim: "Attach Image"))
         .accessibilityIdentifier("work.composer.photo")
     }
 
@@ -184,7 +184,7 @@ struct LAAWorkMessageForm: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(verbatim: attachment.name))
-        .accessibilityHint(Text(verbatim: "全画面で開く"))
+        .accessibilityHint(Text(verbatim: "Open Fullscreen"))
         .accessibilityIdentifier("work.composer.attachment.\(index)")
         .overlay(alignment: .topTrailing) {
             Button {

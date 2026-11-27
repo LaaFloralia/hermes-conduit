@@ -71,7 +71,7 @@ struct LAAWorkSessionsSection: View {
             let visible = LAAWorkSessionOrder.rows(matches)
             let children = LAAWorkSessionOrder.descendants(matches)
             if visible.pinned.isEmpty && visible.recent.isEmpty && !loading && failure == nil {
-                Text(verbatim: showArchived ? "アーカイブしたセッションはありません。" : "セッションはまだありません。")
+                Text(verbatim: showArchived ? "No Archived Sessions" : "No Sessions")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     .padding(.vertical, LAASpacing.x4)
             }
@@ -88,7 +88,7 @@ struct LAAWorkSessionsSection: View {
                                 }
                             }
                         let rows = shown((visible.pinned + visible.recent).filter { LAAWorkSessionOrder.projectID($0, in: matches) == project.id })
-                        if rows.isEmpty { Text(verbatim: "セッションはありません").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
+                        if rows.isEmpty { Text(verbatim: "No Sessions").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
                         else { group("", headingID: "", rows, children) }
                     }
                 }
@@ -819,7 +819,7 @@ struct LAAWorkSwipeRow<Content: View>: View {
         Button { finish(action) } label: {
             VStack(spacing: 2) {
                 Image(systemName: action.systemImage).font(.system(size: 16, weight: .semibold))
-                Text(verbatim: action.title).font(.caption.weight(.semibold)).lineLimit(1)
+                Text(verbatim: action.title).laaTextStyle(.note).fontWeight(.semibold).lineLimit(1)
             }
             .foregroundStyle(LAAColor.filledButtonText)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
