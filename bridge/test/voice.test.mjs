@@ -1165,3 +1165,37 @@ test('the worker exits when its parent dies, so no model is left orphaned', asyn
   for (let i = 0; i < 50 && alive(); i += 1) await delay(100);
   assert.equal(alive(), false, 'the worker must exit on stdin EOF after its parent dies');
 });
+
+test('transcribe accepts an allowlisted model and vocabulary and passes them to the worker', async (t) => {
+  let seen = null;
+  const worker = { async request(payload) { seen = payload; return { text: 'ok', model: payload.model ?? 'haas-ja-v1.0-q8_0' }; } };
+  const { api, token } = await bridge(t, { worker, scopes: ['voice:transcribe'] });
+  const res = await api.request('/v1/voice/transcribe', {
+    method: 'POST', token,
+    body: { pcm16: pcm(), sampleRate: 16000, model: 'gemini-4-hydrogen', vocabulary: ['Campanula', 'LAA'] },
+  });
+  assert.equal(res.status, 200);
+  assert.equal(seen.model, 'gemini-4-hydrogen');
+  assert.deepEqual(seen.vocabulary, ['Campanula', 'LAA']);
+  assert.equal(res.body.data.model, 'gemini-4-hydrogen');
+  const omitted = await api.request('/v1/voice/transcribe', { method: 'POST', token, body: { pcm16: pcm(), sampleRate: 16000 } });
+  assert.equal(omitted.status, 200);
+  assert.equal('model' in seen, false, 'an omitted model is left to the worker default (Haas)');
+});
+
+test('transcribe refuses an unknown model or malformed vocabulary', async (t) => {
+  const { api, token } = await bridge(t, { worker: stubWorker(), scopes: ['voice:transcribe'] });
+  const bad = [
+    { model: 'gpt-6-luna' },
+    { model: 3 },
+    { vocabulary: 'LAA' },
+    { vocabulary: Array.from({ length: 41 }, (_, i) => `w${i}`) },
+    { vocabulary: ['x'.repeat(81)] },
+    { vocabulary: ['a\nb'] },
+    { vocabulary: [''] },
+  ];
+  for (const extra of bad) {
+    const res = await api.request('/v1/voice/transcribe', { method: 'POST', token, body: { pcm16: pcm(), sampleRate: 16000, ...extra } });
+    assert.equal(res.status, 400, JSON.stringify(Object.keys(extra)));
+  }
+});

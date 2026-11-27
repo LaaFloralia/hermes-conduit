@@ -28,7 +28,11 @@ const LANGUAGES = new Set(['ja', 'zh', 'en', 'auto']);
 // transcribe with the wrong model.
 const TRANSCRIBE_LANGUAGES = new Set(['ja']);
 const POLISH_FIELDS = new Set(['text', 'language', 'model']);
-const TRANSCRIBE_FIELDS = new Set(['pcm16', 'sampleRate', 'language']);
+const TRANSCRIBE_FIELDS = new Set(['pcm16', 'sampleRate', 'language', 'model', 'vocabulary']);
+// Speech models the worker can run (D-31: Haas is the default, Hydrogen stays selectable).
+const TRANSCRIBE_MODELS = new Set(['haas-ja-v1.0-q8_0', 'gemini-4-hydrogen']);
+const VOCABULARY_MAX_ITEMS = 40;
+const VOCABULARY_MAX_UTF16 = 80;
 const CANDIDATES_FIELDS = new Set(['reading', 'candidates']);
 // Same allowed scalars as WorkerProtocol.swift: kana and ASCII/full-width romaji.
 const INVALID_READING = /[^A-Za-z\u3041-\u3096\u3099-\u309f\u30a1-\u30fa\u30fc-\u30ff\uff21-\uff3a\uff41-\uff5a\uff66-\uff9f]/u;
@@ -124,7 +128,22 @@ function validateTranscribe(payload) {
   if (typeof language !== 'string' || !TRANSCRIBE_LANGUAGES.has(language)) {
     throw badRequest('payload_invalid', 'language must be ja');
   }
-  return { pcm16, sampleRate: payload.sampleRate, language };
+  const { model, vocabulary } = payload;
+  if (model !== undefined && (typeof model !== 'string' || !TRANSCRIBE_MODELS.has(model))) {
+    throw badRequest('payload_invalid', 'model is not supported');
+  }
+  // Recognition hints from the user dictionary. Counted in UTF-16 code units to
+  // match the Swift client; control characters and line breaks are refused so a
+  // hint cannot smuggle prompt structure into the worker.
+  if (vocabulary !== undefined && (!Array.isArray(vocabulary) || vocabulary.length > VOCABULARY_MAX_ITEMS
+    || !vocabulary.every((item) => typeof item === 'string' && item !== '' && item.length <= VOCABULARY_MAX_UTF16
+      && !INVALID_CANDIDATE.test(item)))) {
+    throw badRequest('payload_invalid', `vocabulary must be an array of at most ${VOCABULARY_MAX_ITEMS} strings of 1 to ${VOCABULARY_MAX_UTF16} characters without control characters or line breaks`);
+  }
+  const out = { pcm16, sampleRate: payload.sampleRate, language };
+  if (model !== undefined) out.model = model;
+  if (vocabulary !== undefined && vocabulary.length > 0) out.vocabulary = vocabulary;
+  return out;
 }
 
 function failure(error) {
