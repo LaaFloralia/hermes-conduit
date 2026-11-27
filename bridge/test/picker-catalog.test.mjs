@@ -8,6 +8,8 @@ import { createBridge } from '../src/http.mjs';
 import { laneClient } from '../src/lane/client.mjs';
 import { issuePairing } from '../src/pairing.mjs';
 import { sessionOptionsFrom, sessionOptionsReader } from '../src/sessions/options.mjs';
+import { createSessionService } from '../src/sessions/service.mjs';
+import { createSessionStore } from '../src/sessions/store.mjs';
 import { createStore } from '../src/store.mjs';
 import { startBridge } from './helpers.mjs';
 
@@ -170,15 +172,16 @@ test('Bridge HTTP lane returns only HQ options in both response variants', async
   assert.equal((await refusedReply.json()).error.code, 'options_unavailable');
 });
 
-test('Bridge create uses Opus Medium only without a pin and still accepts the current app request', async (t) => {
+test('Bridge create enforces published choices while preserving trusted legacy pins, resumes and replays', async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'd23-create-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const modelsFile = join(root, 'models.json');
   const stage = process.env.D23_STAGE_HQ_MODELS;
-  const current = stage ? JSON.parse(readFileSync(stage, 'utf8')) : fixture;
+  const current = stage ? JSON.parse(readFileSync(stage, 'utf8')) : structuredClone(fixture);
   const old = structuredClone(current);
   old.picker.models.find((row) => row.model === opus).profiles.push('opus-high', 'opus-xhigh');
-  old.dispatch.manual_profiles.push('opus-high', 'opus-xhigh');
+  old.picker.models.find((row) => row.model === sol).profiles.push('sol-high');
+  current.dispatch.manual_profiles.push('sol-high');
   writeFileSync(modelsFile, JSON.stringify(old));
   const calls = [];
   const requestedRoutes = {
@@ -187,60 +190,89 @@ test('Bridge create uses Opus Medium only without a pin and still accepts the cu
     'opus-xhigh': { provider: 'claude', model: opus, effort: 'xhigh' },
     'sol-high': { provider: 'codex', model: sol, effort: 'high' },
   };
-  const bridge = await startBridge({ sessions: { modelsFile, adapter: {
-    create: async ({ requestId, profile, mode, fast }) => {
-      calls.push({ profile, mode, fast });
-      return { sessionId: requestId, requested: { profile, ...requestedRoutes[profile] } };
+  const pinned = { id: 'project-a', defaultProfile: 'opus-xhigh' };
+  const unpinned = { id: 'project-b' };
+  const choices = sessionOptionsReader({ file: modelsFile });
+  const sessions = createSessionService({
+    choices, sessionStore: createSessionStore({ file: join(root, 'sessions.json') }), homeCwd: root,
+    findProject: (id) => [pinned, unpinned].find((project) => project.id === id),
+    adapter: {
+      create: async ({ requestId, profile }) => {
+        calls.push(profile);
+        return { sessionId: requestId, requested: { profile, ...requestedRoutes[profile] } };
+      },
+      stop: async () => ({ daemonStatus: 'stopped' }),
     },
-  } } });
-  t.after(() => bridge.close());
-  const token = await bridge.token();
-  const postProject = (name, key, defaultProfile = undefined) => bridge.request('/v1/projects', {
-    token, method: 'POST', key, body: { name, defaultProfile },
   });
-  const pinned = await postProject('固定', 'project-pin', 'opus-xhigh');
-  const unpinned = await postProject('既定', 'project-default');
-  assert.equal(pinned.status, 201);
-  assert.equal(unpinned.status, 201);
-  writeFileSync(modelsFile, JSON.stringify(current));
-  const catalog = await bridge.request('/v1/session-options?catalogOnly=true', { token });
-  assert.equal(catalog.body.data.defaultProfile, 'opus-medium');
-  const defaultWire = catalog.body.data.profiles.find(({ id }) => id === catalog.body.data.defaultProfile);
-  assert.deepEqual([defaultWire.id, defaultWire.provider, defaultWire.model, defaultWire.effort], ['opus-medium', 'claude', opus, 'medium']);
-  assert.ok(!catalog.body.data.profiles.some(({ id }) => ['opus-high', 'opus-xhigh', 'sol-high'].includes(id)));
-  assert.equal((await postProject('新規固定', 'new-hidden-pin', 'opus-high')).status, 400);
-
-  const create = (body, key = body.requestId) => bridge.request('/v1/sessions', { token, method: 'POST', key, body });
+  const create = (body) => sessions.createSession({ deviceId: 'fixture-device', body });
+  const resume = (id, body) => sessions.resumeSession({ id, body, key: `resume-${id}`, deviceId: 'fixture-device' });
   const createBody = (requestId, projectId, extras = {}) => ({ requestId, prompt: 'fixture only', projectId, mode: 'bypass', fast: false, ...extras });
-  const implicit = createBody('unpinned', unpinned.body.data.id);
-  const automatic = await create(implicit);
-  assert.equal(automatic.status, 201);
-  assert.deepEqual(automatic.body.data.requested, { profile: 'opus-medium', ...requestedRoutes['opus-medium'] });
-  // Current Swift Request includes profile, even when the UI used the default.
-  const app = await create(createBody('current-app', unpinned.body.data.id, { profile: defaultWire.id }));
-  const project = await create(createBody('saved-project', pinned.body.data.id));
-  const explicit = await create(createBody('explicit', pinned.body.data.id, { profile: 'sol-high', fast: true }));
-  for (const [reply, profile] of [[app, 'opus-medium'], [project, 'opus-xhigh'], [explicit, 'sol-high']]) {
-    assert.equal(reply.status, 201);
-    assert.equal(reply.body.data.profile, profile);
-    assert.deepEqual(reply.body.data.requested, { profile, ...requestedRoutes[profile] });
+  const legacy = [];
+  for (const profile of ['opus-high', 'opus-xhigh', 'sol-high']) {
+    const body = createBody(`legacy-${profile}`, unpinned.id, { profile });
+    const reply = await create(body);
+    assert.equal(reply.created, true);
+    const id = reply.session.id;
+    const stopped = await sessions.stopSession(id);
+    assert.equal(stopped.session.phase, 'stopped');
+    legacy.push({ profile, body, id });
   }
-  assert.deepEqual(calls, [
-    { profile: 'opus-medium', mode: 'bypass', fast: undefined }, { profile: 'opus-medium', mode: 'bypass', fast: undefined },
-    { profile: 'opus-xhigh', mode: 'bypass', fast: undefined }, { profile: 'sol-high', mode: 'bypass', fast: true },
-  ]);
-  const retained = sessionOptionsReader({ file: modelsFile }).retainedProfile;
-  assert.equal(retained('old-sol'), null);
-  assert.equal(retained('old-sol', { savedPin: true }).model, 'gpt-6.1-sol');
-  assert.equal(retained('sol-high').model, sol);
+  writeFileSync(modelsFile, JSON.stringify(current));
+  const catalog = choices();
+  assert.equal(catalog.defaultProfile, 'opus-medium');
+  const defaultWire = catalog.profiles.find(({ id }) => id === catalog.defaultProfile);
+  assert.deepEqual([defaultWire.id, defaultWire.provider, defaultWire.model, defaultWire.effort], ['opus-medium', 'claude', opus, 'medium']);
+  assert.ok(!catalog.profiles.some(({ id }) => ['opus-high', 'opus-xhigh', 'sol-high'].includes(id)));
+
+  const implicit = createBody('unpinned', unpinned.id);
+  const automatic = await create(implicit);
+  const app = await create(createBody('current-app', unpinned.id, { profile: defaultWire.id }));
+  const savedBody = createBody('saved-project', pinned.id);
+  const project = await create(savedBody);
+  for (const [reply, profile] of [[automatic, 'opus-medium'], [app, 'opus-medium'], [project, 'opus-xhigh']]) {
+    assert.equal(reply.created, true);
+    assert.equal(reply.session.profile, profile);
+    assert.deepEqual(reply.session.requested, { profile, ...requestedRoutes[profile] });
+  }
+  assert.equal(calls.length, 6);
+  for (const [index, profile] of ['opus-high', 'opus-xhigh', 'sol-high', 'unlisted-fixture'].entries()) {
+    await assert.rejects(create(createBody(`unlisted-${index}`, pinned.id, { profile, resumedFrom: legacy[0].id })),
+      { status: 400, code: 'model_choice_invalid' });
+  }
+  const replayHidden = await create(legacy[0].body);
+  assert.equal(replayHidden.created, false);
+  assert.equal(replayHidden.session.id, legacy[0].id);
+  await assert.rejects(create({ ...legacy[0].body, prompt: 'changed fixture request' }), { status: 409 });
+  assert.equal(calls.length, 6);
+  await assert.rejects(resume(legacy[0].id, { message: 'fixture continuation', profile: 'sol-high' }), { status: 400, code: 'model_change_rejected' });
+  const resumed = await resume(legacy[0].id, { message: 'fixture continuation' });
+  assert.equal(resumed.created, true);
+  assert.equal(resumed.session.profile, legacy[0].profile);
+  assert.equal(resumed.session.resumedFrom, legacy[0].id);
+  for (const { id } of legacy.slice(1)) {
+    await assert.rejects(resume(id, { message: 'fixture continuation' }), { status: 400, code: 'model_choice_invalid' });
+  }
+  assert.deepEqual(calls, ['opus-high', 'opus-xhigh', 'sol-high', 'opus-medium', 'opus-medium', 'opus-xhigh', 'opus-high']);
+  const { retainedProfile: retained } = choices;
+  assert.equal(retained('opus-high'), null);
+  assert.equal(retained('opus-high', { sameProfileResume: true }).model, opus);
+  assert.equal(retained('opus-xhigh', { sameProfileResume: true }), null);
+  assert.equal(retained('sol-high', { sameProfileResume: true }), null);
+  assert.equal(retained('opus-xhigh', { savedPin: true }).model, opus);
   const movedDefault = structuredClone(current);
   movedDefault.picker.defaultProfile = 'sol-medium';
   writeFileSync(modelsFile, JSON.stringify(movedDefault));
-  const retry = await create(implicit, 'unpinned-retry');
-  assert.equal(retry.status, 200);
-  assert.equal(retry.body.data.id, automatic.body.data.id);
-  assert.equal(retry.body.data.profile, 'opus-medium');
-  assert.equal(calls.length, 4);
-  const stored = await bridge.request(`/v1/projects/${pinned.body.data.id}`, { token });
-  assert.equal(stored.body.data.defaultProfile, 'opus-xhigh');
+  unpinned.defaultProfile = 'sol-medium';
+  const retry = await create(implicit);
+  assert.equal(retry.created, false);
+  assert.equal(retry.session.id, automatic.session.id);
+  assert.equal(retry.session.profile, 'opus-medium');
+  assert.equal(pinned.defaultProfile, 'opus-xhigh');
+  delete movedDefault.profiles['opus-xhigh'];
+  writeFileSync(modelsFile, JSON.stringify(movedDefault));
+  const replayPin = await create(savedBody);
+  assert.equal(replayPin.created, false);
+  assert.equal(replayPin.session.id, project.session.id);
+  await assert.rejects(create(createBody('missing-project-profile', pinned.id)), { status: 409, code: 'project_default_unavailable' });
+  assert.equal(calls.length, 7);
 });
