@@ -3391,6 +3391,7 @@ struct ChatCodeBlock: View {
                 copyButton
                     .padding(.top, MarkdownRichMetrics.codeVerticalInset)
                     .padding(.trailing, MarkdownRichMetrics.codeVerticalInset)
+                    .padding(.leading, MarkdownRichMetrics.codeVerticalInset)
             } else {
                 HStack {
                     Text(normalizedLanguage == "plain" ? codeLabel : normalizedLanguage)

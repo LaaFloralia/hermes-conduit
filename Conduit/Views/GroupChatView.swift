@@ -20,6 +20,11 @@ struct GroupChatView: View {
     /// actions.
     @Environment(\.v2ComposerRests) private var isV2
     @State private var showingDisbandConfirmation = false
+#if LAA_BUILD
+    /// How far the room's title (faces and name) hangs below the bar's
+    /// 44 pt row; the transcript starts below it.
+    @State private var titleHang: CGFloat = 0
+#endif
     @State private var choosingPicture: GroupRoomPictureRequest?
     /// Following the latest event, or browsing history (GroupRoomFollow).
     /// The flag decides scrolling; the published copy draws the button.
@@ -254,7 +259,13 @@ struct GroupChatView: View {
 #else
                 .padding(.horizontal, 16)
 #endif
+#if LAA_BUILD
+                // Below the title that hangs over the transcript: under it,
+                // the first line ("今日") was covered.
+                .padding(.top, 14 + titleHang)
+#else
                 .padding(.top, 14)
+#endif
                 .padding(.bottom, 18)
             }
 #if LAA_BUILD
@@ -474,7 +485,8 @@ struct GroupChatView: View {
     private var roomTitle: some View {
 #if LAA_BUILD
         GroupRoomTitle(name: surface?.room.name ?? "", subtitle: memberSummary, members: members,
-            picture: surface.flatMap { appState.groupRoomPicture(roomID: $0.room.roomID) }, information: menu)
+            picture: surface.flatMap { appState.groupRoomPicture(roomID: $0.room.roomID) }, information: menu,
+            onHang: { titleHang = $0 })
 #else
         GroupRoomTitle(name: surface?.room.name ?? "", subtitle: memberSummary, members: members,
             picture: surface.flatMap { appState.groupRoomPicture(roomID: $0.room.roomID) })
@@ -612,6 +624,8 @@ struct GroupRoomTitle: View {
 
 #if LAA_BUILD
     var information: AnyView? = nil
+    /// How far the title reaches below the bar's row, for the transcript.
+    var onHang: ((CGFloat) -> Void)? = nil
     @State private var showingInformation = false
 #endif
     var body: some View {
@@ -625,6 +639,7 @@ struct GroupRoomTitle: View {
                 }.padding(.horizontal, 12).padding(.vertical, 5)
                     .conduitGlassControl(cornerRadius: 20, tint: LAAColor.link.opacity(0.06), interactive: false)
             }
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { onHang?(max(0, $0 - 44)) }
         }.buttonStyle(.plain).frame(height: 44, alignment: .top)
             // The title hangs below the bar by a fixed depth, so it does not
             // grow with the text: larger, it covered the transcript's first
