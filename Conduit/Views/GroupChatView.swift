@@ -41,11 +41,18 @@ struct GroupChatView: View {
     @Environment(\.sizeCategory) private var columnSizeCategory
 
     private var chatTextSize: ChatTextAppearance {
-        ChatTextAppearance(
+        let appearance = ChatTextAppearance(
             size: ChatTypography.resolve(rawValue: chatTextSizeRaw),
             style: ChatTypography.resolveStyle(rawValue: chatFontStyleRaw)
         )
         .widened(steps: chatWidthTextSteps, category: columnSizeCategory)
+#if LAA_BUILD
+        // The reading face, as a 1:1 chat injects it (ChatView.chatTextSize),
+        // so members' replies and the owner's bubble read like the thread.
+        return LAAReadingStyle.reading(appearance)
+#else
+        return appearance
+#endif
     }
 
     var body: some View {
@@ -930,18 +937,31 @@ struct GroupUserBubble<Footer: View>: View {
 #endif
     @ViewBuilder let footer: Footer
 
+#if LAA_BUILD
+    /// The LAA owner's bubble is the soft `wash`, not the accent: its text is ink.
+    private static var onAccent: Bool { false }
+    private static var ink: Color { LAAColor.text }
+#else
+    private static var onAccent: Bool { true }
+    private static var ink: Color { .white }
+#endif
+
     var body: some View {
 #if LAA_BUILD
-        // The owner's picture, name and role, as in chats and Work.
-        LAAOwnerMessageRow(continues: continuesRun, timestamp: timestamp.map { ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: $0)) }) {
-            // A hold on the text selects it; copy and quote are the row below.
-            stack
+        // The owner's turn in the shared transcript (LAATranscript), as in a
+        // 1:1 chat and Work: the speaker line, then the soft `wash` bubble.
+        LAATranscriptOwnerTurn(continues: continuesRun, timestamp: timestamp.map { ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: $0)) }) {
+            // One child: LAAOwnerBubbleWidth places only its first subview.
             let ownText = GroupRoomReplyQuote.parse(GroupMessageParts(text).text)?.message ?? GroupMessageParts(text).text
-            LAAMessageActionBar(text: GroupRoomMentions.refanged(ownText),
-                                onQuote: nil,
-                                onReply: appState.canQuoteIntoRoom() ? { appState.replyInRoomComposer(text: text, authorName: "LAA", isOwnMessage: true) } : nil,
-                                identifierPrefix: "room.message")
-                .padding(.trailing, -8)
+            VStack(alignment: .trailing, spacing: 0) {
+                // A hold on the text selects it; copy and quote are the row below.
+                stack
+                LAAMessageActionBar(text: GroupRoomMentions.refanged(ownText),
+                                    onQuote: nil,
+                                    onReply: appState.canQuoteIntoRoom() ? { appState.replyInRoomComposer(text: text, authorName: "LAA", isOwnMessage: true) } : nil,
+                                    identifierPrefix: "room.message")
+                    .padding(.trailing, -8)
+            }
         }
             .laaChatColumn(.trailing)
             .frame(maxWidth: .infinity, alignment: .trailing)
@@ -962,24 +982,25 @@ struct GroupUserBubble<Footer: View>: View {
         let ownText = reply?.message ?? parts.text
         return VStack(alignment: .trailing, spacing: 2) {
                 VStack(alignment: .leading, spacing: 8) {
-                    GroupMessageFiles(files: parts.files, onAccent: true)
+                    GroupMessageFiles(files: parts.files, onAccent: Self.onAccent)
                     if let reply {
-                        ReplyReferenceQuoteCard(quote: reply.quote,
+                        ReplyReferenceQuoteCard(quote: reply.quote, onAccentSurface: Self.onAccent,
                                                 authorName: reply.isOwnMessage ? LAAChatLabels.text("You") : reply.author)
                     }
                     if !ownText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         HugsIdealWidth {
                             MarkdownText(
                                 source: GroupRoomMentions.linkingMarkdown(ownText, members: members),
-                                foregroundStyle: .white,
-                                usesAccentSurface: true
+                                foregroundStyle: Self.ink,
+                                usesAccentSurface: Self.onAccent
                             )
                         }
                     }
                 }
 #if LAA_BUILD
-                .padding(LAASpacing.x4)
-                .background(LAAColor.ownBubble, in: RoundedRectangle(cornerRadius: LAARadius.bubble, style: .continuous))
+                // The owner's soft `wash` bubble (LAATranscript), ink on it,
+                // the same as a 1:1 chat's (UserMessageContent).
+                .laaTranscriptOwnerBubble()
 #else
                 .padding(.horizontal, 15)
                 .padding(.vertical, 10)

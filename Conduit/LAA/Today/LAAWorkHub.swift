@@ -56,18 +56,21 @@ struct LAAWorkHub: View {
         VStack(alignment: .leading, spacing: LAASpacing.x4) {
             LAAScreenHeader(title: "Work", identifier: "laa.work.title")
                 .padding(.horizontal, LAASpacing.horizontal)
-            LAAWorkSectionSelector(selection: Binding(get: { section }, set: select),
-                                   decisions: decisions.count, campaigns: campaigns.count)
-                .padding(.horizontal, LAASpacing.horizontal)
-            if bridge.status != .paired { connectionState }
-            else {
-                if !laaDesktop && section.searchable {
-                    LAASearchField(placeholder: "Search", text: $search, identifier: "laa.work.search", focus: $searchFocused)
-                        .padding(.horizontal, LAASpacing.horizontal)
-                        .id(section)
+            // The switcher and the search are one glass group, so the screen
+            // shows three at most: top bar, this group, the tab bar.
+            LAAGlassCluster {
+                VStack(alignment: .leading, spacing: LAASpacing.x4) {
+                    LAAWorkSectionSelector(selection: Binding(get: { section }, set: select),
+                                           decisions: decisions.count, campaigns: campaigns.count)
+                    if bridge.status == .paired && !laaDesktop && section.searchable {
+                        LAASearchField(placeholder: "Search", text: $search, identifier: "laa.work.search", focus: $searchFocused)
+                            .id(section)
+                    }
                 }
-                sectionContent.frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .padding(.horizontal, LAASpacing.horizontal)
+            if bridge.status != .paired { connectionState }
+            else { sectionContent.frame(maxWidth: .infinity, maxHeight: .infinity) }
         }
         .padding(.top, LAASpacing.x2)
         .laaTheme(themeID)
@@ -91,7 +94,14 @@ struct LAAWorkHub: View {
             LAASettingsToolbar(action: onRequestSettings)
             // Separate item: a grouped toolbar control can collapse into a
             // menu on Catalyst, where the session stays open in its pane.
-            if section == .sessions {
+            if section == .projects && !laaDesktop {
+                // New sits top right as an icon; the list starts under the search.
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { createID += 1 } label: { Image(systemName: "plus") }
+                        .accessibilityLabel("New Project").accessibilityIdentifier("work.projects.new")
+                        .disabled(bridge.status != .paired)
+                }
+            } else if section == .sessions {
                 ToolbarItem(placement: .topBarTrailing) {
                     if laaDesktop {
                         Button { createID += 1 } label: { Label("New", systemImage: "plus") }
@@ -165,7 +175,8 @@ struct LAAWorkHub: View {
             if laaDesktop { LAAWorkDesktopProjectsView(drafts: drafts, refreshID: refreshID, linkedProject: $linkedProject) }
             else {
                 ScrollView {
-                    LAAWorkProjectsSection(drafts: drafts, refreshID: refreshID, query: search, linkedProject: $linkedProject)
+                    LAAWorkProjectsSection(drafts: drafts, refreshID: refreshID, query: search, linkedProject: $linkedProject,
+                                           createID: createID, onCreateConsumed: { createID = 0 })
                         .padding(.horizontal, LAASpacing.horizontal).padding(.bottom, LAASpacing.x8)
                 }.refreshable { refreshID += 1 }
             }

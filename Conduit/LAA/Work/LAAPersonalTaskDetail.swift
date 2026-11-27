@@ -43,20 +43,23 @@ struct LAAPersonalTaskDetailView: View {
                     if let task {
                         VStack(alignment: .leading, spacing: LAASpacing.x2) {
                             taskMetadata(task)
-                            Text(verbatim: task.title)
-                                .font(LAAType.title(task.title, size: laaDesktop ? 30 : 26, relativeTo: .title))
+                            // The genre's prefix ("LAAアプリ：") is not repeated in the title.
+                            let shown = ownerTask.map { LAATaskGenre.classify($0).shortTitle(task.title) } ?? task.title
+                            Text(verbatim: shown)
+                                .font(LAAType.title(shown, size: laaDesktop ? 30 : 26, relativeTo: .title))
                                 .foregroundStyle(LAAColor.text)
                                 .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityLabel(Text(verbatim: task.title))
                                 .accessibilityIdentifier("work.task.detail.title")
                             if let ownerTask { completionNotes(ownerTask) }
                         }
                         properties(task)
-                        if let ownerTask { runCard(ownerTask) }
+                        if let ownerTask, hasRunDetails(ownerTask, task) { runSection(ownerTask, task) }
                         if let description = task.description, !description.isEmpty {
-                            MarkdownText(source: description, foregroundStyle: LAAColor.text).workCard()
+                            MarkdownText(source: description, foregroundStyle: LAAColor.text).workRuled()
                             if description.lowercased().contains("https://uploads.linear.app/"), let viewerId {
                                 LAAPersonalMarkdownFiles(taskPath: "/v1/personal-tasks/" + (task.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ""),
-                                                         viewerId: viewerId, commentId: nil).workCard()
+                                                         viewerId: viewerId, commentId: nil)
                             }
                         }
                         LAATaskSessionsSection(task: task)
@@ -64,7 +67,11 @@ struct LAAPersonalTaskDetailView: View {
                             LAAPersonalTaskConnections(drafts: drafts, task: task, viewerId: viewerId)
                         }
                         if let raw = task.url, let url = URL(string: raw), url.scheme?.lowercased() == "https" {
-                            Link(LAACopy.WorkTab.openLinear, destination: url).buttonStyle(.bordered)
+                            Link(destination: url) {
+                                Label { Text(verbatim: "Linear") } icon: { Image(systemName: "arrow.up.right.square") }
+                            }
+                            .buttonStyle(.laaText)
+                            .accessibilityLabel(Text(verbatim: LAACopy.WorkTab.openLinear))
                         }
                     } else if error == nil { LAALoadingDots() }
                 }.padding(.horizontal, LAASpacing.horizontal).padding(.vertical, LAASpacing.x4)
@@ -117,7 +124,8 @@ struct LAAPersonalTaskDetailView: View {
 
     private var taskActions: some View {
         HStack(spacing: LAASpace.s8) {
-            if let ownerTask { genreChip(LAATaskGenre.classify(ownerTask)) }
+            // The genre only when no project names it already (the Project row).
+            if let ownerTask, task?.project?.name == nil { genreChip(LAATaskGenre.classify(ownerTask)) }
             Spacer(minLength: 0)
             if let ownerTask, ownerTask.isOpen { completeButton(ownerTask) }
         }
@@ -162,13 +170,26 @@ struct LAAPersonalTaskDetailView: View {
         }
     }
 
-    /// The Bridge's execution record: 担当, the model it started with, the
-    /// status the list shows, the session and the report. While the session
-    /// is running it says why 完了 is disabled.
-    @ViewBuilder private func runCard(_ owner: LAALinearTask) -> some View {
+    /// The run's 担当 only when it differs from the Linear assignee above.
+    private func runAssignee(_ owner: LAALinearTask, _ task: LAAPersonalTask) -> String? {
+        owner.assigneeDisplay == (task.owner?.name ?? "") ? nil : owner.assigneeDisplay
+    }
+
+    private func hasRunDetails(_ owner: LAALinearTask, _ task: LAAPersonalTask) -> Bool {
+        runAssignee(owner, task) != nil || owner.run?.profileLabel != nil || owner.run?.profile != nil
+            || owner.runStatus != nil || owner.run?.report.map { !$0.summary.isEmpty } == true
+            || owner.completionBlockedReason != nil
+    }
+
+    /// The Bridge's execution record: 担当 (when it is not the assignee
+    /// above), the model it started with, the status the list shows, the
+    /// session and the report. While the session is running it says why 完了
+    /// is disabled. Ruled rows on the paper; omitted when it has nothing.
+    @ViewBuilder private func runSection(_ owner: LAALinearTask, _ task: LAAPersonalTask) -> some View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
-            Text(verbatim: "実行").fontWeight(.semibold)
-            runRow("担当", owner.assigneeDisplay)
+            Text(verbatim: "Run").laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
+                .accessibilityAddTraits(.isHeader)
+            if let assignee = runAssignee(owner, task) { runRow("担当", assignee) }
             if let model = owner.run?.profileLabel ?? owner.run?.profile { runRow("モデル", model) }
             if let status = owner.runStatus {
                 HStack(spacing: LAASpacing.x2) {
@@ -181,7 +202,7 @@ struct LAAPersonalTaskDetailView: View {
                     Button {
                         guard let url = URL(string: "laa://work/sessions/\(session)") else { return }
                         LAAWorkLinkRequest.shared.open(url)
-                    } label: { Text(verbatim: "セッションを開く").laaTextStyle(.secondary) }
+                    } label: { Text(verbatim: "Open Session").laaTextStyle(.secondary).foregroundStyle(LAAColor.link) }
                         .buttonStyle(.plain)
                 }
             }
@@ -196,7 +217,7 @@ struct LAAPersonalTaskDetailView: View {
                 Text(verbatim: reason).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
                     .accessibilityIdentifier("work.task.detail.completeReason")
             }
-        }.workCard()
+        }.workRuled()
     }
 
     /// Linear's properties as Linear shows them: an icon, a quiet label and the
@@ -204,8 +225,8 @@ struct LAAPersonalTaskDetailView: View {
     /// not repeated.
     private func properties(_ task: LAAPersonalTask) -> some View {
         Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: LAASpacing.x3, verticalSpacing: LAASpacing.x3) {
-            property("circle.dashed", "状態") { Text(verbatim: task.status?.name ?? "未確認") }
-            property("person", "担当") { Text(verbatim: task.owner?.name ?? "未設定") }
+            if let status = task.status?.name { property("circle.dashed", "状態") { Text(verbatim: status) } }
+            if let owner = task.owner?.name { property("person", "担当") { Text(verbatim: owner) } }
             if let delegate = task.executor?.name {
                 property("arrow.turn.down.right", "委任先") { Text(verbatim: delegate) }
             }
@@ -243,8 +264,6 @@ struct LAAPersonalTaskDetailView: View {
                                         .frame(width: 7, height: 7)
                                     Text(verbatim: label.name)
                                 }
-                                .padding(.horizontal, 8).padding(.vertical, 2)
-                                .background(LAAColor.subtleSurface, in: Capsule())
                             }
                         }
                         if task.labelsComplete != true {
@@ -257,7 +276,7 @@ struct LAAPersonalTaskDetailView: View {
             property("clock", "更新") { Text(verbatim: LAAWorkPresentation.date(task.updatedAt)) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .workCard()
+        .workRuled()
         .accessibilityIdentifier("work.task.detail.properties")
     }
 
@@ -298,10 +317,8 @@ struct LAAPersonalTaskDetailView: View {
             Image(systemName: genre.symbol).font(.caption2.weight(.semibold))
             Text(verbatim: genre.title)
         }
-        .laaTextStyle(.secondary).fontWeight(.medium)
-        .foregroundStyle(genre.tint)
-        .padding(.horizontal, 8).padding(.vertical, 2)
-        .background(LAAColor.subtleSurface, in: RoundedRectangle(cornerRadius: LAARadius.control))
+        .laaTextStyle(.secondary)
+        .foregroundStyle(LAAColor.secondaryText)
         .accessibilityLabel(Text(verbatim: "ジャンル \(genre.title)"))
     }
 

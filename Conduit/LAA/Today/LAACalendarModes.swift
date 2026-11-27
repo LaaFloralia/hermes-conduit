@@ -20,7 +20,8 @@ enum LAACalendarDates {
 enum LAACalendarMode: String, CaseIterable {
     case day, week, month, list, habits
     static let visibleModes: [Self] = [.list, .week, .month, .habits]
-    var title: String { switch self { case .day, .list: return AppLocalization.string("Agenda view"); case .week: return AppLocalization.string("Week view"); case .month: return AppLocalization.string("Month view"); case .habits: return LAACopy.habitsMode } }
+    /// Short English like the tabs and Habits, one language in the control.
+    var title: String { switch self { case .day, .list: return String("Agenda"); case .week: return String("Week"); case .month: return String("Month"); case .habits: return LAACopy.habitsMode } }
     static func agendaDays(events: [LAACalendarEvent], now: Date, calendar: Calendar = .current) -> [Date] {
         let today = calendar.startOfDay(for: now)
         return (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: today) }.filter { day in
