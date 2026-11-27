@@ -1,5 +1,6 @@
 #if LAA_BUILD
 import SwiftUI
+import LAAKit
 
 /// The model and its effort as two Liquid Glass capsules side by side, each
 /// opening its own menu: the model's face, name and chevron; then the
