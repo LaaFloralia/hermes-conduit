@@ -27,6 +27,7 @@ import { PHONE_USE_USAGE, phoneUseCommand } from './cli-phone-use.mjs';
 import { REFS_USAGE, refsCommand } from './refs/cli.mjs';
 import { PROJECTS_USAGE, projectsCommand } from './cli-projects.mjs';
 import { CALENDAR_USAGE, calendarCommand } from './cli-calendar.mjs';
+import { GROUPS_USAGE, groupsCommand } from './cli-groups.mjs';
 import { assertTestStateDir, laneEnabled, laneMissing, PRODUCTION_PORTS } from './lane/guard.mjs';
 import { laneClient } from './lane/client.mjs';
 
@@ -62,6 +63,7 @@ ${DECISIONS_USAGE}
 ${PHONE_USE_USAGE}
 ${PROJECTS_USAGE}
 ${CALENDAR_USAGE}
+${GROUPS_USAGE}
 State directory: ${resolveStateDir()} (override with LAA_BRIDGE_STATE_DIR)
 Loopback port:   ${resolvePort()} (override with LAA_BRIDGE_PORT)
 `;
@@ -231,7 +233,10 @@ function commandServe() {
   child.on('exit', (code, signal) => process.exit(code ?? (signal ? 1 : 0)));
 }
 
-const { positional, flags } = parseArgs(process.argv.slice(2));
+const argv = process.argv.slice(2);
+const { positional, flags } = argv[0] === 'groups'
+  ? { positional: argv, flags: { help: argv.length === 2 && ['--help', '-h'].includes(argv[1]) } }
+  : parseArgs(argv);
 const command = positional.shift();
 
 // Gate even CLI commands that open independent stores instead of createStore.
@@ -254,6 +259,9 @@ if (flags.help) {
     break;
   case 'calendar':
     process.exitCode = await calendarCommand(positional, flags);
+    break;
+  case 'groups':
+    process.exitCode = await groupsCommand(positional);
     break;
   case 'phone-use':
     process.exitCode = await phoneUseCommand(positional, flags);
