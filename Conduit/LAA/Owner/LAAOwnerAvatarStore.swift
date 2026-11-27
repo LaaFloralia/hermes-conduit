@@ -1,15 +1,16 @@
 #if LAA_BUILD
+import LAAKit
 import SwiftUI
 import UIKit
 
 /// Who the owner is in every conversation: the name, and the role label only
 /// the owner carries.
 enum LAAOwnerIdentity {
-    static let name = "LAA"
+    @MainActor static var name: String { LAAOwnerProfileStore.shared.displayName }
     static let role = "Administration"
-    static let initial = "L"
+    @MainActor static var initial: String { LAAOwnerProfileStore.shared.initial }
     /// VoiceOver reads the header as one phrase.
-    static var spokenHeader: String { "\(name)、\(role)" }
+    @MainActor static var spokenHeader: String { "\(name)、\(role)" }
 }
 
 /// The owner's picture. The Mac's LAA Bridge holds the one copy
@@ -30,8 +31,10 @@ final class LAAOwnerAvatarStore: ObservableObject {
     private let directory: URL
     private let defaults: UserDefaults
     private let etagKey = "laa.owner.avatar.etag"
+    private let profileMigratedKey = "laa.owner.avatar.profileMigrated"
     /// A UI test's picture is fixed: no fetch replaces it.
     private var pinned = false
+    var fixtureAvatar: UIImage? { pinned ? image : nil }
 
     init(directory: URL? = nil, defaults: UserDefaults = .standard) {
         self.directory = directory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -62,7 +65,7 @@ final class LAAOwnerAvatarStore: ObservableObject {
     /// copy goes too; any other failure keeps what this device already has.
     @discardableResult
     func refresh(bridge: LAABridgeSession) async -> Outcome {
-        guard !pinned, bridge.status == .paired else { return .kept }
+        guard !pinned, !busy, bridge.status == .paired else { return .kept }
         do {
             let response: LAABridgeResponse<Payload> = try await bridge.request(
                 method: "GET", path: Self.path, ifNoneMatch: etag)
@@ -95,6 +98,11 @@ final class LAAOwnerAvatarStore: ObservableObject {
     func save(_ picture: UIImage, bridge: LAABridgeSession) async throws {
         guard bridge.status == .paired else { throw SaveError.notPaired }
         guard let data = Self.prepared(picture) else { throw SaveError.unreadableImage }
+        try await upload(data, bridge: bridge)
+    }
+
+    private func upload(_ data: Data, bridge: LAABridgeSession) async throws {
+        guard bridge.status == .paired else { throw SaveError.notPaired }
         busy = true
         defer { busy = false }
         struct Body: Encodable { let contentType: String; let data: String }
@@ -110,6 +118,34 @@ final class LAAOwnerAvatarStore: ObservableObject {
         defer { busy = false }
         let _: LAABridgeResponse<Removed> = try await bridge.request(method: "DELETE", path: Self.path)
         clear()
+    }
+
+    /// Kit owns the profile. Bridge is a compatibility mirror, not a second writer.
+    func mirror(_ data: Data?, bridge: LAABridgeSession) async throws {
+        defaults.set(true, forKey: profileMigratedKey)
+        if let data { try await upload(data, bridge: bridge) }
+        else { try await remove(bridge: bridge) }
+    }
+
+    func migrateProfile(bridge: LAABridgeSession) async {
+        guard !pinned, !defaults.bool(forKey: profileMigratedKey) else { return }
+        let profile = LAAOwnerProfileStore.shared
+        if profile.avatarData != nil {
+            defaults.set(true, forKey: profileMigratedKey)
+            return
+        }
+        let outcome = await refresh(bridge: bridge)
+        guard !Task.isCancelled, !defaults.bool(forKey: profileMigratedKey), profile.avatarData == nil else { return }
+        switch outcome {
+        case .updated, .unchanged:
+            guard let data = try? Data(contentsOf: file) else { return }
+            do { try profile.saveAvatar(imageData: data) } catch { return }
+        case .cleared:
+            break
+        case .kept:
+            return
+        }
+        defaults.set(true, forKey: profileMigratedKey)
     }
 
     /// The square, 256 px JPEG the Mac stores. Nil when the picture has no
@@ -176,7 +212,9 @@ struct LAAOwnerAvatarView: View {
 
     var body: some View {
         Group {
-            if let image = store.image {
+            if let image = LAAOwnerProfileStore.shared.avatarImage {
+                image.resizable().scaledToFill()
+            } else if let image = store.fixtureAvatar {
                 Image(uiImage: image).resizable().scaledToFill()
             } else {
                 Text(verbatim: LAAOwnerIdentity.initial)
@@ -195,12 +233,11 @@ struct LAAOwnerAvatarView: View {
 }
 
 extension View {
-    /// Keeps the owner's picture current on this device: on launch, when the
-    /// pairing changes and when the app comes back.
+    /// Seeds the new profile once; subsequent updates come from the Kit store.
     func laaOwnerAvatarSync(_ bridge: LAABridgeSession, active: Bool) -> some View {
         task(id: "\(bridge.revision)|\(active)") {
             guard active else { return }
-            await LAAOwnerAvatarStore.shared.refresh(bridge: bridge)
+            await LAAOwnerAvatarStore.shared.migrateProfile(bridge: bridge)
         }
     }
 }

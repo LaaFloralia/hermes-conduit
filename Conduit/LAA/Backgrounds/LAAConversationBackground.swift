@@ -38,6 +38,7 @@ enum LAAConversationScope {
 private struct LAAConversationBackgroundModifier: ViewModifier {
     @EnvironmentObject private var appState: AppState
     @ObservedObject private var store = LAABackgroundStore.shared
+    @Environment(\.colorScheme) private var scheme
 
     func body(content: Content) -> some View {
         let key = LAAConversationScope.current(appState)
@@ -51,15 +52,23 @@ private struct LAAConversationBackgroundModifier: ViewModifier {
             content
                 .environment(\.laaBackgroundKind, value.kind)
                 .environment(\.laaBubble, value.bubble)
-                .environment(\.colorScheme, .dark)
+                .environment(\.colorScheme, value.kind == .photo ? scheme : .dark)
                 .background { LAABackgroundCanvas(value: value, image: key.flatMap { store.image(for: $0) }) }
         }
     }
 }
 
+enum LAAWallpaperReadability {
+    // The paper is composited over even the brightest or darkest wallpaper.
+    // Dark mode needs a stronger backing to protect the muted ink from white.
+    static func surfaceOpacity(dark: Bool) -> Double { dark ? 0.97 : 0.92 }
+}
+
 struct LAABackgroundCanvas: View {
     let value: LAABackground
     let image: UIImage?
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     var body: some View {
         GeometryReader { geometry in
@@ -79,14 +88,10 @@ struct LAABackgroundCanvas: View {
                             .blur(radius: value.blur, opaque: true)
                             .clipped()
                         Color.black.opacity(value.safeDim)
-                        // Clear controls over a photo have a dimmed backing.
-                        LinearGradient(stops: [
-                            .init(color: .black.opacity(0.35), location: 0),
-                            .init(color: .clear, location: 0.22),
-                            .init(color: .clear, location: 0.78),
-                            .init(color: .black.opacity(0.35), location: 1),
-                        ], startPoint: .top, endPoint: .bottom)
                     }
+                }
+                if value.kind == .photo {
+                    LAAColor.surface.opacity(reduceTransparency ? 1 : LAAWallpaperReadability.surfaceOpacity(dark: scheme == .dark))
                 }
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
@@ -183,7 +188,7 @@ private struct LAAConversationFeaturesModifier: ViewModifier {
     @StateObject private var features = LAAConversationFeatures()
     @ObservedObject private var store = LAABackgroundStore.shared
     @EnvironmentObject private var appState: AppState
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorScheme) private var scheme
 
     func body(content: Content) -> some View {
         let _ = store.revision
@@ -192,7 +197,7 @@ private struct LAAConversationFeaturesModifier: ViewModifier {
         content
             .environment(\.laaBackgroundKind, kind)
             .environment(\.laaBubble, value.bubble)
-            .environment(\.colorScheme, kind == .paper ? colorScheme : .dark)
+            .environment(\.colorScheme, kind == .tealNight || kind == .ink ? .dark : scheme)
             .environmentObject(features)
             .sheet(item: $features.sheet) { sheet in
                 switch sheet {
@@ -399,9 +404,9 @@ private struct LAAPhotoSupportingText: ViewModifier {
     @Environment(\.laaBackgroundKind) private var kind
     @ViewBuilder func body(content: Content) -> some View {
         if kind == .photo {
-            content.foregroundStyle(.white)
-                .padding(.horizontal, 5).padding(.vertical, 2)
-                .background(.black.opacity(0.82), in: Capsule())
+            content.foregroundStyle(LAAColor.secondaryText)
+                .padding(.horizontal, LAASpacing.x1)
+                .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
         } else { content }
     }
 }
@@ -414,15 +419,14 @@ private struct LAAGroupSurface: ViewModifier {
 }
 private struct LAAPhotoGlassScope: ViewModifier {
     @Environment(\.laaBackgroundKind) private var kind
-    func body(content: Content) -> some View { content.environment(\.laaClearGlassControls, kind == .photo) }
+    func body(content: Content) -> some View { content.environment(\.laaClearGlassControls, false) }
 }
 private struct LAAGroupTitleGlass: ViewModifier {
     @Environment(\.laaBackgroundKind) private var kind
     @ViewBuilder func body(content: Content) -> some View {
         if kind == .photo {
             content
-                .background(.black.opacity(0.38), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .conduitGlassSurface(cornerRadius: 20, tint: .conduitAccent.opacity(0.06), clear: true)
+                .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
         } else {
             content.conduitGlassSurface(cornerRadius: 20, tint: .conduitAccent.opacity(0.06))
         }
@@ -432,7 +436,7 @@ private struct LAAToolbarGlass: ViewModifier {
     @Environment(\.laaBackgroundKind) private var kind
     @ViewBuilder func body(content: Content) -> some View {
         if #available(iOS 26.0, *), kind == .photo {
-            content.background(.black.opacity(0.38), in: Circle()).glassEffect(.clear, in: .circle)
+            content.background(LAAColor.surface, in: Circle())
         } else { content }
     }
 }

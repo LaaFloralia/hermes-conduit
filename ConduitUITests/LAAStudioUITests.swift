@@ -31,6 +31,7 @@ final class LAAStudioUITests: XCTestCase {
         let pair = app.buttons["laa.bridge.pair"]
         if !pair.isHittable { app.swipeUp() }
         pair.tap()
+        openWorks(app)
         let work = app.buttons["laa.studio.work.70175325-5cf4-421f-8a6f-95beae8fca92"]
         XCTAssertTrue(work.waitForExistence(timeout: 30)); work.tap()
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "laa.studio.gallery").firstMatch.waitForExistence(timeout: 10))
@@ -84,6 +85,7 @@ final class LAAStudioUITests: XCTestCase {
         XCTAssertEqual(try helper("action-count"), "2")
         XCTAssertEqual(try helper("action-requests"), "4")
         app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.buttons["laa.studio.new"].tap()
         let body = composer(app)
         body.tap(); body.typeText("Make a short overview")
         app.buttons["laa.studio.kind.資料"].tap()
@@ -93,8 +95,7 @@ final class LAAStudioUITests: XCTestCase {
         _ = try helper("mode/create-queued")
         XCTAssertTrue(send.waitForExistence(timeout: 10)); XCTAssertGreaterThanOrEqual(send.frame.height, 44); send.tap()
         XCTAssertTrue(app.staticTexts["順番待ち"].waitForExistence(timeout: 15))
-        XCTAssertFalse(send.isEnabled)
-        XCTAssertFalse(app.navigationBars["制作を依頼"].exists)
+        XCTAssertFalse(send.exists, "The completed request returns to All Works")
         XCTAssertEqual(try helper("create-count"), "1")
     }
 
@@ -117,6 +118,7 @@ final class LAAStudioUITests: XCTestCase {
         let pair = app.buttons["laa.bridge.pair"]
         if !pair.isHittable { app.swipeUp() }
         pair.tap()
+        openWorks(app)
         let work = app.buttons["laa.studio.work.70175325-5cf4-421f-8a6f-95beae8fca92"]
         XCTAssertTrue(work.waitForExistence(timeout: 30)); work.tap()
         let gallery = app.descendants(matching: .any).matching(identifier: "laa.studio.gallery").firstMatch
@@ -133,12 +135,14 @@ final class LAAStudioUITests: XCTestCase {
         XCTAssertTrue(revise.exists)
         XCTAssertFalse(app.navigationBars["制作を依頼"].exists)
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        openLibrary(app)
+        app.buttons["Done"].tap()
         let principle = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Sample")).firstMatch
         XCTAssertTrue(principle.waitForExistence(timeout: 10)); principle.tap()
         XCTAssertTrue(app.staticTexts["Fixture principle"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["この原則で始める"].exists)
         app.navigationBars.buttons.element(boundBy: 0).tap()
+        openWorks(app)
+        openLibrary(app)
         let document = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Sample document")).firstMatch
         if !document.isHittable { app.swipeUp() }
         XCTAssertTrue(document.waitForExistence(timeout: 10)); document.tap()
@@ -159,7 +163,9 @@ final class LAAStudioUITests: XCTestCase {
         XCTAssertTrue(code.waitForExistence(timeout: 10)); code.tap(); code.typeText("TEST-TEST")
         let pair = app.buttons["laa.bridge.pair"]
         if !pair.isHittable { app.swipeUp() }; pair.tap()
+        openWorks(app)
         for (kind, prompt) in [("画像", "image"), ("動画", "video"), ("資料", "document"), ("", "automatic")] {
+            app.buttons["laa.studio.new"].tap()
             let input = composer(app)
             if !input.isHittable { app.swipeDown() }
             input.tap(); input.typeText("Fixture " + prompt)
@@ -172,13 +178,21 @@ final class LAAStudioUITests: XCTestCase {
             }
             let send = app.buttons["laa.studio.composer.send"]
             if !send.isHittable { app.swipeUp() }; send.tap()
-            let cleared = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == false"), object: send)
-            XCTAssertEqual(XCTWaiter.wait(for: [cleared], timeout: 15), .completed)
-            XCTAssertFalse(app.navigationBars["制作を依頼"].exists)
+            let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: send)
+            XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 15), .completed)
+            XCTAssertTrue(app.navigationBars["All Works"].exists)
         }
         XCTAssertEqual(try helper("create-count"), "4")
         XCTAssertEqual(try helper("create-reference"), "1")
         XCTAssertEqual(try helper("create-kinds"), "画像,動画,資料")
+    }
+
+    private func openWorks(_ app: XCUIApplication) {
+        let allWorks = app.buttons["laa.studio.allWorks"]
+        XCTAssertTrue(allWorks.waitForExistence(timeout: 30))
+        XCTAssertFalse(app.buttons["laa.studio.work.70175325-5cf4-421f-8a6f-95beae8fca92"].exists)
+        allWorks.tap()
+        XCTAssertTrue(app.navigationBars["All Works"].waitForExistence(timeout: 10))
     }
 
     private func openLibrary(_ app: XCUIApplication) {
@@ -205,6 +219,7 @@ final class LAAStudioUITests: XCTestCase {
         let pair = app.buttons["laa.bridge.pair"]
         if !pair.isHittable { app.swipeUp() }
         pair.tap()
+        openWorks(app)
         openLibrary(app)
         let document = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Sample document")).firstMatch
         if !document.isHittable { app.swipeUp() }

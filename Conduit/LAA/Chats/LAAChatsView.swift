@@ -1,4 +1,5 @@
 #if LAA_BUILD
+import LAAKit
 import SwiftUI
 
 /// The LAA list is a presentation of the existing Hermes state. Employee
@@ -10,6 +11,7 @@ struct LAAChatsView: View {
     /// The Mac's list column asks for a highlighted row and forwards the
     /// menu bar's search, reload and new-chat requests. The phone passes none.
     var selection: LAAChatsListSelection? = nil
+    var showsGlassTabBar = false
     @State private var projects = LAAChatProjectStore.shared
     @State private var selectedProject: UUID?
     @State private var sheetProject: LAAChatProject?
@@ -85,7 +87,7 @@ struct LAAChatsView: View {
         Group {
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_CHAT_PROJECTS") {
-                LAAChatProjectsFixtureScreen()
+                LAAChatProjectsFixtureScreen(showsGlassTabBar: showsGlassTabBar)
             } else if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_CHATS") {
                 LAAChatsFixtureView()
             } else {
@@ -123,8 +125,10 @@ struct LAAChatsView: View {
             if shown { appState.noteChatListInteraction() }
         }, projects: projects.projects, projectsUnavailable: projects.unavailable,
                         openProject: openProject, newProject: { showingProjectCreator = true })
+        .laaTabBarClearance(showsGlassTabBar)
         .navigationDestination(item: $selectedProject) { id in
-            LAAChatProjectDetail(store: projects, id: id, runtime: HermesChatProjectRuntime { [weak appState] in appState?.client })
+            LAAChatProjectDetail(store: projects, id: id, runtime: HermesChatProjectRuntime { [weak appState] in appState?.client },
+                                 showsGlassTabBar: showsGlassTabBar)
         }
         .sheet(item: $sheetProject) { project in
             NavigationStack {

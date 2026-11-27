@@ -1,4 +1,5 @@
 #if LAA_BUILD
+import LAATokens
 import XCTest
 import UIKit
 @testable import Conduit
@@ -198,6 +199,26 @@ final class LAABackgroundAndGroupTests: XCTestCase {
         try Data("broken".utf8).write(to: directory.appendingPathComponent("unknown.json"))
         try store.save(LAABackground(kind: .paper), for: key())
         XCTAssertTrue(FileManager.default.fileExists(atPath: photo.path))
+    }
+
+    func testWallpaperContrastForEveryThemeAndAppearance() {
+        for theme in LAAThemeSets.all {
+            for dark in [false, true] {
+                let roles = theme.colors(dark: dark)
+                let perimeter = dark ? 1.0 : 0.0
+                let alpha = LAAWallpaperReadability.surfaceOpacity(dark: dark)
+                // Linear-light blending is the conservative limit in dark mode.
+                let linear = alpha * roles.surface.luminance + (1 - alpha) * perimeter
+                func channel(_ value: Double) -> UInt32 { UInt32((255 * (alpha * value + (1 - alpha) * perimeter)).rounded()) }
+                let encoded = LAARGB(channel(roles.surface.red) << 16 | channel(roles.surface.green) << 8 | channel(roles.surface.blue)).luminance
+                for ink in [roles.text, roles.textMuted, roles.accent] {
+                    for backing in [linear, encoded] {
+                        let ratio = (max(ink.luminance, backing) + 0.05) / (min(ink.luminance, backing) + 0.05)
+                        XCTAssertGreaterThanOrEqual(ratio, 4.5, "\(theme.id) dark=\(dark) ink=\(ink.hex)")
+                    }
+                }
+            }
+        }
     }
 
     func testContrastDimmingForEveryBrightnessAndClamping() {

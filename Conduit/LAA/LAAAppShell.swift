@@ -18,7 +18,6 @@ struct LAAAppShell: View {
     @State private var showUsage = false
     @State private var settingsCardOpen = false
     @ObservedObject private var tabBarVisibility = LAATabBarVisibility.shared
-    @ObservedObject private var ownerAvatar = LAAOwnerAvatarStore.shared
     @AppStorage("laa.work.decisionCount") private var decisionCount = 0
     @State private var chatsPath: [V2Route] = []
     #if DEBUG
@@ -216,7 +215,7 @@ struct LAAAppShell: View {
     private var normalBar: some View {
         TabView(selection: $selectedTab) {
             chatsTab
-                .modifier(LAATabRoot(barVisible: !barHidden && !requiresLogin))
+                .toolbar(.hidden, for: .tabBar)
                 .tag(LAATab.chats)
             ForEach(LAATab.destinations.filter { $0 != .chats }) { tab in
                 LAANonChatTab(tab: tab, isActive: selectedTab == tab,
@@ -235,21 +234,19 @@ struct LAAAppShell: View {
         // live outside the card's modal scope in UIKit) leaves the accessibility tree; the card and Close stay.
         .accessibilityHidden(settingsCardOpen)
         .environment(\.laaBehindSettingsCard, settingsCardOpen)
-        .laaGlassTabBar(glassTabs, selection: $selectedTab, isExpanded: $settingsCardOpen, isHidden: barHidden,
-                        app: .hortensia(ownerAvatar)) {
-            LAAAppSettingsCard(openSettings: {
-                settingsCardOpen = false
-                onRequestSettings()
-            })
-        }
+        .modifier(LAAHortensiaOwnerCapsule(tabs: glassTabs, selection: $selectedTab,
+                                           expanded: $settingsCardOpen, hidden: barHidden, openSettings: {
+            settingsCardOpen = false
+            onRequestSettings()
+        }))
         .onChange(of: selectedTab) { _, _ in settingsCardOpen = false }
         .onChange(of: scenePhase) { _, phase in if phase != .active { settingsCardOpen = false } }
     }
 
     private var glassTabs: [LAAGlassTab<LAATab>] {
         LAATab.destinations.map { tab in
-            if let doc = tab.barArtwork {
-                return LAAGlassTab(tab, title: tab.title, image: doc.regular, selectedImage: doc.selected)
+            if let artwork = tab.barArtwork {
+                return LAAGlassTab(tab, title: tab.title, image: artwork.regular, selectedImage: artwork.selected)
             }
             return LAAGlassTab(tab, title: tab.title, icon: tab.icon, badge: tab == .work ? decisionCount : 0)
         }
@@ -270,13 +267,13 @@ struct LAAAppShell: View {
                 // LAAChatsContent owns the bar (an empty title and the
                 // settings button); a title here would repeat the "Chat"
                 // heading in the body.
-                LAAChatsView(appState: appState)
+                LAAChatsView(appState: appState, showsGlassTabBar: !barHidden)
                     .navigationDestination(for: V2Route.self) { route in
                         switch route {
                         case .conversation:
                             LAAConversationRoute()
                         case .project(let project):
-                            V2ProjectPage(project: project)
+                            V2ProjectPage(project: project).laaTabBarClearance(!barHidden)
                         case .artifacts:
                             V2ArtifactsPage()
                                 .laaHidesTabBar()

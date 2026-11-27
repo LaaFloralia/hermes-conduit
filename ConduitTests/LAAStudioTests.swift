@@ -23,6 +23,24 @@ final class LAAStudioTests: XCTestCase {
         XCTAssertEqual(LAAStudioWorkKind(project: project(["unknown"])), .other)
     }
 
+    func testWorksPageFiltersThenSortsNewestFirstAndClamps() {
+        let projects = (1...26).map { day in
+            LAAStudioProject(id: String(day), title: "Work \(day)", revision: 1,
+                pages: day.isMultiple(of: 2) ? [.init(id: "cover", name: "Cover", preview: nil)] : [],
+                assets: [], syncedAt: String(format: "2026-11-%02dT00:00:00Z", day), driveUrl: nil, deliveredRevision: nil)
+        }
+        let first = LAAStudioWorksPage(projects: projects, kind: nil, requestedPage: 0)
+        XCTAssertEqual(first.projects.map(\.id), (7...26).reversed().map(String.init))
+        XCTAssertEqual(first.pageCount, 2)
+        let last = LAAStudioWorksPage(projects: projects, kind: nil, requestedPage: 4)
+        XCTAssertEqual(last.index, 1)
+        XCTAssertEqual(last.projects.map(\.id), ["6", "5", "4", "3", "2", "1"])
+        let filtered = LAAStudioWorksPage(projects: projects, kind: .documents, requestedPage: 1)
+        XCTAssertEqual(filtered.index, 0)
+        XCTAssertEqual(filtered.projects.map(\.id), stride(from: 26, through: 2, by: -2).map(String.init))
+        XCTAssertEqual(projects.count, 26)
+    }
+
     func testCachedSnapshotSurvivesRelaunchAndSeparatesPairings() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("studio-cache-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: directory) }

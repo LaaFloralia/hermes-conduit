@@ -102,18 +102,13 @@ final class LAAOwnerIdentityUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["回答"].exists)
     }
 
-    func testSettingsOffersChooseAndRemove() throws {
-        for avatar in [false, true] {
-            let app = try launchWork(avatar: avatar)
-            app.openLAASettings()
-            let choose = app.buttons["laa.settings.ownerIcon.choose"]
-            XCTAssertTrue(choose.waitForExistence(timeout: 15))
-            XCTAssertTrue(choose.isEnabled, "a paired device can choose a photo")
-            XCTAssertEqual(app.buttons["laa.settings.ownerIcon.remove"].exists, avatar,
-                           "Remove only appears when a picture is set")
-            XCTAssertTrue(headers(app, "chat.sender.owner").firstMatch.exists, "the card previews the signature")
-            app.terminate()
-        }
+    func testSettingsShowsSharedProfileEditor() throws {
+        let app = try launchWork(avatar: false)
+        app.openLAASettings()
+        let choose = app.buttons["laa.profile.choose"]
+        XCTAssertTrue(choose.waitForExistence(timeout: 15))
+        XCTAssertTrue(choose.isEnabled, "a paired device can choose a photo")
+        XCTAssertTrue(app.textFields["laa.profile.name"].exists)
     }
 }
 #endif

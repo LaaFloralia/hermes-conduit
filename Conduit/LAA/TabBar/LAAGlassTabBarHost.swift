@@ -55,6 +55,111 @@ extension View {
     }
 }
 
+/// Kit 0.4.1 does not expose the expanded header. Keep its collapsed tab bar and
+/// use the chat owner header in the temporary expanded card. Replace this
+/// modifier with the Kit host when the Kit provides the owner header.
+struct LAAHortensiaOwnerCapsule: ViewModifier {
+    let tabs: [LAAGlassTab<LAATab>]
+    @Binding var selection: LAATab
+    @Binding var expanded: Bool
+    let hidden: Bool
+    let openSettings: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .laaGlassTabBar(tabs, selection: $selection, isExpanded: Binding(
+                get: { false }, set: { if $0 { expanded = true } }
+            ), isHidden: hidden || expanded, app: .owner(version: "")) { EmptyView() }
+            .overlay {
+                if expanded && !hidden {
+                    LAAHortensiaOwnerCapsuleCard(current: tabs.first { $0.id == selection },
+                                                close: { expanded = false }, openSettings: openSettings)
+                }
+            }
+            .onChange(of: hidden) { _, hidden in if hidden { expanded = false } }
+    }
+}
+
+private struct LAAHortensiaOwnerCapsuleCard: View {
+    let current: LAAGlassTab<LAATab>?
+    let close: () -> Void
+    let openSettings: () -> Void
+    @State private var rowsHeight = LAATabBarToken.Card.row * Double(LAATabBarToken.Card.maxRows)
+    @AccessibilityFocusState private var headerFocused: Bool
+    @Environment(\.laaPalette) private var palette
+
+    var body: some View {
+        GeometryReader { geometry in
+            let margin = geometry.size.width < LAATabBarToken.compactBelowWidth ? LAATabBarToken.marginCompact : LAATabBarToken.margin
+            let bottom = max(geometry.safeAreaInsets.bottom + LAATabBarToken.bottomFromSafeArea, LAATabBarToken.bottomMin)
+            ZStack(alignment: .bottom) {
+                Color.clear.contentShape(Rectangle()).onTapGesture(perform: close)
+                    .ignoresSafeArea().accessibilityHidden(true)
+                HStack(alignment: .bottom, spacing: LAATabBarToken.mergeSpacing) {
+                    Button(action: close) {
+                        closeGlyph
+                            .frame(width: LAATabBarToken.height, height: LAATabBarToken.height)
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .laaGlass(in: Circle())
+                    .accessibilityLabel("Close")
+                    .accessibilityIdentifier("laa.tabbar.close")
+                    card(maxHeight: geometry.size.height * LAATabBarToken.Card.maxHeight)
+                }
+                .foregroundStyle(palette.text)
+                .padding(.horizontal, margin)
+                .padding(.bottom, bottom)
+            }
+            .ignoresSafeArea(.container, edges: .bottom)
+        }
+        .ignoresSafeArea(.keyboard)
+    }
+
+    @ViewBuilder private var closeGlyph: some View {
+        if let icon = current?.icon {
+            LAAIconImage(icon, size: LAATabBarToken.icon, selected: true)
+        } else if let artwork = current?.selectedImage {
+            artwork.renderingMode(.template).resizable().scaledToFit()
+                .frame(width: LAATabBarToken.icon, height: LAATabBarToken.icon)
+        } else {
+            Image(systemName: "xmark").font(.system(size: LAAControl.IPhone.iconButton.icon))
+        }
+    }
+
+    private func card(maxHeight: Double) -> some View {
+        let reserved = LAATabBarToken.Card.headerIcon + LAATabBarToken.Card.row + 2 * LAATabBarToken.Card.padding
+        let availableRows = max(LAATabBarToken.Card.row, maxHeight - reserved)
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: LAASpace.s12) {
+                LAAOwnerAvatarView(size: LAATabBarToken.Card.headerIcon)
+                LAAOwnerHeader()
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("laa.tabbar.ownerHeader")
+                    .accessibilityFocused($headerFocused)
+            }
+            .padding(.bottom, LAASpace.s8)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    LAAAppSettingsCard(openSettings: openSettings, showsSettingsEntry: false)
+                }
+                .onGeometryChange(for: Double.self) { $0.size.height.rounded(.up) } action: { rowsHeight = $0 }
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .frame(height: min(rowsHeight, availableRows))
+            LAASettingsCardDivider()
+            LAASettingsCardEntry(action: openSettings)
+        }
+        .padding(LAATabBarToken.Card.padding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .laaGlass(in: RoundedRectangle(cornerRadius: LAATabBarToken.Card.radius))
+        .accessibilityElement(children: .contain)
+        .accessibilityAction(.escape) { close() }
+        .accessibilityIdentifier("laa.tabbar.card")
+        .onAppear { headerFocused = true }
+    }
+}
+
 /// The settings card the app icon opens (DESIGN.md「ナビ・タブ」). Rows are real settings from Settings,
 /// the ones changed most, as direct controls; everything else stays one tap away in Settings.
 ///   Mac mini — 接続: the Bridge state the owner checks first, and reconnect.
@@ -67,6 +172,7 @@ struct LAAAppSettingsCard: View {
     let openSettings: () -> Void
     /// The Mac sidebar already shows the connection line above the entry; the card does not repeat it.
     var showsMac = true
+    var showsSettingsEntry = true
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var bridge: LAABridgeSession
     @ObservedObject private var notifications = PushNotificationService.shared
@@ -104,8 +210,10 @@ struct LAAAppSettingsCard: View {
             .disabled(notifications.isWorking)
         }
         .accessibilityIdentifier("laa.tabbar.notifications")
-        LAASettingsCardDivider()
-        LAASettingsCardEntry(action: openSettings)
+        if showsSettingsEntry {
+            LAASettingsCardDivider()
+            LAASettingsCardEntry(action: openSettings)
+        }
     }
 
     private var macRow: some View {
@@ -180,12 +288,4 @@ struct LAAAppSettingsCard: View {
     }
 }
 
-extension LAAAppIdentity {
-    /// Hortensia's name and version with LAA's profile picture: the owner's picture the Mac's Bridge holds
-    /// (`LAAOwnerAvatarStore`, the same face every conversation shows), or LAA's initial before one is set.
-    /// Never the app icon (D-21, 2026-11-27).
-    @MainActor static func hortensia(_ owner: LAAOwnerAvatarStore = .shared) -> LAAAppIdentity {
-        .main(name: "Hortensia", profile: owner.image.map { Image(uiImage: $0) })
-    }
-}
 #endif
