@@ -206,14 +206,16 @@ export function sessionOptionsReader({ file = resolveModelsFile(), availability 
     }
     return options;
   };
-  // Only callers that have verified a stored choice can resolve a hidden profile.
-  readOptions.retainedProfile = (id, { savedPin = false, sameProfileResume = false } = {}) => {
-    if (!savedPin && !sameProfileResume) return null;
+  // Previously saved pins may use efforts hidden by the new picker. This is
+  // deliberately not serialized or used to validate new project defaults.
+  readOptions.retainedProfile = (id, { savedPin = false } = {}) => {
     const table = readTable();
     const profile = table?.profiles?.[id];
     if (!table?.picker || !profile || Object.hasOwn(table.aliases ?? {}, id)
       || !SUBSCRIPTION_PROVIDERS.has(profile.harness) || typeof profile.effort !== 'string') return null;
-    if (!savedPin && (profile.manual === true || (table.dispatch?.manual_profiles ?? []).includes(id))) return null;
+    // An explicit effort on the current Opus or Sol keeps owner marking. Retired
+    // tiers are never newly marked through discovery compatibility without a saved pin.
+    if (!savedPin && !['claude-opus-5-5', 'gpt-6.2-sol'].includes(profile.model)) return null;
     const model = table.models?.[profile.model];
     if (typeof model?.modelId !== 'string') return null;
     return withAvailability({ id, provider: profile.harness, model: wireModel(profile.harness, model.modelId),
