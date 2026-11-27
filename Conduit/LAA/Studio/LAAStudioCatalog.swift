@@ -4,6 +4,7 @@ import SwiftUI
 struct LAAStudioCatalogView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     let snapshot: LAAStudioSnapshot
+    var showsPrinciples = true
     @State private var catalog: LAAStudioCatalog?
     @State private var stale = false
     @State private var loading = false
@@ -21,52 +22,55 @@ struct LAAStudioCatalogView: View {
             if let catalog {
                 if stale { Text(verbatim: "接続できないため、この端末に保存した内容を表示しています。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
-                Text(verbatim: "更新 \(LAAStudioPresentation.relativeDate(catalog.updatedAt))").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                HStack {
-                    Text(verbatim: "原則 · \(catalog.principles.count)").laaTextStyle(.section).fontWeight(.semibold)
-                    Spacer()
-                    Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise").frame(minWidth: LAASpacing.minimumTouchTarget, minHeight: LAASpacing.minimumTouchTarget) }
-                        .disabled(loading).accessibilityLabel(Text(verbatim: LAACopy.Studio.refresh))
-                }
-                ForEach(catalog.principles) { principle in
-                    NavigationLink { LAAStudioPrincipleView(principle: principle, snapshot: snapshot) } label: {
-                        VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                            Text(verbatim: principle.name).laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.text)
-                            Text(verbatim: "\(principle.status == "adopted" ? "採用済み" : "下書き") · v\(principle.version)")
-                                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                        }.padding(LAASpacing.x3).frame(maxWidth: .infinity, alignment: .leading)
-                            .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
-                    }.buttonStyle(.plain)
-                }
-                Text(verbatim: "正式資料 · \(catalog.documents.count)").laaTextStyle(.section).fontWeight(.semibold)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: LAASpacing.x2) {
-                        Button { category = nil } label: {
-                            Text(verbatim: "All").studioFilterChip(selected: category == nil)
-                        }.buttonStyle(.plain).accessibilityAddTraits(category == nil ? .isSelected : [])
-                        ForEach(categories, id: \.self) { item in
-                            Button { category = item } label: {
-                                Text(verbatim: item).studioFilterChip(selected: category == item)
-                            }.buttonStyle(.plain).accessibilityAddTraits(category == item ? .isSelected : [])
-                        }
-                    }
-                }.scrollClipDisabled()
-                ForEach(catalog.documents.filter { category == nil || $0.category == category }) { document in
-                    NavigationLink { LAAStudioDocumentView(document: document) } label: {
-                        VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                            Text(verbatim: document.title).laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.text)
-                            Text(verbatim: "\(document.category) · \(document.format) · \(document.detail)")
-                                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                        }.padding(LAASpacing.x3).frame(maxWidth: .infinity, alignment: .leading)
-                            .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
-                    }.buttonStyle(.plain)
-                }
+                if showsPrinciples { principleRows(catalog) }
+                else { documentRows(catalog) }
             }
         }.task(id: bridge.revision) {
             catalog = nil; stale = false
             await load()
         }
     }
+
+    @ViewBuilder private func principleRows(_ catalog: LAAStudioCatalog) -> some View {
+        HStack {
+            LAASectionHeader("Design Principles")
+            Spacer()
+            Button { Task { await load() } } label: {
+                Image(systemName: "arrow.clockwise")
+                    .frame(minWidth: LAASpacing.minimumTouchTarget, minHeight: LAASpacing.minimumTouchTarget)
+            }
+            .disabled(loading).accessibilityLabel(Text(verbatim: LAACopy.Studio.refresh))
+        }
+        ForEach(catalog.principles) { principle in
+            NavigationLink { LAAStudioPrincipleView(principle: principle, snapshot: snapshot) } label: {
+                catalogRow(principle.name, detail: "\(principle.status == "adopted" ? "Adopted" : "Draft") · v\(principle.version)")
+            }.buttonStyle(.plain)
+        }
+    }
+
+    @ViewBuilder private func documentRows(_ catalog: LAAStudioCatalog) -> some View {
+        LAASectionHeader("Documents")
+        Picker("Category", selection: $category) {
+            Text("All").tag(nil as String?)
+            ForEach(categories, id: \.self) { item in Text(verbatim: item).tag(Optional(item)) }
+        }
+        ForEach(catalog.documents.filter { category == nil || $0.category == category }) { document in
+            NavigationLink { LAAStudioDocumentView(document: document) } label: {
+                catalogRow(document.title, detail: "\(document.category) · \(document.format) · \(document.detail)")
+            }.buttonStyle(.plain)
+        }
+    }
+
+    private func catalogRow(_ title: String, detail: String) -> some View {
+        VStack(alignment: .leading, spacing: LAASpacing.x1) {
+            Text(verbatim: title).laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.text)
+            Text(verbatim: detail).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+        }
+        .padding(LAASpacing.x3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
+    }
+
     @MainActor private func load() async {
         let id = UUID(); loadID = id
         loading = true; error = nil

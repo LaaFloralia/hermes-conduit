@@ -33,39 +33,61 @@ public struct LAAGlassTab<ID: Hashable>: Identifiable {
     }
 }
 
-/// What the right capsule and the card header show: LAA's profile picture (the owner's current one, passed in
-/// by the app; the kit bundles none) beside the app's name and version. Without a picture the capsule draws LAA's
-/// initial. The capsule never shows the app's own icon (D-21, 2026-11-27: "アプリアイコンではなくLAAのプロフィール").
+/// What the right capsule, the card header and the sidebar entry show: the owner's own name and picture
+/// (D-30, 2026-11-28: "右下のタブバーのアイコンと名称はアプリのやつでなくて自分のユーザー名とアイコン"). Both come live
+/// from `LAAOwnerProfileStore` (shared by every LAA app) unless the host passes them. `name` is the app's name,
+/// kept for the host's own use; the bar never draws it, nor the app's icon (D-21).
 public struct LAAAppIdentity {
+    /// The app's name. Not drawn by the bar.
     public let name: String
+    /// Shown quietly under the owner's name when non-empty.
     public let version: String
-    /// LAA's profile picture; nil draws the initial.
+    /// The owner's picture; nil reads `LAAOwnerProfileStore` (then the initial).
     public let profile: Image?
+    /// The owner's name; nil reads `LAAOwnerProfileStore` ("LAA" by default).
+    public let ownerName: String?
+    /// The store to read; nil is `LAAOwnerProfileStore.shared`.
+    public let ownerStore: LAAOwnerProfileStore?
 
-    public init(name: String, version: String, profile: Image?) {
+    public init(name: String, version: String, profile: Image?, ownerName: String? = nil,
+                ownerStore: LAAOwnerProfileStore? = nil) {
         self.name = name; self.version = version; self.profile = profile
+        self.ownerName = ownerName; self.ownerStore = ownerStore
     }
 
     @available(*, deprecated, renamed: "init(name:version:profile:)",
-               message: "The bar shows LAA's profile picture, not the app icon (D-21); the icon is ignored.")
+               message: "The bar shows the owner's picture, not the app icon (D-21); the icon is ignored.")
     public init(name: String, version: String, icon: Image) {
         self.init(name: name, version: version, profile: nil)
     }
 
-    /// Name and version from the main bundle, with LAA's profile picture when the app has one.
+    /// Name and version from the main bundle; the owner's name and picture from the shared store.
     public static func main(name: String? = nil, profile: Image? = nil) -> LAAAppIdentity {
-        let info = Bundle.main.infoDictionary ?? [:]
-        let display = name ?? (info["CFBundleDisplayName"] as? String) ?? (info["CFBundleName"] as? String) ?? ""
-        let short = info["CFBundleShortVersionString"] as? String ?? ""
-        let build = info["CFBundleVersion"] as? String ?? ""
-        let version = build.isEmpty || build == short ? short : "\(short) (\(build))"
-        return LAAAppIdentity(name: display, version: version, profile: profile)
+        LAAAppIdentity(name: name ?? bundleName, version: bundleVersion, profile: profile)
     }
 
     @available(*, deprecated, renamed: "main(name:profile:)",
-               message: "The bar shows LAA's profile picture, not the app icon (D-21); the icon is ignored.")
+               message: "The bar shows the owner's picture, not the app icon (D-21); the icon is ignored.")
     public static func main(name: String? = nil, icon: Image?) -> LAAAppIdentity {
         main(name: name, profile: nil)
+    }
+
+    /// The owner's identity, live from `store` (nil: `LAAOwnerProfileStore.shared`), with the bundle's version
+    /// unless one is given.
+    public static func owner(store: LAAOwnerProfileStore? = nil, version: String? = nil) -> LAAAppIdentity {
+        LAAAppIdentity(name: bundleName, version: version ?? bundleVersion, profile: nil, ownerStore: store)
+    }
+
+    private static var bundleName: String {
+        let info = Bundle.main.infoDictionary ?? [:]
+        return (info["CFBundleDisplayName"] as? String) ?? (info["CFBundleName"] as? String) ?? ""
+    }
+
+    private static var bundleVersion: String {
+        let info = Bundle.main.infoDictionary ?? [:]
+        let short = info["CFBundleShortVersionString"] as? String ?? ""
+        let build = info["CFBundleVersion"] as? String ?? ""
+        return build.isEmpty || build == short ? short : "\(short) (\(build))"
     }
 
     /// The bundle's primary app icon, for hosts that still need it elsewhere (not used by the bar).
@@ -87,9 +109,37 @@ public struct LAAAppIdentity {
         #endif
     }
 
-    /// The owner's name and initial (the same identity Hortensia's conversations show).
-    public static let ownerName = "LAA"
+    /// The default owner name and initial (before the owner sets their own).
+    public static let ownerName = LAAOwnerProfileStore.defaultDisplayName
     static let ownerInitial = "L"
+
+    // MARK: What is drawn (never `name`)
+
+    @MainActor private func resolvedStore(_ store: LAAOwnerProfileStore?) -> LAAOwnerProfileStore {
+        store ?? ownerStore ?? .shared
+    }
+
+    /// The name the bar draws: the explicit `ownerName`, else the store's (never the app's name).
+    @MainActor public func displayedOwnerName(store: LAAOwnerProfileStore? = nil) -> String {
+        if let ownerName, !ownerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return LAAOwnerProfileStore.resolvedName(ownerName)
+        }
+        return resolvedStore(store).displayName
+    }
+
+    /// The picture the bar draws: the explicit `profile`, else the store's; nil draws `displayedInitial`.
+    @MainActor public func displayedProfile(store: LAAOwnerProfileStore? = nil) -> Image? {
+        profile ?? resolvedStore(store).avatarImage
+    }
+
+    @MainActor public func displayedInitial(store: LAAOwnerProfileStore? = nil) -> String {
+        LAAOwnerProfileStore.initial(of: displayedOwnerName(store: store))
+    }
+
+    /// VoiceOver name of the right capsule and the sidebar entry.
+    @MainActor public func settingsAccessibilityLabel(store: LAAOwnerProfileStore? = nil) -> String {
+        "\(displayedOwnerName(store: store)), Settings"
+    }
 }
 
 /// Bar geometry from the tokens, for hosts that inset their content (`laaTabBarClearance`).
@@ -122,6 +172,42 @@ public enum LAAGlassTabBarLayout {
         let item = min(LAATabBarToken.itemMax, max((bar - fixed) / n, 40))
         return (bar, item)
     }
+
+    // MARK: Finger slide (the track is the tab capsule; x is measured from its outer leading edge)
+
+    /// The tab under `x`: slots of `itemWidth` start after `inset`; beyond either end, the end tab.
+    public static func tabIndex(atX x: Double, count: Int, itemWidth: Double,
+                                inset: Double = LAATabBarToken.inset) -> Int {
+        guard count > 0, itemWidth > 0, x.isFinite else { return 0 }
+        let slot = Int(((x - inset) / itemWidth).rounded(.down))
+        return min(max(slot, 0), count - 1)
+    }
+
+    /// The centre of tab `index`'s slot.
+    public static func centerX(ofIndex index: Int, itemWidth: Double, inset: Double = LAATabBarToken.inset) -> Double {
+        inset + (Double(index) + 0.5) * itemWidth
+    }
+
+    /// Where the lens' centre follows a finger at `x`: exactly under it between the first and last slot's
+    /// centres, then rubber-banded (it gives at most a quarter slot past the end, ever more stiffly).
+    public static func clampedCenterX(_ x: Double, count: Int, itemWidth: Double,
+                                      inset: Double = LAATabBarToken.inset) -> Double {
+        let low = centerX(ofIndex: 0, itemWidth: itemWidth, inset: inset)
+        let high = centerX(ofIndex: max(count, 1) - 1, itemWidth: itemWidth, inset: inset)
+        guard x.isFinite else { return low }
+        let limit = itemWidth * edgeGiveFraction
+        func band(_ over: Double) -> Double { limit * (1 - 1 / (over / limit * 0.55 + 1)) }
+        if x < low { return low - band(low - x) }
+        if x > high { return high + band(x - high) }
+        return x
+    }
+
+    /// How far past the end slot the lens may stretch, as a fraction of a slot.
+    static let edgeGiveFraction = 0.25
+    /// The lens while a finger is on the bar (Reduce Motion: 1, it does not grow).
+    static let lensScale = (width: 1.14, height: 1.16)
+    /// The coordinate space of the slide gesture: the tab capsule.
+    static let trackSpace = "laa.tabbar.track"
 }
 
 public extension View {
@@ -218,9 +304,16 @@ public struct LAAGlassTabBar<ID: Hashable, Card: View>: View {
     @LAAReduceMotion private var reduceMotion
     @LAAReduceTransparency private var reduceTransparency
     @Environment(\.laaPalette) private var palette
+    @Environment(\.colorScheme) private var colorScheme
     @AccessibilityFocusState private var headerFocused: Bool
     /// Height of the rows pinned below the scroll (the Settings entry), measured.
     @State private var pinnedHeight: Double = 0
+    /// The finger on the tab capsule (track x), the tab it went down on, the tab under it now, and whether it
+    /// has left the first one. Nil x: no finger.
+    @State private var dragX: Double?
+    @State private var dragStartID: ID?
+    @State private var dragHoverID: ID?
+    @State private var dragLeftStart = false
 
     public init(tabs: [LAAGlassTab<ID>], selection: Binding<ID>, isExpanded: Binding<Bool>, app: LAAAppIdentity,
                 available: Double, maxCardHeight: Double = 520, onReselect: ((ID) -> Void)? = nil,
@@ -283,61 +376,136 @@ public struct LAAGlassTabBar<ID: Hashable, Card: View>: View {
 
     // MARK: Collapsed
 
+    private var isDragging: Bool { dragX != nil }
+
+    /// The tabs in one capsule of OS-standard Liquid Glass. A finger anywhere on it drives the selection:
+    /// pressed, the mark lifts into a lens of clear glass that follows the finger across the tabs (each tab it
+    /// crosses lights up with a selection tick) and lifting the finger switches to the tab under it (D-30:
+    /// "スライドでタブ切り替え"). A tap is the same gesture without moving. Screen content never pages sideways
+    /// (Triteleia's charts, Astrantia's canvas).
     private var tabCapsule: some View {
-        HStack(spacing: 0) {
+        let item = widths.item
+        return HStack(spacing: 0) {
             ForEach(tabs) { tab in
-                tabButton(tab)
+                tabItem(tab)
             }
         }
         .padding(LAATabBarToken.inset)
         .frame(height: LAATabBarToken.height)
+        .background(alignment: .leading) { selectionIndicator(item: item) }
+        // laa-design:allow pill The hit shape of the OS glass tab capsule (not a fill).
+        .contentShape(Capsule())
+        .gesture(slide(item: item))
+        .coordinateSpace(.named(LAAGlassTabBarLayout.trackSpace))
         .modifier(MorphGlass(id: "tabs", space: space, shape: Capsule(), interactive: true,
                              reduceMotion: reduceMotion, reduceTransparency: reduceTransparency))
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isTabBar)
+        .sensoryFeedback(.selection, trigger: dragHoverID) { old, new in old != nil && new != nil && old != new }
     }
 
-    private func tabButton(_ tab: LAAGlassTab<ID>) -> some View {
-        let selected = tab.id == selection
-        return Button {
-            if selected {
-                onReselect?(tab.id)
-            } else {
-                withAnimation(press) { selection = tab.id }
-            }
-        } label: {
-            ZStack {
-                if selected {
-                    selectionMark
-                        .modifier(Matched(id: "selection", space: space, enabled: !reduceMotion))
+    private func tabID(atX x: Double, item: Double) -> ID? {
+        guard !tabs.isEmpty else { return nil }
+        return tabs[LAAGlassTabBarLayout.tabIndex(atX: x, count: tabs.count, itemWidth: item)].id
+    }
+
+    private func slide(item: Double) -> some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .named(LAAGlassTabBarLayout.trackSpace))
+            .onChanged { value in
+                guard let hover = tabID(atX: value.location.x, item: item) else { return }
+                if dragX == nil {
+                    dragStartID = tabID(atX: value.startLocation.x, item: item)
+                    dragLeftStart = false
+                    withAnimation(press) {
+                        dragX = value.location.x
+                        dragHoverID = hover
+                    }
+                } else {
+                    // Under the finger, unanimated: the lens is directly manipulated.
+                    dragX = value.location.x
+                    if hover != dragHoverID {
+                        withAnimation(.easeOut(duration: LAAMotionToken.quick)) { dragHoverID = hover }
+                    }
                 }
-                tabIcon(tab, selected: selected)
-                    .modifier(Matched(id: "current", space: space, enabled: selected && !reduceMotion))
-                    .overlay(alignment: .topTrailing) { badge(tab.badge) }
+                if hover != dragStartID { dragLeftStart = true }
             }
+            .onEnded { value in
+                let target = tabID(atX: value.location.x, item: item) ?? selection
+                let reselect = target == selection && dragStartID == selection && !dragLeftStart
+                withAnimation(press) {
+                    if target != selection { selection = target }
+                    dragX = nil
+                    dragHoverID = nil
+                }
+                dragStartID = nil
+                dragLeftStart = false
+                if reselect { onReselect?(target) }
+            }
+    }
+
+    /// VoiceOver, Switch Control and Full Keyboard Access activate a tab directly.
+    private func activate(_ id: ID) {
+        if id == selection {
+            onReselect?(id)
+        } else {
+            withAnimation(press) { selection = id }
+        }
+    }
+
+    private func tabItem(_ tab: LAAGlassTab<ID>) -> some View {
+        let selected = tab.id == selection
+        // While a finger is on the bar the tab under it is lit; otherwise the selected one.
+        let lit = (dragHoverID ?? selection) == tab.id
+        return tabIcon(tab, selected: lit)
+            .modifier(Matched(id: "current", space: space, enabled: selected && !reduceMotion))
+            .overlay(alignment: .topTrailing) { badge(tab.badge) }
             .frame(width: widths.item, height: LAATabBarToken.height - 2 * LAATabBarToken.inset)
             .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Text(tab.title))
-        .accessibilityValue(tab.badge > 0 ? Text("\(tab.badge)") : Text(""))
-        .accessibilityAddTraits(selected ? .isSelected : [])
-        .accessibilityShowsLargeContentViewer {
-            tabIcon(tab, selected: selected)
-            Text(tab.title)
-        }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(tab.title))
+            .accessibilityValue(tab.badge > 0 ? Text("\(tab.badge)") : Text(""))
+            .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+            .accessibilityAction { activate(tab.id) }
+            .accessibilityShowsLargeContentViewer {
+                tabIcon(tab, selected: selected)
+                Text(tab.title)
+            }
     }
 
-    /// The selected tab's mark is a lens of tinted Liquid Glass inside the bar, like the system tab bar's: what
-    /// passes under it refracts through it and it answers a press. Until kit 0.2.6 it was an opaque `selection`
-    /// fill, which read as a flat sticker on the glass and made the whole bar look opaque next to the system bar
-    /// it replaced (D-21 A1, 2026-11-27). Reduce Transparency keeps the opaque fill.
-    @ViewBuilder private var selectionMark: some View {
-        let shape = RoundedRectangle(cornerRadius: LAATabBarToken.selectionRadius, style: .continuous)
-        if reduceTransparency {
-            shape.fill(palette.selection)
+    /// One mark for the whole capsule, so it can travel continuously: at rest a quiet translucent capsule
+    /// under the selected tab (no glass of its own — glass inside the bar's glass read as a second sticker
+    /// and dulled the OS-standard glass, D-30 against the first Hortensia's native bar); under a finger a
+    /// lifted lens of clear glass that follows it.
+    private func selectionIndicator(item: Double) -> some View {
+        let index = tabs.firstIndex { $0.id == selection } ?? 0
+        let center = dragX.map { LAAGlassTabBarLayout.clampedCenterX($0, count: tabs.count, itemWidth: item) }
+            ?? LAAGlassTabBarLayout.centerX(ofIndex: index, itemWidth: item)
+        let lifted = isDragging && !reduceMotion
+        let width = item * (lifted ? LAAGlassTabBarLayout.lensScale.width : 1)
+        let height = (LAATabBarToken.height - 2 * LAATabBarToken.inset)
+            * (lifted ? LAAGlassTabBarLayout.lensScale.height : 1)
+        return Group {
+            if isDragging { lens } else { restingMark }
+        }
+        .frame(width: width, height: height)
+        .offset(x: center - width / 2)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder private var restingMark: some View {
+        // laa-design:allow pill The selection inside the OS glass tab bar follows the system bar's capsule.
+        let shape = Capsule()
+        shape.fill(reduceTransparency ? palette.selection : Color.primary.opacity(colorScheme == .dark ? 0.14 : 0.08))
+    }
+
+    @ViewBuilder private var lens: some View {
+        // laa-design:allow pill The lifted lens is the system tab bar's clear-glass capsule.
+        let shape = Capsule()
+        if !reduceTransparency, #available(iOS 26, macOS 26, watchOS 26, *) {
+            shape.fill(.clear).glassEffect(Glass.clear.interactive(), in: shape)
         } else {
-            shape.fill(.clear).laaGlass(in: shape, interactive: true, tinted: true)
+            shape.fill(palette.selection)
         }
     }
 
@@ -381,12 +549,13 @@ public struct LAAGlassTabBar<ID: Hashable, Card: View>: View {
         .buttonStyle(.plain)
         .modifier(MorphGlass(id: "app", space: space, shape: Circle(), interactive: true,
                              reduceMotion: reduceMotion, reduceTransparency: reduceTransparency))
-        .accessibilityLabel(Text("Settings"))
+        .accessibilityLabel(Text(app.settingsAccessibilityLabel()))
         .accessibilityIdentifier("laa.tabbar.app")
     }
 
+    /// The owner's picture (or initial), never the app's icon.
     private func appIcon(size: Double) -> some View {
-        LAAProfileImage(profile: app.profile, size: size)
+        LAAProfileImage(profile: app.displayedProfile(), initial: app.displayedInitial(), size: size)
             .modifier(Matched(id: "appIcon", space: space, enabled: !reduceMotion))
             .accessibilityHidden(true)
     }
@@ -454,7 +623,7 @@ public struct LAAGlassTabBar<ID: Hashable, Card: View>: View {
         HStack(spacing: LAASpace.s12) {
             appIcon(size: LAATabBarToken.Card.headerIcon)
             VStack(alignment: .leading, spacing: 0) {
-                Text(app.name)
+                Text(app.displayedOwnerName())
                     .laaFont(LAAPlatform.current.canvas.heading, weight: .semibold)
                     .foregroundStyle(palette.text)
                     .lineLimit(1)
@@ -545,9 +714,10 @@ struct Matched: ViewModifier {
     }
 }
 
-/// LAA's profile picture cut to a circle, or LAA's initial on the `wash` circle when the app has no picture.
+/// The owner's picture cut to a circle, or the owner's initial on the `wash` circle when there is none.
 struct LAAProfileImage: View {
     let profile: Image?
+    var initial: String = LAAAppIdentity.ownerInitial
     let size: Double
     @Environment(\.laaPalette) private var palette
 
@@ -556,7 +726,7 @@ struct LAAProfileImage: View {
             if let profile {
                 profile.resizable().scaledToFill()
             } else {
-                Text(verbatim: LAAAppIdentity.ownerInitial)
+                Text(verbatim: initial)
                     .laaFont(LAAPlatform.current.canvas.heading, weight: .semibold)
                     .foregroundStyle(palette.text)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)

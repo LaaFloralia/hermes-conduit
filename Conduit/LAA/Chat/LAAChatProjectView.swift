@@ -1,10 +1,12 @@
 #if LAA_BUILD
+import LAAKit
 import SwiftUI
 
 struct LAAChatProjectDetail: View {
     let store: LAAChatProjectStore
     let id: UUID
     let runtime: any LAAChatProjectRuntime
+    var showsGlassTabBar = false
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
     @State private var draftRevision: UInt64 = 0
@@ -20,10 +22,16 @@ struct LAAChatProjectDetail: View {
             VStack(spacing: 0) {
                 header(project)
                 transcript(project)
-                if let issue { notice(issue, model: project.model) }
-                if !running, project.pending != nil { recovery }
-                composer(project)
             }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                VStack(spacing: LAASpacing.x2) {
+                    if let issue { notice(issue, model: project.model) }
+                    if !running, project.pending != nil { recovery }
+                    composer(project)
+                }
+                .background(LAAColor.background)
+            }
+            .laaTabBarClearance(showsGlassTabBar)
             .background(LAAColor.background.ignoresSafeArea())
             .navigationTitle(project.name)
             .navigationBarTitleDisplayMode(.inline)
@@ -47,9 +55,23 @@ struct LAAChatProjectDetail: View {
 
     private func header(_ project: LAAChatProject) -> some View {
         HStack(spacing: LAASpacing.x2) {
-            Text(verbatim: project.model.name).laaTextStyle(.secondary)
-                .foregroundStyle(LAAColor.secondaryText)
-                .accessibilityIdentifier("laa.chatProject.model")
+            LAAModelEffortPickers(model: project.model.rawValue, provider: project.model.provider, effort: project.model.effort,
+                                  name: project.model.name, identifier: "laa.chatProject") {
+                ForEach(LAAChatProject.Model.choices, id: \.self) { model in
+                    Button {
+                        do { try store.selectModel(model, in: id); issue = nil }
+                        catch { issue = .init(.localStorage) }
+                    } label: {
+                        if project.model == model { Label(model.name, systemImage: "checkmark") }
+                        else { Text(verbatim: model.name) }
+                    }
+                    .disabled(project.model == model)
+                }
+            } effortMenu: {
+                // The Hermes Projects contract allows one effort per route.
+                LAAEffortMenu.Row(effort: project.model.effort, selected: true) {}.disabled(true)
+            }
+            .disabled(running || project.pending != nil)
             Spacer(minLength: 0)
             Menu {
                 Button(LAACopy.ChatProjects.edit) { showEdit = true }
@@ -63,7 +85,8 @@ struct LAAChatProjectDetail: View {
             .accessibilityIdentifier("laa.chatProject.edit")
             .disabled(running || project.pending != nil)
         }
-        .padding(.horizontal, LAASpacing.x6)
+        .padding(.horizontal, LAASpacing.x4)
+        .padding(.bottom, LAASpacing.x2)
     }
 
     private func transcript(_ project: LAAChatProject) -> some View {
@@ -82,6 +105,16 @@ struct LAAChatProjectDetail: View {
                 .padding(.horizontal, LAASpacing.x6)
                 .padding(.vertical, LAASpacing.x3)
                 .frame(maxWidth: .infinity)
+            }
+            .overlay(alignment: .topLeading) {
+                if project.history.isEmpty && project.pending == nil && live.isEmpty {
+                    Text("Start Here")
+                        .font(LAAType.title("Start Here"))
+                        .foregroundStyle(LAAColor.secondaryText)
+                        .padding(.horizontal, LAASpacing.x6)
+                        .padding(.top, LAASpacing.x8)
+                        .allowsHitTesting(false)
+                }
             }
             .defaultScrollAnchor(.bottom)
             .scrollDismissesKeyboard(.interactively)
@@ -158,6 +191,7 @@ struct LAAChatProjectDetail: View {
                                  enabled: enabled && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                                  identifier: "laa.chatProject.send", action: send)
         }
+        .laaComposerGlassGroup()
         .laaPageWidth()
         .padding(.horizontal, LAASpacing.x4)
         .padding(.vertical, LAASpacing.x2)
@@ -241,7 +275,6 @@ struct LAAChatProjectEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var context = ""
-    @State private var model = LAAChatProject.Model.hydrogen
     @State private var failed = false
 
     var body: some View {
@@ -254,18 +287,11 @@ struct LAAChatProjectEditor: View {
                         .accessibilityLabel(LAACopy.ChatProjects.context)
                         .accessibilityIdentifier("laa.chatProject.context")
                 }
-                if project == nil {
-                    Picker(LAACopy.ChatProjects.model, selection: $model) {
-                        ForEach(LAAChatProject.Model.choices, id: \.self) { Text(verbatim: $0.name).tag($0) }
-                    }
-                } else {
-                    LabeledContent(LAACopy.ChatProjects.model) { Text(verbatim: model.name) }
-                }
                 if failed { Text(verbatim: LAACopy.ChatProjects.storageError).foregroundStyle(LAAColor.attention) }
             }
             .navigationTitle(project == nil ? LAACopy.ChatProjects.new : LAACopy.ChatProjects.edit)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button(LAACopy.chatsCancel) { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(LAACopy.ChatProjects.save, action: save)
                         .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -273,7 +299,7 @@ struct LAAChatProjectEditor: View {
                 }
             }
             .onAppear {
-                if let project { name = project.name; context = project.context; model = project.model }
+                if let project { name = project.name; context = project.context }
             }
         }
         .tint(LAAColor.link)
@@ -284,7 +310,7 @@ struct LAAChatProjectEditor: View {
         do {
             let id: UUID
             if let project { try store.edit(project.id, name: name, context: context); id = project.id }
-            else { id = try store.create(name: name, context: context, model: model) }
+            else { id = try store.create(name: name, context: context, model: .hydrogen) }
             onSave(id)
             dismiss()
         } catch { failed = true }

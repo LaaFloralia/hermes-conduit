@@ -12,15 +12,12 @@ struct LAAStudioHomeView: View {
     @State private var error: String?
     @State private var pairing = false
     @State private var submitted: LAAStudioRecord?
-    @State private var library = false
-    @State private var showingRules = false
-    @State private var searching = false
-    @State private var search = ""
+    @State private var allWorks = false
     @State private var scope = ""
     @State private var reviewed: [String: Int] = [:]
     @State private var reviewChecks: [String: Date] = [:]
     init(initialSection: Int = 0) {
-        _library = State(initialValue: initialSection == 2)
+        _allWorks = State(initialValue: initialSection == 2)
     }
     var body: some View {
         Group {
@@ -44,13 +41,20 @@ struct LAAStudioHomeView: View {
             Task { await load(refreshReviews: true) }
         }
         .sheet(isPresented: $pairing) { LAAPairingView().environmentObject(bridge) }
-        .navigationDestination(isPresented: $showingRules) { LAADriveOperatingRulesView(surface: .studio) }
-        .sheet(isPresented: $library) {
+        .sheet(isPresented: $allWorks) {
             NavigationStack {
-                if let snapshot { ScrollView { LAAStudioCatalogView(snapshot: snapshot).padding(LAASpacing.horizontal) }
-                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { library = false } } }
+                if let snapshot {
+                    LAAStudioAllWorksView(snapshot: snapshot, submitted: submitted, reviewed: reviewed, desktop: desktop)
+                        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { allWorks = false } } }
+                } else {
+                    LAALoadingDots()
+                        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { allWorks = false } } }
                 }
-            }.environmentObject(bridge)
+            }
+            .environmentObject(bridge)
+        }
+        .onChange(of: allWorks) { _, open in
+            if open { Task { await load(refreshReviews: true) } }
         }
         .refreshable { await load(refreshReviews: true) }
         .task(id: bridge.revision) {
@@ -80,37 +84,23 @@ struct LAAStudioHomeView: View {
                 } else if let snapshot, !snapshot.online {
                     LAAStudioConnectionLine(message: "Studioに接続できません") { Task { await load() } }
                 }
-                LAAStudioCreateView(snapshot: snapshot ?? .init(online: false, accepting: false, lastSeen: nil,
-                    projects: [], principles: [], requests: []), inline: true)
-                    .id(scope)
                 if let snapshot {
-                    LAAStudioProgressSection(snapshot: snapshot, submitted: submitted)
-                    VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                        HStack {
-                            LAASectionHeader("Works")
-                            Spacer()
-                            Menu {
-                                Button("Search", systemImage: "magnifyingglass") { searching.toggle() }
-                                if snapshot.supportsV2 {
-                                    Button("Library", systemImage: "books.vertical") { library = true }
-                                        .accessibilityIdentifier("laa.studio.library.open")
-                                }
-                                Button("Rules", systemImage: "doc.text") { showingRules = true }
-                                    .accessibilityIdentifier("laa.studio.rules")
-                            } label: {
-                                let target = (desktop ? LAACanvas.mac : .iphone).touchTarget
-                                Image(systemName: "ellipsis").frame(width: target, height: target)
-                            }
-                            .accessibilityLabel("Works Menu").accessibilityIdentifier("laa.studio.menu")
+                    if snapshot.supportsV2 {
+                        LAAStudioCatalogView(snapshot: snapshot)
+                    } else {
+                        LAASectionHeader("Design Principles")
+                        ForEach(snapshot.principles) { principle in
+                            Text(verbatim: principle.name).laaTextStyle(.body)
                         }
-                        if searching {
-                            LAASearchField(placeholder: "Search", text: $search, identifier: "laa.studio.work.search")
-                        }
-                        LAAStudioWorksList(
-                            projects: snapshot.projects.filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) },
-                            awaitingReview: Set(LAAStudioPresentation.awaitingReview(snapshot).filter { reviewed[$0.id] != $0.revision }.map(\.id)),
-                            snapshot: snapshot, desktop: desktop)
                     }
+                    Button { allWorks = true } label: {
+                        Text("All Works")
+                            .laaTextStyle(.body)
+                            .frame(maxWidth: .infinity, minHeight: desktop ? LAACanvas.mac.rowMinHeight : LAACanvas.iphone.rowMinHeight, alignment: .leading)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("laa.studio.allWorks")
                 } else if loading {
                     LAALoadingDots()
                 }
@@ -127,7 +117,7 @@ struct LAAStudioHomeView: View {
             snapshot = result; error = nil
             if let submitted, result.requests.contains(where: { $0.id == submitted.id }) { self.submitted = nil }
             LAAStudioCache.saveSnapshot(result, scope: LAAStudioCache.scope(bridge))
-            if result.supportsV2 {
+            if result.supportsV2, allWorks {
                 for project in LAAStudioPresentation.awaitingReview(result) {
                     let key = project.id + "-" + String(project.revision)
                     if !refreshReviews, let checked = reviewChecks[key], Date().timeIntervalSince(checked) < 60 { continue }
@@ -204,48 +194,109 @@ private struct LAAStudioProgressRow: View {
     }
 }
 
-private struct LAAStudioWorksList: View {
-    let projects: [LAAStudioProject]
-    let awaitingReview: Set<String>
+private struct LAAStudioAllWorksView: View {
+    private enum Panel: Hashable { case library, rules }
+
     let snapshot: LAAStudioSnapshot
+    let submitted: LAAStudioRecord?
+    let reviewed: [String: Int]
     let desktop: Bool
+    @State private var kind: LAAStudioWorkKind?
+    @State private var page = 0
+    @State private var panel: Panel?
+    private let top = "worksTop"
 
     var body: some View {
-        let groups = Dictionary(grouping: projects) { LAAStudioWorkKind(project: $0) }
-        if projects.isEmpty {
-            Text(verbatim: "No Projects").laaTextStyle(.body).foregroundStyle(LAAColor.secondaryText)
-        } else {
-            LazyVStack(alignment: .leading, spacing: LAASpacing.x4) {
-                ForEach(LAAStudioWorkKind.allCases.filter { groups[$0] != nil }, id: \.self) { kind in
-                    Section {
-                        VStack(spacing: 0) {
-                            ForEach(groups[kind] ?? []) { project in
-                                NavigationLink { LAAStudioWorkView(project: project, snapshot: snapshot) } label: {
-                                    HStack(spacing: LAASpacing.x2) {
-                                        Text(verbatim: project.title).laaTextStyle(.body).foregroundStyle(LAAColor.text)
-                                            .lineLimit(2).multilineTextAlignment(.leading)
-                                        Spacer(minLength: LAASpacing.x2)
-                                        if awaitingReview.contains(project.id) {
-                                            Text("Review").laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
-                                        } else {
-                                            Text(verbatim: LAAStudioPresentation.relativeDate(project.syncedAt))
-                                                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                                        }
-                                    }
-                                    .frame(minHeight: (desktop ? LAACanvas.mac : .iphone).rowMinHeight)
-                                    .overlay(alignment: .bottom) { Rectangle().fill(LAAColor.separator).frame(height: LAAStroke.rule) }
-                                    .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain).accessibilityIdentifier("laa.studio.work.\(project.id)")
-                            }
+        let works = LAAStudioWorksPage(projects: snapshot.projects, kind: kind, requestedPage: page)
+        let awaitingReview = Set(LAAStudioPresentation.awaitingReview(snapshot).filter { reviewed[$0.id] != $0.revision }.map(\.id))
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    LAAStudioProgressSection(snapshot: snapshot, submitted: submitted)
+                    Picker("Kind", selection: $kind) {
+                        Text("All").tag(nil as LAAStudioWorkKind?)
+                        ForEach(LAAStudioWorkKind.allCases, id: \.self) { kind in
+                            Text(verbatim: kind.rawValue).tag(Optional(kind))
                         }
-                    } header: {
-                        Text(verbatim: kind.rawValue).laaOperating(.label).foregroundStyle(LAAColor.secondaryText)
-                            .accessibilityAddTraits(.isHeader).accessibilityIdentifier("laa.studio.kind.\(kind.rawValue)")
+                    }
+                    .accessibilityIdentifier("laa.studio.work.filter")
+                    .padding(.vertical, LAASpacing.x2)
+                    .id(top)
+                    if works.projects.isEmpty {
+                        Text("No Works").laaTextStyle(.body).foregroundStyle(LAAColor.secondaryText)
+                    }
+                    ForEach(works.projects) { project in
+                        NavigationLink { LAAStudioWorkView(project: project, snapshot: snapshot) } label: {
+                            workRow(project, needsReview: awaitingReview.contains(project.id))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("laa.studio.work.\(project.id)")
+                    }
+                    if works.pageCount > 1 {
+                        HStack {
+                            Button("Previous") { page = works.index - 1 }.disabled(works.index == 0)
+                            Spacer()
+                            Text("\(works.index + 1) / \(works.pageCount)").monospacedDigit()
+                            Spacer()
+                            Button("Next") { page = works.index + 1 }.disabled(works.index + 1 == works.pageCount)
+                        }
+                        .padding(.vertical, LAASpacing.x2)
                     }
                 }
+                .padding(LAASpacing.horizontal)
+            }
+            .onChange(of: kind) { _, _ in page = 0 }
+            .onChange(of: page) { _, _ in proxy.scrollTo(top, anchor: .top) }
+        }
+        .navigationTitle("All Works")
+        .navigationDestination(item: $panel) { panel in
+            switch panel {
+            case .library:
+                ScrollView { LAAStudioCatalogView(snapshot: snapshot, showsPrinciples: false).padding(LAASpacing.horizontal) }
+                    .navigationTitle("Library")
+            case .rules:
+                LAADriveOperatingRulesView(surface: .studio)
             }
         }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                NavigationLink {
+                    LAAStudioCreateView(snapshot: snapshot)
+                } label: {
+                    Label("New", systemImage: "plus")
+                }
+                .accessibilityIdentifier("laa.studio.new")
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    if snapshot.supportsV2 {
+                        Button("Library") { panel = .library }
+                            .accessibilityIdentifier("laa.studio.library.open")
+                    }
+                    Button("Rules") { panel = .rules }
+                        .accessibilityIdentifier("laa.studio.rules")
+                } label: { Image(systemName: "ellipsis") }
+                .accessibilityLabel("Works Menu")
+                .accessibilityIdentifier("laa.studio.menu")
+            }
+        }
+    }
+
+    private func workRow(_ project: LAAStudioProject, needsReview: Bool) -> some View {
+        HStack(spacing: LAASpacing.x2) {
+            Text(verbatim: project.title).laaTextStyle(.body).foregroundStyle(LAAColor.text)
+                .lineLimit(2).multilineTextAlignment(.leading)
+            Spacer(minLength: LAASpacing.x2)
+            if needsReview {
+                Text("Review").laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
+            } else {
+                Text(verbatim: LAAStudioPresentation.relativeDate(project.syncedAt))
+                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+            }
+        }
+        .frame(minHeight: (desktop ? LAACanvas.mac : .iphone).rowMinHeight)
+        .overlay(alignment: .bottom) { Rectangle().fill(LAAColor.separator).frame(height: LAAStroke.rule) }
+        .contentShape(Rectangle())
     }
 }
 

@@ -47,6 +47,27 @@ enum LAAStudioWorkKind: String, CaseIterable {
     }
 }
 
+struct LAAStudioWorksPage {
+    static let size = 20
+    let projects: [LAAStudioProject]
+    let index: Int
+    let pageCount: Int
+
+    init(projects: [LAAStudioProject], kind: LAAStudioWorkKind?, requestedPage: Int) {
+        let filtered = kind.map { kind in projects.filter { LAAStudioWorkKind(project: $0) == kind } } ?? projects
+        let dated: [(project: LAAStudioProject, date: Date)] = filtered.map { project in
+            (project, project.syncedAt.flatMap { MessageTimestampFormatter.date(from: $0) } ?? .distantPast)
+        }
+        let sorted = dated.sorted { left, right in
+            if left.date == right.date { return left.project.id < right.project.id }
+            return right.date < left.date
+        }
+        pageCount = max(1, (sorted.count + Self.size - 1) / Self.size)
+        index = min(max(0, requestedPage), pageCount - 1)
+        self.projects = sorted.dropFirst(index * Self.size).prefix(Self.size).map { $0.project }
+    }
+}
+
 struct LAAStudioPage: Codable, Identifiable, Hashable {
     let id: String
     let name: String

@@ -135,10 +135,7 @@ struct LAAStudioCreateView: View {
                             .accessibilityIdentifier("laa.studio.retry")
                     }
                 } else {
-                    Button(sending ? String("Sending") : String("Send Request")) { promptFocused = false; Task { await submit() } }
-                        .laaGlassButton(prominent: true)
-                        .disabled(sending || storageBlocked || draft.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || draft.prompt.utf16.count > 10000)
-                        .accessibilityIdentifier("laa.studio.composer.send")
+                    HStack { Spacer(minLength: 0); sendButton }
                 }
                 if let error { Text(verbatim: error).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
             }.padding(LAASpacing.horizontal).laaPageWidth()
@@ -224,12 +221,13 @@ struct LAAStudioCreateView: View {
     }
 
     private var sendButton: some View {
-        Button { promptFocused = false; Task { await submit() } } label: {
-            Image(systemName: "arrow.up").font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(canSend ? .white : LAAColor.secondaryText)
-                .frame(width: 36, height: 36)
-                .laaComposerGlass(in: Circle(), fill: canSend ? LAAColor.link : nil)
-                .frame(minWidth: 44, minHeight: 44)
+        let control = LAAControl.IPhone.iconButton
+        return Button { promptFocused = false; Task { await submit() } } label: {
+            Image(systemName: "arrow.up").font(.system(size: control.icon))
+                .foregroundStyle(canSend ? LAAColor.ownBubbleText : LAAColor.secondaryText)
+                .frame(width: control.visual, height: control.visual)
+                .laaComposerGlass(in: Circle(), fill: canSend ? LAAColor.ownBubble : nil)
+                .frame(minWidth: LAAControl.IPhone.hitArea, minHeight: LAAControl.IPhone.hitArea)
                 .contentShape(Rectangle())
         }.buttonStyle(.plain).disabled(!canSend)
             .accessibilityLabel(Text(verbatim: initialProject == nil ? "Send Request" : "Request Revision"))
@@ -353,13 +351,17 @@ extension View {
     func studioInputField() -> some View { modifier(LAAStudioInputField()) }
 
     func studioFilterChip(selected: Bool) -> some View {
-        fontWeight(selected ? .semibold : .regular)
-            // A kind is one word: whole, never one character per line.
+        let control = LAAControl.IPhone.compact
+        let shape = RoundedRectangle(cornerRadius: control.radius)
+        return laaFont(control.label, weight: .medium)
             .lineLimit(1).fixedSize()
             .foregroundStyle(selected ? LAAColor.link : LAAColor.secondaryText)
-            .frame(minHeight: LAASpacing.minimumTouchTarget)
-            .padding(.horizontal, LAASpacing.x4)
-            .laaGlass(in: Capsule(), selected: selected)
+            .padding(.horizontal, control.paddingH)
+            .frame(minHeight: control.height)
+            .background(selected ? LAAColor.subtleSurface : LAAColor.surface, in: shape)
+            .overlay { shape.strokeBorder(LAAColor.separator, lineWidth: LAAStroke.rule) }
+            .frame(minWidth: LAAControl.IPhone.hitArea, minHeight: LAAControl.IPhone.hitArea)
+            .contentShape(Rectangle())
     }
 }
 #endif

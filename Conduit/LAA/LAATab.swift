@@ -4,6 +4,7 @@ import Foundation
 #if !os(watchOS)
 import LAATokens
 import SwiftUI
+import UIKit
 #endif
 
 enum LAATab: String, CaseIterable, Identifiable {
@@ -35,11 +36,10 @@ enum LAATab: String, CaseIterable, Identifiable {
     }
 
     #if !os(watchOS)
-    /// The bottom bar's own artwork where it differs from `icon`: Doc keeps the page it had before the kit
-    /// icons (SF Symbol `doc.text`, builds up to 2611260645), by the owner's choice (D-21, 2026-11-27:
-    /// 「下部のタブバーのアイコンはDocのみもとにもどして」). The other tabs use the kit icons.
     var barArtwork: (regular: Image, selected: Image)? {
-        self == .brain ? (Image(systemName: "doc.text"), Image(systemName: "doc.text.fill")) : nil
+        guard self == .chats, let glyph = UIImage(named: "LAAMonetTabGlyph") else { return nil }
+        let selected = UIImage(named: "LAAMonetTabGlyphFill") ?? glyph
+        return (Image(uiImage: glyph).renderingMode(.template), Image(uiImage: selected).renderingMode(.template))
     }
 
     var icon: LAAIcon {

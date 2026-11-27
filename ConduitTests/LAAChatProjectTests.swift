@@ -12,7 +12,7 @@ import XCTest
         let file = directory.appending(path: "projects.json")
         let store = LAAChatProjectStore(fileURL: file)
         XCTAssertEqual(store.projects.map(\.model), [.hydrogen, .hydrogen])
-        XCTAssertEqual(store.projects.map(\.name), ["日常質問", "ポケモンサイズ証判定"])
+        XCTAssertEqual(store.projects.map(\.name), ["Instant", "Pokémon Size Marks"])
         let id = try store.create(name: " 趣味 ", context: "# Notes", model: .deepSeek)
         XCTAssertEqual(store.project(id)?.name, "趣味")
         try store.edit(id, name: "名前", context: "**preset**")
@@ -29,6 +29,30 @@ import XCTest
         XCTAssertNil(relaunched.project(id)?.pending)
         try relaunched.delete(id)
         XCTAssertTrue(LAAChatProjectStore(fileURL: file).projects.isEmpty)
+    }
+
+    func testModelSelectionPreservesRoutesHistoryAndPendingWork() throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appending(path: "projects.json")
+        let store = LAAChatProjectStore(fileURL: file)
+        let id = LAAChatProjectStore.instantID
+        let question = LAAChatProject.Message(role: .user, text: "What is 2+2?")
+        try store.reserve(question, in: id)
+        XCTAssertThrowsError(try store.selectModel(.deepSeek, in: id))
+        try store.complete(question, answer: "4", in: id)
+        try store.selectModel(.deepSeek, in: id)
+        let first = try XCTUnwrap(store.project(id))
+        let deepSeekID = first.conversationID(for: .deepSeek)
+        XCTAssertNotEqual(deepSeekID, id)
+        XCTAssertEqual(first.history.map(\.text), [question.text, "4"])
+        XCTAssertEqual(first.history.last?.model, .hydrogen)
+        let relaunched = LAAChatProjectStore(fileURL: file)
+        XCTAssertEqual(relaunched.project(id), first)
+        try relaunched.selectModel(.hydrogen, in: id)
+        XCTAssertEqual(relaunched.project(id)?.conversationID(for: .hydrogen), id)
+        try relaunched.selectModel(.deepSeek, in: id)
+        XCTAssertEqual(relaunched.project(id)?.conversationID(for: .deepSeek), deepSeekID)
     }
 
     func testPokemonMigrationLoadsWithoutRewritingOpaqueCustomDataAndKeepsLegacyReplay() throws {

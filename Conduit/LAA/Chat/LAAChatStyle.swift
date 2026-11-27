@@ -172,9 +172,8 @@ private struct LAAChatColumn: ViewModifier {
 
 /// The composer's +, field and send in Liquid Glass, as in Messages:
 /// regular glass, never clear, so a transcript scrolling under the field
-/// stays frosted behind the draft. On a photo the glass takes the photo
-/// toolbar's 38% dark underlay and light ink (LAAComposerPhotoInk).
-/// Reduce Transparency and iOS 17–25 get the opaque reading surface with
+/// stays frosted behind the draft. A photo, Reduce Transparency and
+/// iOS 17–25 get the opaque reading surface with
 /// a hairline; Increase Contrast firms the border (the separator has its
 /// own high-contrast value).
 private struct LAAComposerGlass<S: InsettableShape>: ViewModifier {
@@ -187,10 +186,9 @@ private struct LAAComposerGlass<S: InsettableShape>: ViewModifier {
     @Environment(\.colorSchemeContrast) private var contrast
 
     @ViewBuilder func body(content: Content) -> some View {
-        if #available(iOS 26.0, *), !reduceTransparency {
+        if #available(iOS 26.0, *), !reduceTransparency, kind != .photo {
             let glass = Glass.regular.tint(fill)
             content
-                .background { if kind == .photo { shape.fill(.black.opacity(0.38)) } }
                 .glassEffect(interactive ? glass.interactive() : glass, in: shape)
                 .overlay { if contrast == .increased { shape.strokeBorder(LAAColor.separator, lineWidth: 1) } }
         } else {
@@ -201,25 +199,14 @@ private struct LAAComposerGlass<S: InsettableShape>: ViewModifier {
     }
 }
 
-/// Light ink for the composer on a photo, where the darkened photo sits
-/// behind it in either appearance. Controls on the opaque fallback keep
-/// the app's appearance; `bare` ones sit on the photo itself.
-private struct LAAComposerPhotoInk: ViewModifier {
-    let bare: Bool
+/// Controls not already backed by composer glass need their own photo surface.
+private struct LAAComposerPhotoSurface: ViewModifier {
+    let enabled: Bool
     @Environment(\.laaBackgroundKind) private var kind
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
-    @ViewBuilder func body(content: Content) -> some View {
-        if kind == .photo, bare || Self.glassAvailable && !reduceTransparency {
-            content.environment(\.colorScheme, .dark)
-        } else {
-            content
-        }
-    }
-
-    private static var glassAvailable: Bool {
-        if #available(iOS 26.0, *) { return true }
-        return false
+    func body(content: Content) -> some View {
+        content.background(enabled && kind == .photo ? LAAColor.surface : Color.clear,
+                           in: RoundedRectangle(cornerRadius: LAARadius.card))
     }
 }
 
@@ -251,7 +238,9 @@ extension View {
     func laaComposerGlass<S: InsettableShape>(in shape: S, fill: Color? = nil, interactive: Bool = true) -> some View {
         modifier(LAAComposerGlass(shape: shape, fill: fill, interactive: interactive))
     }
-    func laaComposerPhotoInk(bare: Bool = false) -> some View { modifier(LAAComposerPhotoInk(bare: bare)) }
+    func laaComposerPhotoInk(bare: Bool = false) -> some View {
+        modifier(LAAComposerPhotoSurface(enabled: bare))
+    }
     func laaComposerGlassGroup() -> some View { modifier(LAAComposerGlassGroup()) }
 }
 #endif

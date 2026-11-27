@@ -216,7 +216,9 @@ struct LAACardRowPressStyle: ButtonStyle {
     }
 }
 
-/// Mac and iPad sidebar: LAA's profile picture and the app name at the foot of the sidebar; it opens the same card as a popover.
+#if !os(watchOS)
+/// Mac and iPad sidebar: the owner's picture and name at the foot of the sidebar (never the app's, D-30); it opens
+/// the same card as a popover.
 public struct LAASidebarAppEntry<Card: View>: View {
     let app: LAAAppIdentity
     let card: () -> Card
@@ -231,9 +233,9 @@ public struct LAASidebarAppEntry<Card: View>: View {
     public var body: some View {
         Button { open.toggle() } label: {
             HStack(spacing: LAASpace.s8) {
-                LAAProfileImage(profile: app.profile, size: LAAIconSize.tab)
+                LAAProfileImage(profile: app.displayedProfile(), initial: app.displayedInitial(), size: LAAIconSize.tab)
                     .accessibilityHidden(true)
-                Text(app.name)
+                Text(app.displayedOwnerName())
                     .font(.system(size: LAAPlatform.current.canvas.small, weight: .medium))
                     .foregroundStyle(palette.text)
                     .lineLimit(1)
@@ -243,18 +245,21 @@ public struct LAASidebarAppEntry<Card: View>: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text("Settings"))
+        .accessibilityLabel(Text(app.settingsAccessibilityLabel()))
         .accessibilityIdentifier("laa.sidebar.app")
         .popover(isPresented: $open, arrowEdge: .trailing) {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: LAASpace.s12) {
-                    LAAProfileImage(profile: app.profile, size: LAATabBarToken.Card.headerIcon)
+                    LAAProfileImage(profile: app.displayedProfile(), initial: app.displayedInitial(),
+                                    size: LAATabBarToken.Card.headerIcon)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 0) {
-                        Text(app.name).laaFont(LAAPlatform.current.canvas.heading, weight: .semibold)
+                        Text(app.displayedOwnerName()).laaFont(LAAPlatform.current.canvas.heading, weight: .semibold)
                             .foregroundStyle(palette.text)
-                        Text(app.version).font(.system(size: LAAPlatform.current.canvas.label).monospacedDigit())
-                            .foregroundStyle(palette.textMuted)
+                        if !app.version.isEmpty {
+                            Text(app.version).font(.system(size: LAAPlatform.current.canvas.label).monospacedDigit())
+                                .foregroundStyle(palette.textMuted)
+                        }
                     }
                 }
                 .padding(.bottom, LAASpace.s8)
@@ -269,3 +274,4 @@ public struct LAASidebarAppEntry<Card: View>: View {
         }
     }
 }
+#endif

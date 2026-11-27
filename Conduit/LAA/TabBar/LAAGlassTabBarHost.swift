@@ -180,12 +180,4 @@ struct LAAAppSettingsCard: View {
     }
 }
 
-extension LAAAppIdentity {
-    /// Hortensia's name and version with LAA's profile picture: the owner's picture the Mac's Bridge holds
-    /// (`LAAOwnerAvatarStore`, the same face every conversation shows), or LAA's initial before one is set.
-    /// Never the app icon (D-21, 2026-11-27).
-    @MainActor static func hortensia(_ owner: LAAOwnerAvatarStore = .shared) -> LAAAppIdentity {
-        .main(name: "Hortensia", profile: owner.image.map { Image(uiImage: $0) })
-    }
-}
 #endif
