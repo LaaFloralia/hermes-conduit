@@ -126,6 +126,35 @@ extension LAAWorkModelSelection {
         return order.compactMap { key in groups[key].map { HarnessGroup(harness: $0.harness, fast: $0.fast, models: $0.models) } }
     }
 
+    /// The picker's sections (D-23, D-33): the harnesses the Bridge's model
+    /// table names, in its order, each holding the `models` it lists there,
+    /// so DSH's Orchestrator and Worker are two sections though they start
+    /// the same profiles. A Bridge without the picker, a Fast-only harness
+    /// and a model the picker does not place fall back to the profiles' own
+    /// harnesses (`harnesses(_:)`).
+    static func harnesses(_ models: [Model], picker options: LAAWorkSessionOptions?) -> [HarnessGroup] {
+        guard let rows = options?.models, let heads = options?.harnesses, !rows.isEmpty, !heads.isEmpty else {
+            return harnesses(models)
+        }
+        let byID = Dictionary(models.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var out: [HarnessGroup] = []
+        for head in heads.sorted(by: { $0.order < $1.order }) {
+            guard let found = LAAHarness.work(head.id) else { continue }
+            var seen = Set<String>()
+            let members = rows.filter { $0.harnessId == head.id && ($0.surfaces?.contains("session") ?? true) }
+                .compactMap { byID[$0.provider + "\u{1F}" + $0.model] }
+                .filter { seen.insert($0.id).inserted }
+            guard !members.isEmpty else { continue }
+            out.append(HarnessGroup(harness: LAAHarness(kind: found.kind, raw: found.raw, title: head.name),
+                                    fast: false, models: members))
+        }
+        let placed = Set(out.flatMap { $0.models.map(\.id) })
+        let fallback = harnesses(models)
+        out += fallback.filter(\.fast)
+        out += harnesses(models.filter { !placed.contains($0.id) }).filter { !$0.fast }
+        return out
+    }
+
     /// The group a profile (with Fast as chosen) runs in.
     static func group(of profileID: String, fast: Bool, in groups: [HarnessGroup]) -> HarnessGroup? {
         let wantsFast = fast && groups.contains { $0.fast && $0.models.contains { $0.profiles.contains { $0.id == profileID && $0.fast } } }
@@ -170,34 +199,55 @@ extension LAAWorkModelSelection {
 #if LAA_BUILD
 import SwiftUI
 
-/// The harness capsule's menu in Work: one section per harness, headed by
-/// its name, holding the models that harness runs, so the harness and the
-/// model are picked with one tap; the running model is checked. A paid route
-/// says so under the model's name, and a harness reached only with Fast says
-/// that in its heading.
+/// The model menu in Work (D-21 E2): one section per harness, headed by its
+/// mark and name, the running harness first, holding the models that harness
+/// runs, so the harness and the model are picked with one tap; the running
+/// model is checked. A row on another harness says the conversation hands
+/// over (`handsOver`); a paid route says so under the model's name; a model
+/// that cannot be chosen says why; a harness reached only with Fast says that
+/// in its heading.
 struct LAAWorkHarnessMenu: View {
     let groups: [LAAWorkModelSelection.HarnessGroup]
     let current: LAAWorkModelSelection.HarnessGroup?
     let chosen: LAAWorkModelSelection.Model?
     let identifier: String
     var lock: String? = nil
+    /// True where picking a model of another harness hands the conversation
+    /// over (a running session); false where nothing is running yet.
+    var handsOver = false
     var disabled: (LAAWorkModelSelection.Model) -> Bool = { !$0.available }
     let pick: (LAAWorkModelSelection.HarnessGroup, LAAWorkModelSelection.Model) -> Void
+
+    static func ordered(_ groups: [LAAWorkModelSelection.HarnessGroup],
+                        current: LAAWorkModelSelection.HarnessGroup?) -> [LAAWorkModelSelection.HarnessGroup] {
+        guard let current, let index = groups.firstIndex(where: { $0.id == current.id }) else { return groups }
+        var out = groups
+        out.insert(out.remove(at: index), at: 0)
+        return out
+    }
 
     var body: some View {
         if let lock { LAAMenuReason(text: lock) }
         if groups.isEmpty { LAAMenuReason(text: "None available") }
-        ForEach(groups) { group in
+        ForEach(Self.ordered(groups, current: current)) { group in
             let sections = LAAWorkModelSelection.providers(group.models)
-            Section(header: Text(verbatim: group.harness.name + (group.fast ? " · Fast" : ""))) {
+            let other = handsOver && current != nil && group.id != current?.id
+            Section {
+                LAAHarnessHeading(harness: group.harness, suffix: group.fast ? " · Fast" : nil)
                 ForEach(sections, id: \.name) { section in
                     ForEach(section.models) { model in
                         let metered = LAAWorkModelSelection.metered(model)
-                        let route = sections.count > 1 || metered ? section.name + (metered ? " · Metered" : "") : nil
+                        let reason = model.available ? nil : (model.profiles.compactMap(\.unavailableReason).first ?? "Unavailable")
+                        let notes = [sections.count > 1 || metered ? section.name + (metered ? " · Metered" : "") : nil,
+                                     other ? "Hands over" : nil, reason].compactMap { $0 }
                         let isCurrent = group.id == current?.id && model.id == chosen?.id
-                        LAAHarnessModelRow(title: model.label, route: route, current: isCurrent) { pick(group, model) }
+                        LAAHarnessModelRow(title: model.label, route: notes.isEmpty ? nil : notes.joined(separator: " · "),
+                                           current: isCurrent) { pick(group, model) }
                             .disabled(lock != nil || isCurrent || disabled(model))
                             .accessibilityIdentifier("\(identifier).\(group.id).\(model.provider).\(model.model)")
+                    }
+                    if let note = section.models.compactMap(\.usageNote).first {
+                        ForEach(note.split(separator: "\n").map(String.init), id: \.self) { LAAMenuReason(text: $0) }
                     }
                 }
             }

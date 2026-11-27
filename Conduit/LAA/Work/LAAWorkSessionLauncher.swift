@@ -44,6 +44,9 @@ struct LAAWorkSessionLauncher: View {
     @State private var projectID: String
     @State private var profile = ""
     @State private var fast = false
+    /// The section the model was picked in, where two hold the same profile
+    /// (DSH's Orchestrator and Worker, D-33); nil: the first that holds it.
+    @State private var pickedHarness: String?
     @State private var bypass = true
     @State private var prompt = ""
     @State private var revision: UInt64 = 0
@@ -196,42 +199,27 @@ struct LAAWorkSessionLauncher: View {
     private var modelBar: some View {
         HStack(spacing: LAASpacing.x2) {
             let all = LAAWorkModelSelection.models(options)
-            let harnesses = LAAWorkModelSelection.harnesses(all)
-            let running = LAAWorkModelSelection.group(of: profile, fast: fast, in: harnesses)
-            // The model menu lists only what the chosen harness runs.
-            let models = running?.models ?? all
+            let harnesses = LAAWorkModelSelection.harnesses(all, picker: options)
+            let running = harnesses.first { group in
+                group.id == pickedHarness && group.models.contains { $0.profiles.contains { $0.id == profile } }
+            } ?? LAAWorkModelSelection.group(of: profile, fast: fast, in: harnesses)
             let chosen = LAAWorkModelSelection.model(of: profile, in: options)
             LAAModelEffortPickers(
                 harness: running?.harness,
                 model: selected?.model, provider: selected?.provider, effort: selected?.effort,
                 name: chosen?.label ?? "Model",
+                effortFixed: (chosen?.profiles.count ?? 0) == 1,
                 identifier: "work.launch"
             ) {
+                if options == nil { LAAMenuReason(text: "モデルの一覧を準備中です。") }
                 LAAWorkHarnessMenu(groups: harnesses, current: running, chosen: chosen,
                                    identifier: "work.launch.harness") { group, model in chooseModel(model, in: group) }
-            } modelMenu: {
-                if options == nil { LAAMenuReason(text: "モデルの一覧を準備中です。") }
-                ForEach(LAAWorkModelSelection.providers(models), id: \.name) { group in
-                    Section(group.name) {
-                        ForEach(group.models) { item in
-                            Toggle(isOn: Binding(get: { item.id == chosen?.id }, set: { on in if on { chooseModel(item, in: running) } })) {
-                                LAAModelMenu.Name(label: item.label, model: item.model)
-                            }
-                            .disabled(!item.available)
-                            .accessibilityIdentifier("work.launch.model.\(item.model)")
-                        }
-                        if let note = group.models.compactMap(\.usageNote).first {
-                            ForEach(note.split(separator: "\n").map(String.init), id: \.self) { LAAMenuReason(text: $0) }
-                        }
-                    }
-                }
                 Section {
                     Toggle(isOn: $bypass) { Text(verbatim: "確認なしで実行") }
                         .accessibilityIdentifier("work.launch.bypass")
                 }
             } effortMenu: {
                 if let chosen {
-                    if chosen.profiles.count < 2 { LAAMenuReason(text: "このモデルで選べる推論はこれだけです。") }
                     Section {
                         ForEach(chosen.profiles) { item in
                             // XHigh and Max carry the deep-effort mark here
@@ -338,6 +326,7 @@ struct LAAWorkSessionLauncher: View {
     private func chooseModel(_ model: LAAWorkModelSelection.Model, in group: LAAWorkModelSelection.HarnessGroup? = nil) {
         guard let next = LAAWorkModelSelection.profile(switchingTo: model, from: selected) else { return }
         choose(next.id)
+        pickedHarness = group?.id
         if let group, next.fastHarness != nil {
             fast = group.fast && next.fast
             remember()

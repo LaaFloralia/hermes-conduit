@@ -936,25 +936,21 @@ struct LAALinearTaskEditor: View {
     @ViewBuilder private var modelPicker: some View {
         if let options, !options.profiles.isEmpty {
             let chosen = LAAWorkModelSelection.model(of: profile, in: options)
+            let groups = LAAWorkModelSelection.harnesses(LAAWorkModelSelection.models(options), picker: options)
+            let group = LAAWorkModelSelection.group(of: profile, fast: false, in: groups)
             HStack(spacing: LAASpacing.x2) {
                 Text(verbatim: "Model").layoutPriority(1)
                 Spacer(minLength: LAASpacing.x2)
                 LAAModelEffortPickers(
+                    harness: group?.harness,
                     model: selectedProfile?.model, provider: selectedProfile?.provider,
                     effort: selectedProfile?.effort, name: chosen?.label ?? "Select Model",
+                    effortFixed: (chosen?.profiles.count ?? 0) == 1,
                     identifier: "work.linear"
                 ) {
-                    ForEach(LAAWorkModelSelection.providers(LAAWorkModelSelection.models(options)), id: \.name) { group in
-                        Section(group.name) {
-                            ForEach(group.models) { item in
-                                Toggle(isOn: Binding(get: { item.id == chosen?.id }, set: { on in
-                                    if on, let next = LAAWorkModelSelection.profile(switchingTo: item, from: selectedProfile) {
-                                        profile = next.id
-                                    }
-                                })) { LAAModelMenu.Name(label: item.label, model: item.model) }
-                                .accessibilityIdentifier("work.linear.model.\(item.model)")
-                            }
-                        }
+                    LAAWorkHarnessMenu(groups: groups, current: group, chosen: chosen,
+                                       identifier: "work.linear.harness") { _, item in
+                        if let next = LAAWorkModelSelection.profile(switchingTo: item, from: selectedProfile) { profile = next.id }
                     }
                 } effortMenu: {
                     if let chosen {

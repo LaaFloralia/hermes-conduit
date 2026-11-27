@@ -2,10 +2,17 @@
 import SwiftUI
 
 /// The model and its effort as two Liquid Glass capsules side by side, each
-/// opening its own menu: the model's face, name and chevron; then the
-/// effort's name and chevron (owner, 2026-11-12: one control for both was
-/// one too few). Work's session row, the new-session sheet, the task form and
-/// Chat's composer all use it, so the four read and press alike.
+/// opening its own menu: the harness's mark, the model's name and chevron;
+/// then the effort's name and chevron (owner, 2026-11-12: one control for
+/// both was one too few). Every place a model is chosen uses it (Chat's
+/// composer, a Work session, the new-session sheet, a project's default, the
+/// task form, an employee chat), so they read and press alike.
+///
+/// The harness is no capsule of its own (D-21 E, owner 2026-11-27): the
+/// model's menu holds one section per harness, headed by its mark and name,
+/// the running harness first, and the model capsule wears the harness's mark
+/// in place of the maker's face. A model with one effort (Opus, Sol) shows
+/// the effort as a value without a menu.
 ///
 /// The model's name is always whole, beginning with its maker ("Claude Opus
 /// 5.5"), never cut or "…" (owner, 2026-11-14): when the row is too narrow
@@ -15,21 +22,19 @@ import SwiftUI
 /// An applied change spreads the veins once from the leading end. Unknown
 /// and stale values stay plain.
 ///
-///     LAAModelEffortPickers(model: "claude-opus-5-5", provider: "claude", effort: "xhigh",
-///                           identifier: "work.session") { modelRows } effortMenu: { effortRows }
+///     LAAModelEffortPickers(harness: .work("claude"), model: "claude-opus-5-5", provider: "claude",
+///                           effort: "xhigh", identifier: "work.session") { sections } effortMenu: { effortRows }
 ///
 /// The menus always open, even when nothing can be chosen: the caller puts
 /// the reason in a disabled row (owner, 2026-11-11). Identifiers are
-/// `<identifier>.model` and `<identifier>.effort`; VoiceOver reads 「モデル」
-/// and 「推論」 as two controls.
-struct LAAModelEffortPickers<HarnessMenu: View, ModelMenu: View, EffortMenu: View>: View {
-    /// The harness the conversation runs on, shown ahead of the model as its
-    /// own capsule and menu (LAAHarnessCapsule); nil leaves it out.
+/// `<identifier>.model` and `<identifier>.effort`; VoiceOver reads the
+/// harness with the model ("DSH Orchestrator, DeepSeek V4.1 Flash").
+struct LAAModelEffortPickers<ModelMenu: View, EffortMenu: View>: View {
+    /// The harness the conversation runs on; its mark leads the model capsule.
     var harness: LAAHarness? = nil
-    var harnessHint: String = "実行基盤を変更"
     /// The wire id ("claude-fable-5-2") or a display name ("Fable 5.2").
     let model: String?
-    /// The provider id ("claude", "codex", "dsh"); sets the face's family.
+    /// The provider id ("claude", "codex", "dsh").
     let provider: String?
     /// The applied effort's wire value ("high", "xhigh", "max").
     let effort: String?
@@ -45,145 +50,111 @@ struct LAAModelEffortPickers<HarnessMenu: View, ModelMenu: View, EffortMenu: Vie
     /// moves the capsule once. Pass the applied values, not the chosen ones.
     var changingModel = false
     var changingEffort = false
+    /// The model offers this effort alone (D-21 E6: Opus and Sol): the value
+    /// shows without a chevron or menu.
+    var effortFixed = false
     /// "work.session" → "work.session.model" and "work.session.effort".
     let identifier: String
     /// Added to the model's spoken value ("、依頼 Fable 5.2").
     var modelValueSuffix: String? = nil
-    var modelHint: String = "モデルを変更"
-    var effortHint: String = "推論の強さを変更"
+    var modelHint: String = "Change Model"
+    var effortHint: String = "Change Effort"
     /// Shown for a value not known yet in place of 不明: 確認中… while it is
     /// being read, 未確認 when it can't be (D-25). Nil keeps 不明.
     var placeholder: String? = nil
-    var harnessMenu: () -> HarnessMenu
     var modelMenu: () -> ModelMenu
     var effortMenu: () -> EffortMenu
 
-    init(harness: LAAHarness?, harnessHint: String = "実行基盤を変更",
+    init(harness: LAAHarness? = nil,
          model: String?, provider: String?, effort: String?, name: String? = nil, current: Bool = true,
-         attention: Bool = false, changingModel: Bool = false, changingEffort: Bool = false, identifier: String,
-         modelValueSuffix: String? = nil, modelHint: String = "モデルを変更", effortHint: String = "推論の強さを変更",
+         attention: Bool = false, changingModel: Bool = false, changingEffort: Bool = false,
+         effortFixed: Bool = false, identifier: String,
+         modelValueSuffix: String? = nil, modelHint: String = "Change Model", effortHint: String = "Change Effort",
          placeholder: String? = nil,
-         @ViewBuilder harnessMenu: @escaping () -> HarnessMenu,
          @ViewBuilder modelMenu: @escaping () -> ModelMenu,
          @ViewBuilder effortMenu: @escaping () -> EffortMenu) {
-        self.harness = harness; self.harnessHint = harnessHint
+        self.harness = harness
         self.model = model; self.provider = provider; self.effort = effort; self.name = name; self.current = current
         self.attention = attention; self.changingModel = changingModel; self.changingEffort = changingEffort
+        self.effortFixed = effortFixed
         self.identifier = identifier; self.modelValueSuffix = modelValueSuffix
         self.modelHint = modelHint; self.effortHint = effortHint; self.placeholder = placeholder
-        self.harnessMenu = harnessMenu; self.modelMenu = modelMenu; self.effortMenu = effortMenu
+        self.modelMenu = modelMenu; self.effortMenu = effortMenu
     }
 
     private var modelText: String {
         LAAModelCapsule.text(model: model, provider: provider, name: name, current: current, placeholder: placeholder)
     }
     private var effortText: String { LAAEffortCapsule.text(effort: effort, current: current, placeholder: placeholder) }
+    private var spokenModel: String { (harness.map { $0.name + ", " } ?? "") + modelText + (modelValueSuffix ?? "") }
 
     var body: some View {
         LAAWrapRow {
-            if let harness {
-                Menu { harnessMenu() } label: { LAAHarnessCapsule(harness: harness, current: current) }
-                    .menuStyle(.button)
-                    .buttonStyle(.plain)
-                    .fixedSize()
-                    .accessibilityLabel(Text(verbatim: "実行基盤"))
-                    .accessibilityValue(Text(verbatim: harness.name))
-                    .accessibilityHint(Text(verbatim: harnessHint))
-                    .accessibilityIdentifier(identifier + ".harness")
-            }
             Menu { modelMenu() } label: {
                 LAAModelCapsule(model: model, provider: provider, name: name, current: current,
-                                attention: attention, changing: changingModel,
-                                showsFace: !(harness?.sharesMark(model: model, provider: provider) ?? false),
+                                attention: attention, changing: changingModel, harness: harness,
                                 placeholder: placeholder)
             }
             .menuStyle(.button)
             .buttonStyle(.plain)
-            .accessibilityLabel(Text(verbatim: "モデル"))
-            .accessibilityValue(Text(verbatim: modelText + (modelValueSuffix ?? "")))
+            .accessibilityLabel(Text(verbatim: "Model"))
+            .accessibilityValue(Text(verbatim: spokenModel))
             .accessibilityHint(Text(verbatim: modelHint))
             .accessibilityIdentifier(identifier + ".model")
 
-            Menu { effortMenu() } label: {
+            if effortFixed {
                 LAAEffortCapsule(effort: effort, current: current, changing: changingEffort,
-                                 tone: LAAModelRank.of(model).tone, placeholder: placeholder)
+                                 tone: LAAModelRank.of(model).tone, placeholder: placeholder, chevron: false)
+                    .fixedSize()
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(Text(verbatim: "Effort"))
+                    .accessibilityValue(Text(verbatim: effortText))
+                    .accessibilityIdentifier(identifier + ".effort")
+            } else {
+                Menu { effortMenu() } label: {
+                    LAAEffortCapsule(effort: effort, current: current, changing: changingEffort,
+                                     tone: LAAModelRank.of(model).tone, placeholder: placeholder)
+                }
+                .menuStyle(.button)
+                .buttonStyle(.plain)
+                .fixedSize()
+                .accessibilityLabel(Text(verbatim: "Effort"))
+                .accessibilityValue(Text(verbatim: effortText))
+                .accessibilityHint(Text(verbatim: effortHint))
+                .accessibilityIdentifier(identifier + ".effort")
             }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .fixedSize()
-            .accessibilityLabel(Text(verbatim: "推論"))
-            .accessibilityValue(Text(verbatim: effortText))
-            .accessibilityHint(Text(verbatim: effortHint))
-            .accessibilityIdentifier(identifier + ".effort")
         }
     }
 }
 
-extension LAAModelEffortPickers where HarnessMenu == EmptyView {
-    /// The pair without a harness capsule (the task form, a project's default).
-    init(model: String?, provider: String?, effort: String?, name: String? = nil, current: Bool = true,
-         attention: Bool = false, changingModel: Bool = false, changingEffort: Bool = false, identifier: String,
-         modelValueSuffix: String? = nil, modelHint: String = "モデルを変更", effortHint: String = "推論の強さを変更",
-         placeholder: String? = nil,
-         @ViewBuilder modelMenu: @escaping () -> ModelMenu,
-         @ViewBuilder effortMenu: @escaping () -> EffortMenu) {
-        self.init(harness: nil, model: model, provider: provider, effort: effort, name: name, current: current,
-                  attention: attention, changingModel: changingModel, changingEffort: changingEffort,
-                  identifier: identifier, modelValueSuffix: modelValueSuffix, modelHint: modelHint,
-                  effortHint: effortHint, placeholder: placeholder, harnessMenu: { EmptyView() }, modelMenu: modelMenu, effortMenu: effortMenu)
+extension LAAModelEffortPickers where EffortMenu == EmptyView {
+    /// A model whose one effort needs no menu.
+    init(harness: LAAHarness? = nil, model: String?, provider: String?, effort: String?, name: String? = nil,
+         current: Bool = true, identifier: String, @ViewBuilder modelMenu: @escaping () -> ModelMenu) {
+        self.init(harness: harness, model: model, provider: provider, effort: effort, name: name, current: current,
+                  effortFixed: true, identifier: identifier, modelMenu: modelMenu, effortMenu: { EmptyView() })
     }
 }
 
-/// The harness capsule: the harness's own mark and chevron, the same 36pt
-/// glass as the model and effort beside it, so the three read as one row of
-/// one control. The phone shows the mark alone (the name is in the menu and
-/// read aloud) so the row keeps one line with every model name whole; the
-/// Mac, with room, adds the name. Plain glass: the marble finish stays the
-/// model's and the effort's (tokens.json appSelection).
-struct LAAHarnessCapsule: View {
+/// A harness's heading inside a model menu: its mark and its name (D-21
+/// E2), a disabled first row of the harness's section. A menu draws only
+/// text and plain images, so the mark is rendered once into an image at its
+/// original colours (LAAHarnessMark.menuImage).
+struct LAAHarnessHeading: View {
     let harness: LAAHarness
-    var current = true
-
-    #if targetEnvironment(macCatalyst)
-    static let showsName = true
-    #else
-    static let showsName = false
-    #endif
+    var suffix: String? = nil
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        if Self.showsName { named } else { round }
-    }
-
-    /// The phone: the mark alone in a round glass button the size of the
-    /// composer's icon buttons, so the row keeps room for the model and the
-    /// effort (the menu's own title names the harness).
-    private var round: some View {
-        LAAHarnessMark(harness: harness, size: 18)
-            .opacity(current ? 1 : 0.6)
-            .frame(width: LAAPickerMetrics.height, height: LAAPickerMetrics.height)
-            .contentShape(Circle())
-            .laaGlassSelection(step: .plain, tone: .stone, seed: 0, motion: .frozen(elapsed: nil, light: nil),
-                               cornerRadius: LAAPickerMetrics.radius)
-    }
-
-    /// The Mac: the mark, the harness's name and the menu's chevron.
-    private var named: some View {
-        HStack(spacing: 6) {
-            LAAHarnessMark(harness: harness, size: 18)
-            Text(verbatim: harness.name)
-                .foregroundStyle(LAAColor.text)
-                .fontWeight(.semibold)
-                .lineLimit(1)
-            LAAPickerMetrics.chevronView()
+        Button {} label: {
+            Label {
+                Text(verbatim: harness.name + (suffix ?? ""))
+            } icon: {
+                LAAHarnessMark.menuImage(harness, dark: scheme == .dark)
+            }
         }
-        .fixedSize()
-        .laaTextStyle(.secondary)
-        .opacity(current ? 1 : 0.6)
-        .padding(.leading, (LAAPickerMetrics.height - 18) / 2).padding(.trailing, LAASpacing.x3)
-        .frame(minHeight: LAAPickerMetrics.height)
-        .contentShape(RoundedRectangle(cornerRadius: LAAPickerMetrics.radius, style: .continuous))
-        .laaGlassSelection(step: .plain, tone: .stone, seed: 0, motion: .frozen(elapsed: nil, light: nil),
-                           cornerRadius: LAAPickerMetrics.radius)
+        .disabled(true)
+        .accessibilityAddTraits(.isHeader)
     }
 }
 
@@ -219,9 +190,10 @@ struct LAAModelCapsule: View {
     var current = true
     var attention = false
     var changing = false
-    /// Off when the harness capsule beside it already shows the same maker's
-    /// mark (Claude Code running Claude, Codex running GPT): one mark, not two.
-    var showsFace = true
+    /// The harness the model runs on; its mark leads the capsule in place of
+    /// the maker's face (D-21 E3). Nil: no mark.
+    var harness: LAAHarness? = nil
+    private var showsFace: Bool { harness != nil }
     /// In place of 不明 (LAAModelEffortPickers.placeholder).
     var placeholder: String? = nil
 
@@ -279,7 +251,7 @@ struct LAAModelCapsule: View {
         // The whole name on one line; only a row narrower than the name
         // itself (never at the phone's width) wraps it at a space, never "…".
         HStack(spacing: 6) {
-            if showsFace { LAAModelMark(model: model, provider: provider, size: 22) }
+            if let harness { LAAHarnessMark(harness: harness, size: 22) }
             if changing { Text(verbatim: "変更中").font(.caption).foregroundStyle(LAAColor.text).fixedSize() }
             if attention {
                 // ▲ is the house mark for "check this".
@@ -375,6 +347,8 @@ struct LAAEffortCapsule: View {
     var tone: LAAVeinTone = .stone
     /// In place of 不明 (LAAModelEffortPickers.placeholder).
     var placeholder: String? = nil
+    /// False for a fixed effort shown as a value (no menu behind it).
+    var chevron = true
     @State private var start: Date?
 
     static func text(effort: String?, current: Bool, placeholder: String? = nil) -> String {
@@ -412,7 +386,7 @@ struct LAAEffortCapsule: View {
             } else {
                 Text(verbatim: placeholder ?? LAAModelCapsule.unknown).foregroundStyle(LAAColor.secondaryText)
             }
-            LAAPickerMetrics.chevronView()
+            if chevron { LAAPickerMetrics.chevronView() }
         }
         .lineLimit(1).fixedSize()
         .laaTextStyle(.secondary).foregroundStyle(LAAColor.text)

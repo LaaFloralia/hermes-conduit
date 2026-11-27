@@ -92,12 +92,50 @@ final class LAAHarnessSelectionTests: XCTestCase {
         XCTAssertEqual(LAAHarness.work("dsh-refuseless")?.kind, .dsh)
         XCTAssertEqual(LAAHarness.work("echo")?.kind, .echo)
         XCTAssertNil(LAAHarness.work(nil))
-        // One mark, not two: the model capsule drops its face only beside its own maker's harness.
-        XCTAssertTrue(LAAHarness.work("claude")!.sharesMark(model: "claude-opus-5-5", provider: "claude"))
-        XCTAssertFalse(LAAHarness.work("pi")!.sharesMark(model: "gpt-6.2-sol", provider: "codex"))
-        XCTAssertFalse(LAAHarness.work("antigravity")!.sharesMark(model: "gemini-4-neon", provider: "antigravity"))
+        // DSH runs as separate harnesses (D-33): a `dsh` session is the Orchestrator.
+        XCTAssertEqual(LAAHarness.work("dsh")?.kind, .dshOrchestrator)
+        XCTAssertEqual(LAAHarness.work("dsh-orchestrator")?.name, "DSH Orchestrator")
+        XCTAssertEqual(LAAHarness.work("dsh-worker")?.name, "DSH Worker")
+        XCTAssertEqual(LAAHarness.work("hermes")?.kind, .hermes)
+        XCTAssertEqual(Set(["dsh-orchestrator", "dsh-worker", "dsh-refuseless"].compactMap { LAAHarness.work($0)?.id }).count, 3)
+        XCTAssertEqual(LAAHarness(kind: .dsh, raw: "dsh-worker", title: "DSH Worker").name, "DSH Worker")
         XCTAssertTrue(LAAHarness.metered(workProvider: "claude-api"))
         XCTAssertFalse(LAAHarness.metered(workProvider: "claude"))
+    }
+
+    /// D-23's picker: the Bridge names the harnesses and places each model,
+    /// so DSH's Orchestrator and Worker are two sections over the same
+    /// profiles, in the table's order, and Refuseless a third.
+    func testPickerSectionsFollowTheBridgeTable() throws {
+        let json = #"""
+        {"profiles":[
+          {"id":"opus-medium","label":"Claude Opus 5.5","provider":"claude","model":"claude-opus-5-5","effort":"medium","fast":true},
+          {"id":"deepseek-flash-high","label":"DeepSeek V4.1 Flash","provider":"dsh","model":"[\"opencode-go\",\"deepseek-v4.1-flash\"]","effort":"high","fast":false},
+          {"id":"deepseek-flash-max","label":"DeepSeek V4.1 Flash","provider":"dsh","model":"[\"opencode-go\",\"deepseek-v4.1-flash\"]","effort":"max","fast":false},
+          {"id":"deepseek-uncensored-high","label":"DeepSeek","provider":"dsh-refuseless","model":"[\"refuseless\",\"x\"]","effort":"high","fast":false,"metered":true}],
+         "defaultProfile":"opus-medium","defaultMode":"bypass",
+         "harnesses":[{"id":"claude","name":"Claude Code","order":1},{"id":"dsh-orchestrator","name":"DSH Orchestrator","order":5},
+                      {"id":"dsh-worker","name":"DSH Worker","order":6},{"id":"dsh-refuseless","name":"Refuseless","order":7}],
+         "models":[{"harnessId":"claude","provider":"claude","model":"claude-opus-5-5","efforts":["medium"],"defaultEffort":"medium","profiles":["opus-medium"],"surfaces":["session","chat"]},
+                   {"harnessId":"dsh-orchestrator","provider":"dsh","model":"[\"opencode-go\",\"deepseek-v4.1-flash\"]","efforts":["high","max"],"defaultEffort":"high","profiles":["deepseek-flash-high","deepseek-flash-max"],"surfaces":["session"]},
+                   {"harnessId":"dsh-worker","provider":"dsh","model":"[\"opencode-go\",\"deepseek-v4.1-flash\"]","efforts":["high","max"],"defaultEffort":"high","profiles":["deepseek-flash-high","deepseek-flash-max"],"surfaces":["session"]},
+                   {"harnessId":"dsh-refuseless","provider":"dsh-refuseless","model":"[\"refuseless\",\"x\"]","efforts":["high"],"defaultEffort":"high","profiles":["deepseek-uncensored-high"],"surfaces":["session"]}],
+         "chat":{"models":[{"chatModel":"claude-opus-5-5","efforts":["medium"]}]}}
+        """#
+        let options = try JSONDecoder().decode(LAAWorkSessionOptions.self, from: Data(json.utf8))
+        let groups = LAAWorkModelSelection.harnesses(LAAWorkModelSelection.models(options), picker: options)
+        XCTAssertEqual(groups.map(\.harness.name), ["Claude Code", "DSH Orchestrator", "DSH Worker", "Refuseless"])
+        XCTAssertEqual(groups.map(\.harness.kind), [.claudeCode, .dshOrchestrator, .dsh, .dsh])
+        XCTAssertEqual(Set(groups.map(\.id)).count, 4)
+        // The first section holding a profile is where it runs unless picked elsewhere.
+        XCTAssertEqual(LAAWorkModelSelection.group(of: "deepseek-flash-max", fast: false, in: groups)?.harness.name, "DSH Orchestrator")
+        // The running harness leads the menu.
+        let worker = groups[2]
+        XCTAssertEqual(LAAWorkHarnessMenu.ordered(groups, current: worker).first?.harness.name, "DSH Worker")
+        // Chat's efforts come from the table (D-21 E6): Opus offers Medium alone.
+        let table = LAAChatModelAllowList(options: options)
+        XCTAssertEqual(table?.efforts(for: "claude-opus-5-5"), ["medium"])
+        XCTAssertEqual(LAAChatModelCatalog.efforts(current: "medium", model: "claude-opus-5-5", provider: "claude-subscription-directsdk-experimental", table: table), ["medium"])
     }
 
     // MARK: Chat

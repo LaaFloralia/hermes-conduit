@@ -70,7 +70,7 @@ struct LAAWorkMessageRow: View {
                 // Every reply names its model, the in-between progress notes
                 // too (owner, 2026-11-12): a run does not fold the header.
                 LAATranscriptAgentTurn(name: agentName, continues: false, timestamp: message.timestamp) {
-                    LAAModelMark(model: model?.model, provider: model?.provider, size: LAATranscriptMetrics.avatar)
+                    LAAHarnessMark(harness: LAAHarness.work(model?.provider), size: LAATranscriptMetrics.avatar)
                 } content: {
                     VStack(alignment: .leading, spacing: 0) {
                         content
