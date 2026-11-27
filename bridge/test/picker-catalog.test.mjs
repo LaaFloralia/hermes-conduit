@@ -7,7 +7,7 @@ import { IDEMPOTENCY_RETENTION_MS, PAIRING_TTL_MS } from '../src/config.mjs';
 import { createBridge } from '../src/http.mjs';
 import { laneClient } from '../src/lane/client.mjs';
 import { issuePairing } from '../src/pairing.mjs';
-import { sessionOptionsFrom } from '../src/sessions/options.mjs';
+import { sessionOptionsFrom, sessionOptionsReader } from '../src/sessions/options.mjs';
 import { createStore } from '../src/store.mjs';
 import { startBridge } from './helpers.mjs';
 
@@ -225,6 +225,10 @@ test('Bridge create uses Opus Medium only without a pin and still accepts the cu
     { profile: 'opus-medium', mode: 'bypass', fast: undefined }, { profile: 'opus-medium', mode: 'bypass', fast: undefined },
     { profile: 'opus-xhigh', mode: 'bypass', fast: undefined }, { profile: 'sol-high', mode: 'bypass', fast: true },
   ]);
+  const retained = sessionOptionsReader({ file: modelsFile }).retainedProfile;
+  assert.equal(retained('old-sol'), null);
+  assert.equal(retained('old-sol', { savedPin: true }).model, 'gpt-6.1-sol');
+  assert.equal(retained('sol-high').model, sol);
   const movedDefault = structuredClone(current);
   movedDefault.picker.defaultProfile = 'sol-medium';
   writeFileSync(modelsFile, JSON.stringify(movedDefault));

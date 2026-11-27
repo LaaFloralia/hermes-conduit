@@ -180,7 +180,7 @@ export function createSessionService({
       const pin = parseProfile(projectPin);
       const available = launchChoices();
       if (!(available.switchProfiles ?? available.profiles).some((item) => item.id === pin)) {
-        retained = choices.retainedProfile?.(pin);
+        retained = choices.retainedProfile?.(pin, { savedPin: true });
         if (!retained) throw conflict('project_default_unavailable', 'the project model is no longer offered; choose another model');
       }
     }
