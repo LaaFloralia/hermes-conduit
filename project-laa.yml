@@ -65,7 +65,7 @@ targets:
         # the Mac SDK version as the test bundle's minimum macOS version.
         "MACOSX_DEPLOYMENT_TARGET[sdk=macosx*]": "14.0"
         # A Catalyst app has the macOS bundle layout, unlike the iOS host.
-        "TEST_HOST[sdk=macosx*]": "$(BUILT_PRODUCTS_DIR)/Conduit.app/Contents/MacOS/Conduit"
+        "TEST_HOST[sdk=macosx*]": "$(BUILT_PRODUCTS_DIR)/Hortensia.app/Contents/MacOS/Hortensia"
   ConduitUITests:
     settings:
       base:
@@ -75,6 +75,8 @@ targets:
         SUPPORTS_MACCATALYST: YES
         "MACOSX_DEPLOYMENT_TARGET[sdk=macosx*]": "14.0"
   Conduit:
+    # D-35: the product file xcodegen references; matches PRODUCT_NAME below.
+    productName: Hortensia
     sources:
       - path: assets/laa/LAAOpenSourceNotices.txt
         buildPhase: resources
@@ -89,7 +91,7 @@ targets:
     # the LAA team; the Location Push extension is not among them.
     dependencies:REPLACE:
       - package: WebRTC
-      # LAA Kit (Vendor/LAAKit, pinned kit-v0.1.0 snapshot; Vendor/laa-kit.pin.json).
+      # LAA Kit (Vendor/LAAKit, pinned kit-v0.5.0 snapshot; Vendor/laa-kit.pin.json).
       - package: LAAKit
         product: LAAKit
       - package: LAAKit
@@ -103,10 +105,14 @@ targets:
         platformFilter: iOS
     settings:
       base:
+        # D-35: the executable and bundle wrapper say Hortensia; the Swift module keeps
+        # its upstream name so archived class names, principal classes and imports hold.
+        PRODUCT_NAME: Hortensia
+        PRODUCT_MODULE_NAME: Conduit
         PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa
         SUPPORTS_MACCATALYST: YES
         DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: NO
-        "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": scripts/laa/entitlements/Conduit-mac.entitlements
+        "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": scripts/laa/entitlements/Hortensia-mac.entitlements
         "ENABLE_HARDENED_RUNTIME[sdk=macosx*]": YES
         "REGISTER_APP_GROUPS[sdk=macosx*]": YES
         # The LAA icon (design, on master): Conduit/Resources/AppIcon-LAA.icon,
@@ -123,7 +129,7 @@ targets:
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD"
         # App Intents reads this before post-build resource branding.
         INFOPLIST_FILE: ".build/laa-info/$(PLATFORM_NAME)-$(CONFIGURATION)/Info.plist"
-        CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/Conduit.entitlements
+        CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/Hortensia.entitlements
         # Automatic signing: a named profile would be the App Store app's.
         PROVISIONING_PROFILE_SPECIFIER: ""
         # Automatic signing chooses the profile; the identity has to be the
@@ -152,6 +158,8 @@ targets:
           python3 "$SRCROOT/scripts/laa/brand-bundle.py" --bundle "$TARGET_BUILD_DIR/$WRAPPER_NAME" --kind app --source "$SRCROOT" \
             --name "${CONDUIT_DISPLAY_NAME:-Hortensia}" --bundle-name Hortensia
   ConduitWatch:
+    # D-35: the product file xcodegen references; matches PRODUCT_NAME below.
+    productName: HortensiaWatch
     sources:
       - path: Conduit/LAA/Staff/StaffAssets.swift
       # Monet's state from the iPhone's application context (HO-06).
@@ -168,11 +176,15 @@ targets:
         buildPhase: resources
     settings:
       base:
+        # D-35: the executable and bundle wrapper say HortensiaWatch; the Swift module keeps
+        # its upstream name so archived class names, principal classes and imports hold.
+        PRODUCT_NAME: HortensiaWatch
+        PRODUCT_MODULE_NAME: ConduitWatch
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD"
         ASSETCATALOG_COMPILER_APPICON_NAME: WatchAppIcon-LAA
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: LAAAccent
         PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa.watchkitapp
-        CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/ConduitWatch.entitlements
+        CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/HortensiaWatch.entitlements
         PROVISIONING_PROFILE_SPECIFIER: ""
         CODE_SIGN_IDENTITY: "Apple Development"
         # Written by the script below from upstream's ConduitWatch/Info.plist.
@@ -208,6 +220,8 @@ targets:
         script: |
           python3 "$SRCROOT/scripts/laa/brand-bundle.py" --bundle "$TARGET_BUILD_DIR/$WRAPPER_NAME" --kind watch --source "$SRCROOT"
   ConduitWatchWidgets:
+    # D-35: the product file xcodegen references; matches PRODUCT_NAME below.
+    productName: HortensiaWatchWidgets
     sources:
       - path: assets/laa/LAAAccent.xcassets
         buildPhase: resources
@@ -216,6 +230,10 @@ targets:
       - path: ConduitWatch/LAA/LAAWatchMonetIntent.swift
     settings:
       base:
+        # D-35: the executable and bundle wrapper say HortensiaWatchWidgets; the Swift module keeps
+        # its upstream name so archived class names, principal classes and imports hold.
+        PRODUCT_NAME: HortensiaWatchWidgets
+        PRODUCT_MODULE_NAME: ConduitWatchWidgets
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: LAAAccent
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD"
         PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa.watchkitapp.widgets
@@ -233,19 +251,25 @@ targets:
         script: |
           python3 "$SRCROOT/scripts/laa/brand-bundle.py" --bundle "$TARGET_BUILD_DIR/$WRAPPER_NAME" --kind watch-widget --source "$SRCROOT"
   ConduitNotificationService:
+    # D-35: the product file xcodegen references; matches PRODUCT_NAME below.
+    productName: HortensiaNotificationService
     sources:
       # The staff list the mascot attachment picks from (HO-08).
       - path: Conduit/LAA/Staff/StaffAssets.swift
     settings:
       base:
+        # D-35: the executable and bundle wrapper say HortensiaNotificationService; the Swift module keeps
+        # its upstream name so archived class names, principal classes and imports hold.
+        PRODUCT_NAME: HortensiaNotificationService
+        PRODUCT_MODULE_NAME: ConduitNotificationService
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD"
         PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa.NotificationService
         SUPPORTS_MACCATALYST: YES
         DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: NO
-        "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": scripts/laa/entitlements/ConduitNotificationService-mac.entitlements
+        "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": scripts/laa/entitlements/HortensiaNotificationService-mac.entitlements
         "ENABLE_HARDENED_RUNTIME[sdk=macosx*]": YES
         "REGISTER_APP_GROUPS[sdk=macosx*]": YES
-        CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/ConduitNotificationService.entitlements
+        CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/HortensiaNotificationService.entitlements
         PROVISIONING_PROFILE_SPECIFIER: ""
         CODE_SIGN_IDENTITY: "Apple Development"
     postBuildScripts:
@@ -261,6 +285,8 @@ targets:
         script: |
           python3 "$SRCROOT/scripts/laa/brand-bundle.py" --bundle "$TARGET_BUILD_DIR/$WRAPPER_NAME" --kind notification --source "$SRCROOT"
   ConduitWidgets:
+    # D-35: the product file xcodegen references; matches PRODUCT_NAME below.
+    productName: HortensiaWidgets
     dependencies:
       - package: LAAKit
         product: LAAKit
@@ -280,11 +306,15 @@ targets:
       - path: Conduit/LAA/LAATab.swift
     settings:
       base:
+        # D-35: the executable and bundle wrapper say HortensiaWidgets; the Swift module keeps
+        # its upstream name so archived class names, principal classes and imports hold.
+        PRODUCT_NAME: HortensiaWidgets
+        PRODUCT_MODULE_NAME: ConduitWidgets
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: LAAAccent
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD LAA_WIDGET_EXTENSION"
         INFOPLIST_FILE: scripts/laa/Widget-Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa.widgets
-        CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/ConduitWidgets.entitlements
+        CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/HortensiaWidgets.entitlements
         PROVISIONING_PROFILE_SPECIFIER: ""
         CODE_SIGN_IDENTITY: "Apple Development"
     postBuildScripts:
@@ -294,6 +324,8 @@ targets:
         script: |
           python3 "$SRCROOT/scripts/laa/brand-bundle.py" --bundle "$TARGET_BUILD_DIR/$WRAPPER_NAME" --kind widgets --source "$SRCROOT"
   ConduitShareExtension:
+    # D-35: the product file xcodegen references; matches PRODUCT_NAME below.
+    productName: HortensiaShareExtension
     dependencies:
       - package: LAAKit
         product: LAAKit
@@ -306,10 +338,14 @@ targets:
       - path: Conduit/LAA/LAAColors.swift
     settings:
       base:
+        # D-35: the executable and bundle wrapper say HortensiaShareExtension; the Swift module keeps
+        # its upstream name so archived class names, principal classes and imports hold.
+        PRODUCT_NAME: HortensiaShareExtension
+        PRODUCT_MODULE_NAME: ConduitShareExtension
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: LAAAccent
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD"
         PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa.ShareExtension
-        CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/ConduitShareExtension.entitlements
+        CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/HortensiaShareExtension.entitlements
         PROVISIONING_PROFILE_SPECIFIER: ""
         CODE_SIGN_IDENTITY: "Apple Development"
     postBuildScripts:

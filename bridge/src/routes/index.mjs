@@ -49,6 +49,9 @@ import { createDecisionStore } from '../decisions/store.mjs';
 import { createDecisionService, isWaiting, mayDeliverDecisionNotice, onDecisionBoard } from '../decisions/service.mjs';
 import { createDecisionBadgePublisher } from '../decisions/badge.mjs';
 import { createDecisionRoutes } from './decisions.mjs';
+import { createFindingStore } from '../findings/store.mjs';
+import { createFindingService } from '../findings/service.mjs';
+import { createFindingRoutes } from './findings.mjs';
 import { monetRoutes, resolveMonetTrigger } from './monet.mjs';
 import { createCompletionReporter } from '../notify/completion-report.mjs';
 import { createRefService } from '../refs/service.mjs';
@@ -131,6 +134,20 @@ export function businessRoutes({ store, now = () => Date.now(), options = {}, la
     .filter((d) => onDecisionBoard(d, now()))
     .map((d) => ({ key: d.id, title: d.title, createdAt: d.createdAt, external: { sessionId: d.source?.sessionId ?? null } })));
 
+  const findingStore = createFindingStore({ dir: store.dir, now });
+  const findings = createFindingService({ store: findingStore, refFor: refs.refFor, observe: refs.observe });
+  if (sessionOptions.live || lane) {
+    const periodically = (fn, interval) => {
+      const tick = () => { try { fn(); } catch { /* A later pass retries local maintenance. */ } };
+      tick();
+      const timer = setInterval(tick, interval);
+      timer.unref();
+      sessionOptions.registerCleanup?.(() => clearInterval(timer));
+    };
+    periodically(findings.reconcile, 1000);
+    periodically(findingStore.sweep, 60_000);
+  }
+
   if (!sessionOptions.service && sessionOptions.live) {
     if (badgePublisher) {
       const stopBadges = badgePublisher.start();
@@ -201,6 +218,7 @@ export function businessRoutes({ store, now = () => Date.now(), options = {}, la
     ...monetRoutes({ reporter: report, tokenHash: reportOptions.tokenHash ?? (liveReports ? process.env.LAA_BRIDGE_MONET_TOKEN_SHA256 : null) }),
     ...notificationRoutes({ file: `${store.dir}/notification-preferences.json`, now }),
     ...createDecisionRoutes({ service: decisions }),
+    ...createFindingRoutes({ service: findings }),
     ...(!lane ? [
       ...taskRoutes({ ...(options.tasks ?? {}), now }),
       ...linearOwnerTaskRoutes({ ...linearOptions, source: linearTasks, dispatch: taskDispatch, refs }),

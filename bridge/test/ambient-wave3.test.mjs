@@ -153,7 +153,7 @@ test('C-5: agent fields reject English and handoffs; owner text remains verbatim
   const sessionStore = createSessionStore({ file: join(h.stateDir, 'lint-sessions.json') });
   const service = createSessionService({ sessionStore, daemon: fixtureDaemon([]), daemonMode: false, adapter: {}, notify: noop });
   const raw = 'RESULT: internal\n\nRaw assistant text — keep UTF-8\n';
-  await assert.rejects(service.createSession({ deviceId: 'automation', body: { requestId: 'agent-lint', profile: 'opus-high', name: 'Agent title', prompt: raw }, owner: false }), { code: 'owner_surface_language', status: 422 });
+  await assert.rejects(service.createSession({ deviceId: 'automation', body: { requestId: 'agent-lint', profile: 'opus-medium', name: 'Agent title', prompt: raw }, owner: false }), { code: 'owner_surface_language', status: 422 });
   const history = await readConversation('lang-test-agent', async () => ({
     fetchAgentTimeline: async (agentId) => ({ agentId, entries: [{ item: { type: 'assistant_message', text: raw } }] }),
     close: async () => {},

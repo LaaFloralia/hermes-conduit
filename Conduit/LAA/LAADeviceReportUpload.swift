@@ -3,7 +3,7 @@ import Foundation
 import os
 import UIKit
 
-private let deviceReportLog = Logger(subsystem: "com.laa.conduit", category: "DeviceReports")
+private let deviceReportLog = Logger(subsystem: "com.laa.hortensia", category: "DeviceReports")
 
 /// Sends the MetricKit reports this device keeps (crashes with their call
 /// stacks, hangs, slow launches, and each day's exit reasons) to the paired Mac's Bridge

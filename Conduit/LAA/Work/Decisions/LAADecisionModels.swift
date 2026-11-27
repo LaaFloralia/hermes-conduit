@@ -224,7 +224,8 @@ struct LAADecision: Codable, Identifiable, Equatable {
 enum LAADecisionSettled {
     static let window: TimeInterval = 24 * 60 * 60
     static let expandedByDefault = false
-    static let title = "回答済み"
+    /// The same English label as the board's other section (batch3, work-good).
+    static var title: String { LAADecisionCopy.answeredSection }
     static let monetMark = "Monetの回答"
     static let overturnedMark = "社長が変更"
 
@@ -307,6 +308,9 @@ enum LAADecisionDeadline {
 }
 
 enum LAADecisionCopy {
+    /// Section labels, in English like the sibling Work lists (Active, Recent).
+    static let openSection = "Open"
+    static let answeredSection = "Answered"
     static let recommended = "推奨"
     static let otherTitle = "選択肢以外で答える"
     static let notDelivered = "届いていません"

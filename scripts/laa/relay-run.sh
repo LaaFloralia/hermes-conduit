@@ -10,9 +10,9 @@
 #
 # Environment:
 #   LAA_RELAY_TEMPLATE    the 1Password template (default
-#                         ~/.config/laa/conduit-relay-laa.env.tpl)
+#                         ~/.config/laa/hortensia-relay.env.tpl)
 #   LAA_RELAY_HOME        the installed app and its data
-#                         (default ~/.local/share/laa-conduit-relay-laa)
+#                         (default ~/.local/share/laa-hortensia-relay)
 #   LAA_RELAY_PORT        default 9120
 #   LAA_RELAY_PUBLIC_URL  required; set by the installer in the LaunchAgent
 #   LAA_RELAY_TEAM_ID     default PAW258GB42
@@ -24,8 +24,10 @@ set +x
 # launchd starts this with almost no PATH; op and node live in Homebrew's bin.
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
-template="${LAA_RELAY_TEMPLATE:-$HOME/.config/laa/conduit-relay-laa.env.tpl}"
-install_dir="${LAA_RELAY_HOME:-$HOME/.local/share/laa-conduit-relay-laa}"
+# D-35 renamed the template; an older Mac still has the conduit-relay-laa one.
+template="${LAA_RELAY_TEMPLATE:-$HOME/.config/laa/hortensia-relay.env.tpl}"
+[ -n "${LAA_RELAY_TEMPLATE:-}" ] || [ -f "$template" ] || template="$HOME/.config/laa/conduit-relay-laa.env.tpl"
+install_dir="${LAA_RELAY_HOME:-$HOME/.local/share/laa-hortensia-relay}"
 secrets_root="$HOME/.config/laa/tmp-secrets"
 
 # The first run has no credentials: 1Password injects them and this script

@@ -17,7 +17,7 @@ import { createRefService } from '../src/refs/service.mjs';
 const ID = '00000000-0000-4000-8000-000000000001';
 const OTHER = '00000000-0000-4000-8000-000000000002';
 const CHILD = 'ses_1234567890abcdef';
-const options = { profiles: [{ id: 'opus-high', label: 'Opus 5.5', effort: 'high' }, { id: 'sol-high', label: 'GPT Sol', effort: 'high' }] };
+const options = { profiles: [{ id: 'opus-medium', label: 'Opus 5.5', effort: 'medium' }, { id: 'sol-medium', label: 'GPT Sol', effort: 'medium' }] };
 const staff = { kind: 'staff', staff: 'monet', name: 'Monet' };
 const sha = (v) => createHash('sha256').update(v).digest('hex');
 
@@ -54,7 +54,7 @@ function fixture(t) {
       if (prior) assert.deepEqual(input, prior.input);
       else agents.set(input.requestId, { input, sessionId: 'agent-root' });
       if (f.unknownOutcomes-- > 0) throw new BridgeError(409, 'creation_outcome_unknown', 'unknown', { retryable: true });
-      return { sessionId: 'agent-root', requested: { profile: input.profile, provider: 'claude', model: 'opus', effort: 'high' } };
+      return { sessionId: 'agent-root', requested: { profile: input.profile, provider: 'claude', model: 'opus', effort: 'medium' } };
     },
     async status() { return { phase: 'awaiting_review', daemonStatus: 'idle', pending: [] }; },
   };
@@ -70,7 +70,7 @@ function fixture(t) {
   const service = createTaskDispatchService({ store, tasks, sessions, sessionStore, decisionStore, refs,
     sessionOptions: () => profiles, now, cleanup() { f.cleanupCount += 1; fail('cleanup'); }, log() {} });
   return Object.assign(f, { tasks, service, sessions, agents,
-    record(assignee = staff) { refs.assign('task', ID, tasksById.get(ID).title, { linear: 'BUS-401' }); return service.accept({ task: tasksById.get(ID), deviceId: 'device-test', assignee, profile: assignee.kind === 'owner' ? null : 'opus-high' }); },
+    record(assignee = staff) { refs.assign('task', ID, tasksById.get(ID).title, { linear: 'BUS-401' }); return service.accept({ task: tasksById.get(ID), deviceId: 'device-test', assignee, profile: assignee.kind === 'owner' ? null : 'opus-medium' }); },
     complete(overrides = {}) { return service.complete({ id: ID, deviceId: 'device-test', key: 'complete-1', expected: '2026-11-09T10:00:00.000Z', ...overrides }); },
     child() { const root = store.get(ID).sessionId; sessionStore.create({ record: { id: CHILD, parentId: root, delegate: { sessionId: 'agent-child' }, name: '子｜確認', phase: 'awaiting_review', favorite: false, archivedAt: null, createdAt: stamp(), updatedAt: stamp() } }); return CHILD; },
     decision(source = {}) { return decisionStore.add({ title: '選択', summary: '必要な判断', impact: '【必ず社長：ブランドの好み】', options: [{ label: '進む' }, { label: '保留' }], requestId: `decision-${decisionStore.all().length}`, source }).decision; },
@@ -101,8 +101,8 @@ test('malformed JSON and invalid execution records fail closed without replacing
 
 test('only listed employees and selectable profiles are accepted', () => {
   assert.deepEqual(taskAssignee({}, options), { assignee: { kind: 'owner' }, profile: null });
-  for (const [id, who] of Object.entries(TASK_STAFF)) assert.deepEqual(taskAssignee({ assignee: { kind: 'staff', staff: id }, profile: 'opus-high' }, options).assignee, { kind: 'staff', staff: id, name: who.name });
-  for (const body of [{ assignee: null }, { assignee: { kind: 'staff', staff: 'unknown' }, profile: 'opus-high' }, { assignee: { kind: 'staff', staff: 'monet' } },
+  for (const [id, who] of Object.entries(TASK_STAFF)) assert.deepEqual(taskAssignee({ assignee: { kind: 'staff', staff: id }, profile: 'opus-medium' }, options).assignee, { kind: 'staff', staff: id, name: who.name });
+  for (const body of [{ assignee: null }, { assignee: { kind: 'staff', staff: 'unknown' }, profile: 'opus-medium' }, { assignee: { kind: 'staff', staff: 'monet' } },
     { assignee: { kind: 'staff', staff: 'monet' }, profile: 'alias' }, { profile: null }, { assignee: { kind: 'owner', staff: 'monet' } }]) {
     assert.throws(() => taskAssignee(body, options), { status: 400 });
   }
@@ -114,13 +114,13 @@ test('pickup creates a HOME bypass session with the fixed request and full instr
   const r = f.store.get(ID), body = f.bodies[0], actual = f.creates[0];
   assert.equal(r.phase, 'started'); assert.equal(r.attempts, 1); assert.equal(r.sessionId, f.sessions.sessionIdFor(`task-${ID}`));
   assert.equal(body.requestId, `task-${ID}`); assert.equal(body.name, '資料を直す'); assert.equal(body.workspaceId, 'home');
-  assert.equal(actual.cwd, '/Users/laa'); assert.equal(actual.mode, 'bypass'); assert.equal(actual.profile, 'opus-high');
+  assert.equal(actual.cwd, '/Users/laa'); assert.equal(actual.mode, 'bypass'); assert.equal(actual.profile, 'opus-medium');
   assert.match(body.prompt, /\/roles\/Monet\/SOUL.md/); assert.match(body.prompt, /Morgan（CFO）/); assert.match(body.prompt, /\/roles\/CFO\/SOUL.md/);
   assert.match(body.prompt, /本文を読んで更新する/); assert.match(body.prompt, /2026-11-10/); assert.match(body.purpose, /T1（BUS-401）/);
   assert.match(body.completion, new RegExp(`tasks report ${ID}`)); assert.match(body.scope, /判断ボード/); assert.match(body.scope, /アーカイブしない/);
   assert.equal(f.sessionStore.get(r.sessionId).favorite, false);
-  assert.match([...f.comments.values()][0].body, /^\[laa-bridge\] Monetが取得（S1・Morgan・Opus 5.5 · High）$/);
-  assert.equal(f.service.view(ID).sessionRef, 'S1'); assert.equal(f.service.view(ID).profileLabel, 'Opus 5.5 · High');
+  assert.match([...f.comments.values()][0].body, /^\[laa-bridge\] Monetが取得（S1・Morgan・Opus 5.5 · Medium）$/);
+  assert.equal(f.service.view(ID).sessionRef, 'S1'); assert.equal(f.service.view(ID).profileLabel, 'Opus 5.5 · Medium');
   await f.service.pickup(ID); assert.equal(f.creates.length, 1); assert.equal(f.comments.size, 1);
 });
 
@@ -159,7 +159,7 @@ test('the brief is frozen at creation, so an issue edit before the pickup never 
 
 test('a staff record without a frozen brief never launches a session', async (t) => {
   const f = fixture(t);
-  f.store.record({ task: f.tasksById.get(ID), deviceId: 'device-test', assignee: staff, profile: 'opus-high' });
+  f.store.record({ task: f.tasksById.get(ID), deviceId: 'device-test', assignee: staff, profile: 'opus-medium' });
   await f.service.pickup(ID);
   assert.equal(f.creates.length, 0); assert.equal(f.store.get(ID).phase, 'failed'); assert.equal(f.store.get(ID).lastError, 'task_brief_missing');
 });
@@ -226,7 +226,7 @@ test('complete withdraws child decisions, archives the tree, comments, sets Done
   assert.equal(f.decisionStore.get(a.id).status, 'withdrawn'); assert.equal(f.decisionStore.get(b.id).status, 'withdrawn'); assert.equal(f.decisionStore.get(unrelated.id).status, 'open');
   assert.ok(f.sessionStore.get(root).archivedAt); assert.ok(f.sessionStore.get(CHILD).archivedAt); assert.equal(f.sessionStore.get(root).favorite, false);
   assert.equal(f.refs.refFor('session', root), null); assert.equal(f.refs.refFor('session', CHILD), null); assert.equal(f.refs.refFor('task', ID), null); assert.equal(f.refs.refFor('decision', a.id), null);
-  assert.match([...f.comments.values()].find((c) => c.body.startsWith('[laa-bridge] 完了')).body, /S1・資料を直す・Monet・Opus 5.5 · High.*\n修正済み/s);
+  assert.match([...f.comments.values()].find((c) => c.body.startsWith('[laa-bridge] 完了')).body, /S1・資料を直す・Monet・Opus 5.5 · Medium.*\n修正済み/s);
   assert.equal(f.tasksById.get(ID).status, 'done'); assert.equal(f.store.get(ID).phase, 'completed'); assert.equal(f.cleanupCount, 1);
   assert.ok(f.events.indexOf('withdraw') < f.events.indexOf('archive')); assert.ok(f.events.indexOf('archive') < f.events.indexOf('comment')); assert.ok(f.events.indexOf('comment') < f.events.indexOf('done')); assert.ok(f.events.indexOf('done') < f.events.indexOf('release')); assert.ok(f.events.indexOf('release') < f.events.indexOf('cleanup'));
   f.tasksById.clear(); const replay = await f.complete(); assert.equal(replay.replayed, true); assert.equal(f.cleanupCount, 1);

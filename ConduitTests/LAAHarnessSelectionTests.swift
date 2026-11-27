@@ -99,6 +99,14 @@ final class LAAHarnessSelectionTests: XCTestCase {
         XCTAssertEqual(LAAHarness.work("dsh-worker")?.id, LAAHarness.work("dsh")?.id)
         XCTAssertNotEqual(LAAHarness.work("dsh-orchestrator")?.id, LAAHarness.work("dsh-worker")?.id)
         XCTAssertEqual(LAAHarness.work("hermes")?.kind, .hermes)
+        // D-37: Devin's own harness, and its SWE models wear the Devin mark.
+        XCTAssertEqual(LAAHarness.work("devin")?.kind, .devin)
+        XCTAssertEqual(LAAHarness.work("devin")?.name, "Devin")
+        XCTAssertEqual(LAAModelFace.face(model: "swe-2-1-medium", provider: "devin"), .devin)
+        XCTAssertEqual(LAAModelFace.face(model: "gemini-4-neon", provider: "devin"), .gemini)
+        XCTAssertEqual(LAAModelCapsule.readableName("swe-2-1-medium"), "SWE-2.1")
+        XCTAssertEqual(LAAModelCapsule.readableName("swe-2"), "SWE-2")
+        XCTAssertEqual(LAAModelDisplay.name("swe-2-1-medium"), "SWE-2.1")
         XCTAssertTrue(LAAHarness.metered(workProvider: "claude-api"))
         XCTAssertFalse(LAAHarness.metered(workProvider: "claude"))
     }

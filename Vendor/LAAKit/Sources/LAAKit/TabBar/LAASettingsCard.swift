@@ -37,7 +37,7 @@ public struct LAASettingsCardRow<Trailing: View>: View {
                 }
             }
         }
-        .frame(minHeight: LAATabBarToken.Card.row)
+        .frame(minHeight: LAAPlatform.current.canvas.rowMinHeight)
         .accessibilityElement(children: .combine)
     }
 
@@ -69,16 +69,18 @@ public struct LAASettingsCardButton: View {
     @Environment(\.dynamicTypeSize) private var typeSize
 
     public var body: some View {
-        Button(action: action) {
+        let platform = LAAPlatform.current
+        let size = platform.secondaryControl
+        return Button(action: action) {
             HStack(spacing: LAASpace.s12) {
-                LAAIconImage(icon, size: LAAIconSize.row)
+                LAAIconImage(icon, size: platform.iconControl.icon)
                     .foregroundStyle(palette.accent)
                 // Accessibility sizes: the value sits under the name instead of beside it.
                 let stack = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 0))
                                                          : AnyLayout(HStackLayout(spacing: LAASpace.s8))
                 stack {
                     Text(title)
-                        .laaFont(LAAPlatform.current.canvas.body)
+                        .laaFont(size.label)
                         .foregroundStyle(palette.text)
                         .lineLimit(2)
                     if !typeSize.isAccessibilitySize { Spacer(minLength: 0) }
@@ -92,10 +94,8 @@ public struct LAASettingsCardButton: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(minHeight: LAATabBarToken.Card.row)
-            .contentShape(Rectangle())
         }
-        .buttonStyle(LAACardRowPressStyle())
+        .buttonStyle(LAACardRowPressStyle(size: size))
     }
 }
 
@@ -167,6 +167,8 @@ public struct LAASettingsCardChoice<ID: Hashable>: View {
     }
 
     public var body: some View {
+        let platform = LAAPlatform.current
+        let size = platform.compactControl
         HStack(spacing: 0) {
             ForEach(options) { option in
                 let on = option.id == selection
@@ -177,19 +179,19 @@ public struct LAASettingsCardChoice<ID: Hashable>: View {
                     }
                 } label: {
                     Text(option.label)
-                        .laaFont(LAAPlatform.current.canvas.small, weight: on ? .semibold : .regular)
+                        .laaFont(size.label, weight: on ? .semibold : .regular)
                         .foregroundStyle(on ? palette.accent : palette.textMuted)
                         .lineLimit(1)
                         .padding(.horizontal, LAASpace.s8)
-                        .frame(minHeight: LAAControl.IPhone.compact.height)
+                        .frame(minHeight: size.height)
                         .background {
                             if on {
-                                RoundedRectangle(cornerRadius: LAARadius.selection, style: .continuous)
+                                RoundedRectangle(cornerRadius: size.radius, style: .continuous)
                                     .fill(palette.selection)
                                     .modifier(Matched(id: "choice", space: space, enabled: !reduceMotion))
                             }
                         }
-                        .frame(minHeight: LAAControl.IPhone.hitArea)
+                        .frame(minWidth: platform.controlHitArea, minHeight: platform.controlHitArea)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -203,16 +205,37 @@ public struct LAASettingsCardChoice<ID: Hashable>: View {
     }
 }
 
-struct LAACardRowPressStyle: ButtonStyle {
+private struct LAACardRowPressStyle: ButtonStyle {
+    let size: LAAControlSize
     @Environment(\.laaPalette) private var palette
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .frame(minHeight: size.height)
             .background {
-                RoundedRectangle(cornerRadius: LAARadius.selection, style: .continuous)
+                RoundedRectangle(cornerRadius: size.radius, style: .continuous)
                     .fill(palette.selection)
                     .padding(.horizontal, -LAASpace.s8)
                     .opacity(configuration.isPressed ? 1 : 0)
             }
+            .frame(minHeight: LAAPlatform.current.canvas.rowMinHeight)
+            .contentShape(Rectangle())
+    }
+}
+
+struct LAASettingsCardOwnerHeading: View {
+    let app: LAAAppIdentity
+    @Environment(\.laaPalette) private var palette
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            LAAOwnerHeader(name: app.displayedOwnerName())
+            if !app.version.isEmpty {
+                Text(verbatim: app.version)
+                    .font(.system(size: LAAPlatform.current.canvas.label).monospacedDigit())
+                    .foregroundStyle(palette.textMuted)
+                    .lineLimit(1)
+            }
+        }
     }
 }
 
@@ -241,7 +264,7 @@ public struct LAASidebarAppEntry<Card: View>: View {
                     .lineLimit(1)
                 Spacer(minLength: 0)
             }
-            .frame(minHeight: LAAPlatform.current == .mac ? LAAControl.Mac.hitArea : LAAControl.IPhone.hitArea)
+            .frame(minHeight: LAAPlatform.current.controlHitArea)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -253,14 +276,7 @@ public struct LAASidebarAppEntry<Card: View>: View {
                     LAAProfileImage(profile: app.displayedProfile(), initial: app.displayedInitial(),
                                     size: LAATabBarToken.Card.headerIcon)
                         .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(app.displayedOwnerName()).laaFont(LAAPlatform.current.canvas.heading, weight: .semibold)
-                            .foregroundStyle(palette.text)
-                        if !app.version.isEmpty {
-                            Text(app.version).font(.system(size: LAAPlatform.current.canvas.label).monospacedDigit())
-                                .foregroundStyle(palette.textMuted)
-                        }
-                    }
+                    LAASettingsCardOwnerHeading(app: app)
                 }
                 .padding(.bottom, LAASpace.s8)
                 .accessibilityElement(children: .combine)
