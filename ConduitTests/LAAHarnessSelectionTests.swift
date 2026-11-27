@@ -89,23 +89,23 @@ final class LAAHarnessSelectionTests: XCTestCase {
         XCTAssertEqual(LAAHarness.work("pi")?.kind, .pi)
         XCTAssertEqual(LAAHarness.work("claude-api")?.kind, .claudeCode)
         XCTAssertEqual(LAAHarness.work("pi-openai-api")?.kind, .pi)
-        XCTAssertEqual(LAAHarness.work("dsh-refuseless")?.kind, .dsh)
+        XCTAssertEqual(LAAHarness.work("dsh-refuseless")?.kind, .dshOrchestrator)
         XCTAssertEqual(LAAHarness.work("echo")?.kind, .echo)
         XCTAssertNil(LAAHarness.work(nil))
-        // DSH runs as separate harnesses (D-33): a `dsh` session is the Orchestrator.
-        XCTAssertEqual(LAAHarness.work("dsh")?.kind, .dshOrchestrator)
+        // DSH runs as two harnesses (D-33): Orchestrator on Refuseless, Worker on OpenCode Go.
+        XCTAssertEqual(LAAHarness.work("dsh")?.kind, .dsh)
+        XCTAssertEqual(LAAHarness.work("dsh")?.name, "DSH Worker")
         XCTAssertEqual(LAAHarness.work("dsh-orchestrator")?.name, "DSH Orchestrator")
-        XCTAssertEqual(LAAHarness.work("dsh-worker")?.name, "DSH Worker")
+        XCTAssertEqual(LAAHarness.work("dsh-worker")?.id, LAAHarness.work("dsh")?.id)
+        XCTAssertNotEqual(LAAHarness.work("dsh-orchestrator")?.id, LAAHarness.work("dsh-worker")?.id)
         XCTAssertEqual(LAAHarness.work("hermes")?.kind, .hermes)
-        XCTAssertEqual(Set(["dsh-orchestrator", "dsh-worker", "dsh-refuseless"].compactMap { LAAHarness.work($0)?.id }).count, 3)
-        XCTAssertEqual(LAAHarness(kind: .dsh, raw: "dsh-worker", title: "DSH Worker").name, "DSH Worker")
         XCTAssertTrue(LAAHarness.metered(workProvider: "claude-api"))
         XCTAssertFalse(LAAHarness.metered(workProvider: "claude"))
     }
 
-    /// D-23's picker: the Bridge names the harnesses and places each model,
-    /// so DSH's Orchestrator and Worker are two sections over the same
-    /// profiles, in the table's order, and Refuseless a third.
+    /// D-23's picker as D-33 sets it: the Bridge names the harnesses and
+    /// places each model, so DSH Orchestrator (Refuseless, uncensored) and
+    /// DSH Worker (OpenCode Go) are two sections in the table's order.
     func testPickerSectionsFollowTheBridgeTable() throws {
         let json = #"""
         {"profiles":[
@@ -115,23 +115,20 @@ final class LAAHarnessSelectionTests: XCTestCase {
           {"id":"deepseek-uncensored-high","label":"DeepSeek","provider":"dsh-refuseless","model":"[\"refuseless\",\"x\"]","effort":"high","fast":false,"metered":true}],
          "defaultProfile":"opus-medium","defaultMode":"bypass",
          "harnesses":[{"id":"claude","name":"Claude Code","order":1},{"id":"dsh-orchestrator","name":"DSH Orchestrator","order":5},
-                      {"id":"dsh-worker","name":"DSH Worker","order":6},{"id":"dsh-refuseless","name":"Refuseless","order":7}],
+                      {"id":"dsh-worker","name":"DSH Worker","order":6}],
          "models":[{"harnessId":"claude","provider":"claude","model":"claude-opus-5-5","efforts":["medium"],"defaultEffort":"medium","profiles":["opus-medium"],"surfaces":["session","chat"]},
-                   {"harnessId":"dsh-orchestrator","provider":"dsh","model":"[\"opencode-go\",\"deepseek-v4.1-flash\"]","efforts":["high","max"],"defaultEffort":"high","profiles":["deepseek-flash-high","deepseek-flash-max"],"surfaces":["session"]},
-                   {"harnessId":"dsh-worker","provider":"dsh","model":"[\"opencode-go\",\"deepseek-v4.1-flash\"]","efforts":["high","max"],"defaultEffort":"high","profiles":["deepseek-flash-high","deepseek-flash-max"],"surfaces":["session"]},
-                   {"harnessId":"dsh-refuseless","provider":"dsh-refuseless","model":"[\"refuseless\",\"x\"]","efforts":["high"],"defaultEffort":"high","profiles":["deepseek-uncensored-high"],"surfaces":["session"]}],
+                   {"harnessId":"dsh-orchestrator","provider":"dsh-refuseless","model":"[\"refuseless\",\"x\"]","efforts":["high"],"defaultEffort":"high","profiles":["deepseek-uncensored-high"],"surfaces":["session","chat"]},
+                   {"harnessId":"dsh-worker","provider":"dsh","model":"[\"opencode-go\",\"deepseek-v4.1-flash\"]","efforts":["high","max"],"defaultEffort":"high","profiles":["deepseek-flash-high","deepseek-flash-max"],"surfaces":["session","chat"]}],
          "chat":{"models":[{"chatModel":"claude-opus-5-5","efforts":["medium"]}]}}
         """#
         let options = try JSONDecoder().decode(LAAWorkSessionOptions.self, from: Data(json.utf8))
         let groups = LAAWorkModelSelection.harnesses(LAAWorkModelSelection.models(options), picker: options)
-        XCTAssertEqual(groups.map(\.harness.name), ["Claude Code", "DSH Orchestrator", "DSH Worker", "Refuseless"])
-        XCTAssertEqual(groups.map(\.harness.kind), [.claudeCode, .dshOrchestrator, .dsh, .dsh])
-        XCTAssertEqual(Set(groups.map(\.id)).count, 4)
-        // The first section holding a profile is where it runs unless picked elsewhere.
-        XCTAssertEqual(LAAWorkModelSelection.group(of: "deepseek-flash-max", fast: false, in: groups)?.harness.name, "DSH Orchestrator")
+        XCTAssertEqual(groups.map(\.harness.name), ["Claude Code", "DSH Orchestrator", "DSH Worker"])
+        XCTAssertEqual(groups.map(\.harness.kind), [.claudeCode, .dshOrchestrator, .dsh])
+        XCTAssertEqual(LAAWorkModelSelection.group(of: "deepseek-uncensored-high", fast: false, in: groups)?.harness.name, "DSH Orchestrator")
+        XCTAssertEqual(LAAWorkModelSelection.group(of: "deepseek-flash-max", fast: false, in: groups)?.harness.name, "DSH Worker")
         // The running harness leads the menu.
-        let worker = groups[2]
-        XCTAssertEqual(LAAWorkHarnessMenu.ordered(groups, current: worker).first?.harness.name, "DSH Worker")
+        XCTAssertEqual(LAAWorkHarnessMenu.ordered(groups, current: groups[2]).first?.harness.name, "DSH Worker")
         // Chat's efforts come from the table (D-21 E6): Opus offers Medium alone.
         let table = LAAChatModelAllowList(options: options)
         XCTAssertEqual(table?.efforts(for: "claude-opus-5-5"), ["medium"])
@@ -149,7 +146,7 @@ final class LAAHarnessSelectionTests: XCTestCase {
         XCTAssertEqual(LAAHarness.chat(provider: "custom:laa-agy").kind, .antigravity)
         XCTAssertEqual(LAAHarness.chat(provider: "claude-subscription-directsdk-experimental").kind, .claudeCode)
         XCTAssertEqual(LAAHarness.chat(provider: "laa-dsh").kind, .dsh)
-        XCTAssertEqual(LAAHarness.chat(provider: "laa-monet-uncensored").kind, .dsh)
+        XCTAssertEqual(LAAHarness.chat(provider: "laa-monet-uncensored").kind, .dshOrchestrator)
         XCTAssertEqual(LAAHarness.chat(provider: "openai-codex").kind, .hermes, "Hermes' own Codex route, not the Codex CLI")
         XCTAssertEqual(LAAHarness.chat(provider: "gpt-api").kind, .hermes)
         XCTAssertTrue(LAAHarness.metered(chatProvider: "gpt-api"))

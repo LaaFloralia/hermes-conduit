@@ -242,6 +242,7 @@ struct LAAWorkHarnessMenu: View {
                                      other ? "Hands over" : nil, reason].compactMap { $0 }
                         let isCurrent = group.id == current?.id && model.id == chosen?.id
                         LAAHarnessModelRow(title: model.label, route: notes.isEmpty ? nil : notes.joined(separator: " · "),
+                                           model: model.model, provider: model.provider,
                                            current: isCurrent) { pick(group, model) }
                             .disabled(lock != nil || isCurrent || disabled(model))
                             .accessibilityIdentifier("\(identifier).\(group.id).\(model.provider).\(model.model)")

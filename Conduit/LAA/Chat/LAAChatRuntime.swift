@@ -728,6 +728,7 @@ struct LAAChatModelPickers: View {
                         let isCurrent = choice.id == currentChoice?.id
                         let note = [route, other ? "Hands over" : nil].compactMap { $0 }
                         LAAHarnessModelRow(title: choice.label, route: note.isEmpty ? nil : note.joined(separator: " · "),
+                                           model: choice.model, provider: choice.provider,
                                            current: isCurrent) { switchModel(choice) }
                             .disabled(modelLock != nil || isCurrent)
                             .accessibilityIdentifier("composer.runtime.harness.\(group.harness.id).\(choice.model)")

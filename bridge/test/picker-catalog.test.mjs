@@ -89,7 +89,11 @@ test('employee Chat requires a Chat-tagged subscription route, independent of Wo
   assert.equal(models.find(({ model }) => model === sol).available, false);
   assert.equal(chat.models.find(({ model }) => model === sol).label, sol);
   assert.ok(!Object.hasOwn(chat.models.find(({ model }) => model === sol), 'available'));
-  assert.ok(!chat.models.some(({ provider }) => ['dsh-refuseless', 'claude-api'].includes(provider)));
+  assert.ok(!chat.models.some(({ provider }) => provider === 'claude-api'));
+  // D-33 追記7: the uncensored DeepSeek is offered in Chat on Hermes' uncensored route, marked metered.
+  const uncensoredChat = chat.models.find(({ provider }) => provider === 'dsh-refuseless');
+  assert.deepEqual([uncensoredChat.chatProvider, uncensoredChat.chatModel, uncensoredChat.metered, uncensoredChat.manual],
+    ['laa-monet-uncensored', uncensored, true, true]);
   table.picker.models.find((row) => row.model === sol).surfaces = ['session'];
   assert.ok(!sessionOptionsFrom(table).chat.models.some(({ model }) => model === sol));
 });
