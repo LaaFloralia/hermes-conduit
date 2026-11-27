@@ -14,7 +14,9 @@
 # has no Apple ID for the team; with one, the account signs (see step 2). Nothing
 # prints, logs or passes the key as an argument.
 #
-# Environment (all optional):
+# The private release environment also supplies LAA_BRIDGE_URL and
+# LAA_RELAY_PUBLIC_URL for the generated app Info.plist.
+# Other environment variables (optional):
 #   CURRENT_PROJECT_VERSION  build number; default is the UTC time (YYMMDDHHMM)
 #   MARKETING_VERSION        the TestFlight version; default from project.yml
 #   CONDUIT_DISPLAY_NAME     home screen name; default Hortensia
@@ -28,6 +30,8 @@
 #                            down when internal storage is near the safety line
 set -euo pipefail
 set +x
+: "${LAA_BRIDGE_URL:?LAA_BRIDGE_URL must be set in the private release environment}"
+: "${LAA_RELAY_PUBLIC_URL:?LAA_RELAY_PUBLIC_URL must be set in the private release environment}"
 
 cd "$(dirname "$0")/../.."
 repo="$PWD"
@@ -304,8 +308,8 @@ echo "  version $(plutil -extract ApplicationProperties.CFBundleShortVersionStri
 
 # Fail before export/upload if any shipped LAA component still shows the old
 # product names or a required component/resource cannot be inspected.
-python3 "$repo/scripts/laa/check-brand-bundle.py" "$archive/Products/Applications/Conduit.app" \
-  || fail "LAA branding inspection failed; nothing was exported or uploaded"
+python3 "$repo/scripts/laa/check-brand-bundle.py" "$archive/Products/Applications/Conduit.app" --require-endpoints \
+  || fail "LAA bundle inspection failed; nothing was exported or uploaded"
 
 # Fail before export/upload if the app or any extension imports the weak-linked
 # Foundation Date.<= / Date.>= (scripts/laa/check-weak-date-ops.sh).

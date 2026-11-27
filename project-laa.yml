@@ -30,10 +30,9 @@ settings:
     # scripts/laa/entitlements names the same groups.
     CONDUIT_NOTIFICATION_APP_GROUP: group.com.laa-inc.laa.notifications
     CONDUIT_LAUNCHER_APP_GROUP: group.com.laa-inc.laa.launcher
-    # The LAA push relay (scripts/laa/relay-*.sh) — this Mac, published on the
-    # tailnet only. It holds the LAA APNs key and pushes to the LAA bundle,
-    # so a phone registers here instead of upstream's shared relay.
-    CONDUIT_DEFAULT_RELAY_URL: https://mac-mini.tailc9b8e7.ts.net:9443
+    # Managed releases inject LAA_RELAY_PUBLIC_URL into the app Info.plist.
+    # An unconfigured LAA build must not use upstream's shared relay.
+    CONDUIT_DEFAULT_RELAY_URL: https://relay.invalid
     # Xcode 27's build system refuses a target whose Info.plist is also a
     # copied resource ("Multiple commands produce .../Info.plist"), and this
     # spec hands each target its whole folder. Xcode 26 lets it through, which

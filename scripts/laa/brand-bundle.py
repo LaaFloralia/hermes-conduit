@@ -2,11 +2,13 @@
 """Brand only generated LAA bundles; source catalogs and lookup keys stay intact."""
 import argparse
 import json
+import os
 import plistlib
 import re
 import subprocess
 import unicodedata
 from pathlib import Path
+from urllib.parse import urlsplit
 from xml.parsers.expat import ExpatError
 
 # Each target's default home-screen name. A build that needs another one (the
@@ -318,6 +320,25 @@ def brand_bundle(bundle, kind, source, name=None, bundle_name=None):
             plistlib.dump(shortcuts, stream, fmt=plistlib.FMT_BINARY, sort_keys=False)
 
 
+def embed_endpoints(info, env):
+    # Only the generated app Info receives private values. With no release
+    # overrides, leave the existing Xcode relay setting placeholder alone.
+    for name, key in (("LAA_BRIDGE_URL", "LAABridgeURL"), ("LAA_RELAY_PUBLIC_URL", "ConduitDefaultRelayURL")):
+        value = env.get(name, "").strip()
+        if not value:
+            continue
+        try:
+            url = urlsplit(value)
+            port = url.port
+        except ValueError:
+            raise ValueError(f"invalid {name}") from None
+        if (url.scheme != "https" or not url.hostname or url.username is not None or url.password is not None
+                or any(char.isspace() for char in value) or any(char in value for char in "?#$\\") or port == 0
+                or (name == "LAA_BRIDGE_URL" and (not url.hostname.endswith(".ts.net") or url.path not in ("", "/")))):
+            raise ValueError(f"invalid {name}")
+        info[key] = value
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--bundle", type=Path)
@@ -334,6 +355,11 @@ def main():
         brand_bundle(args.bundle, args.kind, args.source, name=args.name, bundle_name=args.bundle_name)
     elif not args.bundle and args.input_info and args.output_info:
         info, _ = brand_info(read_plist(args.input_info), args.kind, args.source, args.name, args.bundle_name)
+        if args.kind == "app":
+            try:
+                embed_endpoints(info, os.environ)
+            except ValueError as error:
+                parser.error(str(error))
         args.output_info.parent.mkdir(parents=True, exist_ok=True)
         with args.output_info.open("wb") as stream:
             plistlib.dump(info, stream, sort_keys=False)

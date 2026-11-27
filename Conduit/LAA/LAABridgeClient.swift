@@ -9,17 +9,19 @@ struct LAABridgeCredentials: Codable, Equatable {
 }
 
 struct LAABridgeEndpoint {
-    // The Mac's Tailscale Serve address recorded in docs/laa/BASELINE.md.
-    // UI tests point the pairing field at their local fixture through the
-    // environment instead of typing over this value, which the simulator's
-    // field editing made flaky.
+    // Release builds embed the private pairing address; public builds have none.
+    // In DEBUG the lab fixture always takes precedence over the bundle.
     static var defaultAddress: String {
         #if DEBUG
         if LAALabNetworkPolicy.current.isActive {
             return LAALabNetworkPolicy.current.bridgeAddress ?? "http://127.0.0.1:1"
         }
         #endif
-        return "https://mac-mini.tailc9b8e7.ts.net:8445"
+        return bundledAddress(info: Bundle.main.infoDictionary)
+    }
+
+    static func bundledAddress(info: [String: Any]?) -> String {
+        (info?["LAABridgeURL"] as? String) ?? ""
     }
 
     static func parse(_ text: String) throws -> URL {
