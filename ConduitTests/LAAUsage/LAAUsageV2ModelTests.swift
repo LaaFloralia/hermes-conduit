@@ -141,9 +141,20 @@ final class LAAUsageV2ModelTests: XCTestCase {
         XCTAssertFalse(LAAWidgetUsageBuilder.slots.first { $0.provider == "opencode-go" }!.showsInWidget)
         XCTAssertEqual(LAAWidgetUsageBuilder.cardSlots.map(\.name), ["Codex", "Claude", "Google", "Muse"])
         XCTAssertEqual(LAAWidgetUsageBuilder.otherSlots.map(\.provider),
-                       ["opencode-go", "magnific", "openai-api", "claude-api", "liquid", "venice", "refuseless"])
+                       ["opencode-go", "magnific", "openai-api", "claude-api", "liquid", "venice", "deepseek", "refuseless"])
         XCTAssertEqual(LAAWidgetUsageBuilder.widgetRows.count, 6)
         XCTAssertEqual(Set(LAAWidgetUsageBuilder.dropOrder), Set(LAAWidgetUsageBuilder.widgetRows.map(\.id)))
+    }
+
+    func testUsageMarksIdentifyTheProviderNotTheModelsItRuns() {
+        let expected = ["codex": "LAAOpenAIMark", "openai-api": "LAAOpenAIMark",
+                        "claude": "LAAClaudeMark", "claude-api": "LAAClaudeMark", "deepseek": "LAADeepSeekMark"]
+        let appMarks = LAAWidgetUsageBuilder.slots.reduce(into: [String: String]()) { result, slot in
+            result[slot.provider] = LAAUsageProviderMark.asset(for: slot.provider)
+        }
+        XCTAssertEqual(appMarks, expected)
+        XCTAssertEqual(LAAWidgetUsageBuilder.widgetRows.map { LAAUsageProviderMark.asset(for: $0.provider) },
+                       ["LAAOpenAIMark", "LAAClaudeMark", "LAAClaudeMark", "LAAClaudeMark", nil, nil])
     }
 
     func testAZeroFableStillLeavesOrdinaryClaudeAlone() throws {

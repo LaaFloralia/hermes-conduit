@@ -271,8 +271,7 @@ struct LAAUsageView: View {
         }
     }
 
-    /// OpenCode, Magnific, the API balances, Liquid AI and Venice: folded
-    /// under one ruled header below the cards.
+    /// The remaining providers, folded under one ruled header below the cards.
     @ViewBuilder private var others: some View {
         let open = isOpen("others")
         let groups = self.groups
@@ -297,15 +296,16 @@ struct LAAUsageView: View {
             .accessibilityIdentifier("laa.usage.others")
             if open {
                 ForEach(groups) { group in
+                    let provider = String(group.id.dropFirst("provider.".count))
                     VStack(spacing: 0) {
                         Rectangle().fill(LAAColor.separator).frame(height: 1)
                         if LAAUsageGroup.isAPI(group.id + ".") {
                             apiBalanceRow(group.items.first { $0.id == group.id + ".balance" },
-                                          groupID: group.id, name: group.label)
+                                          groupID: group.id, provider: provider, name: group.label)
                         } else if group.items.isEmpty {
-                            readingRow(name: group.label, result: nil, age: nil, fraction: nil, note: nil)
+                            readingRow(provider: provider, name: group.label, result: nil, age: nil, fraction: nil, note: nil)
                         } else {
-                            ForEach(group.items) { item in serviceRow(item, name: group.label) }
+                            ForEach(group.items) { item in serviceRow(item, provider: provider, name: group.label) }
                         }
                     }
                     .accessibilityIdentifier("laa.usage.service.\(group.id)")
@@ -330,13 +330,13 @@ struct LAAUsageView: View {
         }
     }
 
-    @ViewBuilder private func serviceRow(_ item: LAAUsageItem, name: String) -> some View {
+    @ViewBuilder private func serviceRow(_ item: LAAUsageItem, provider: String, name: String) -> some View {
         let age = age(item)
         if item.availability == "available", item.kind == "quota", let windows = item.detail?.windows, !windows.isEmpty {
             ForEach(Array(windows.enumerated()), id: \.offset) { _, window in
                 let label = windows.count > 1 ? name + " " + LAAUsageLabel.period(window) : name
                 let remaining = LAAUsageFreshness.windowExpired(window, at: evaluatedAt) ? nil : window.remainingPercent
-                readingRow(name: label, result: value(remaining, unit: "percent"), age: age,
+                readingRow(provider: provider, name: label, result: value(remaining, unit: "percent"), age: age,
                            fraction: remaining.map { $0 / 100 }, note: remaining == nil ? nil :
                                LAAUsageItem.date(window.resetsAt).map { LAAUsageResetText.full($0, now: evaluatedAt) })
             }
@@ -350,7 +350,7 @@ struct LAAUsageView: View {
             let money = item.kind == "balance" && unit == "usd"
             let fraction = money ? LAAUsageMeterRule.balanceFraction(remaining: amount, granted: granted)
                 : LAAUsageMeterRule.grantFraction(remaining: amount, granted: granted)
-            readingRow(name: name, result: value(amount, unit: unit), age: age,
+            readingRow(provider: provider, name: name, result: value(amount, unit: unit), age: age,
                        fraction: fraction, note: nil)
         }
     }
@@ -368,12 +368,12 @@ struct LAAUsageView: View {
     /// GPT API and Claude API: the credit left, never the spend. Neither
     /// provider publishes a balance API, so the reading is the billing page's,
     /// so the row has an empty meter until a reading has been recorded.
-    @ViewBuilder private func apiBalanceRow(_ item: LAAUsageItem?, groupID: String, name: String) -> some View {
+    @ViewBuilder private func apiBalanceRow(_ item: LAAUsageItem?, groupID: String, provider: String, name: String) -> some View {
         let billing = LAAUsageGroup.billingURL(for: groupID + ".balance")
         let lapsed = item?.isExpired(now: evaluatedAt) == true
         let amount = lapsed ? nil : item?.availableValue
         let fraction = LAAUsageMeterRule.balanceFraction(remaining: amount, granted: item?.detail?.grantedAmount)
-        readingRow(name: name, result: value(amount, unit: "usd"), age: item.flatMap(age), fraction: fraction,
+        readingRow(provider: provider, name: name, result: value(amount, unit: "usd"), age: item.flatMap(age), fraction: fraction,
                    note: lapsed ? LAACopy.Usage.lapsed : Self.expiryNote(item?.detail?.expiresOnUtc), nameLink: billing)
     }
 
@@ -421,18 +421,18 @@ struct LAAUsageView: View {
         LAASectionHeader(text)
     }
 
-    private func readingRow(name: String, result: String?, age: String?, fraction: Double?,
+    private func readingRow(provider: String? = nil, name: String, result: String?, age: String?, fraction: Double?,
                             level: LAAMeterLevel? = nil, note: String?, nameLink: URL? = nil,
                             valueLabel: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: LAASpace.s8) {
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .firstTextBaseline, spacing: LAASpace.s8) {
-                    readingName(name, link: nameLink).fixedSize(horizontal: true, vertical: false)
+                    readingHeading(name, link: nameLink, provider: provider).fixedSize(horizontal: true, vertical: false)
                     Spacer(minLength: LAASpace.s8)
                     readingValue(result, label: valueLabel, age: age).fixedSize()
                 }
                 VStack(alignment: .leading, spacing: LAASpace.s4) {
-                    readingName(name, link: nameLink)
+                    readingHeading(name, link: nameLink, provider: provider)
                     readingValue(result, label: valueLabel, age: age)
                 }
             }
@@ -444,6 +444,17 @@ struct LAAUsageView: View {
         .padding(.vertical, LAASpace.s12)
         .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumTouchTarget, alignment: .leading)
         .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder private func readingHeading(_ name: String, link: URL?, provider: String?) -> some View {
+        if let provider {
+            HStack(spacing: LAASpace.s8) {
+                LAAUsageProviderMark(provider: provider)
+                readingName(name, link: link)
+            }
+        } else {
+            readingName(name, link: link)
+        }
     }
 
     @ViewBuilder private func readingName(_ name: String, link: URL?) -> some View {
