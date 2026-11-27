@@ -27,8 +27,10 @@ const PAID_ROUTES = { 'hermes-claude-api': { prefix: 'anthropic:', suffix: '（A
   'hermes-openai-api': { prefix: 'openai-api:', suffix: '（API）' }, 'dsh-venice': { prefix: '', suffix: '（Venice）' },
   'claude-api': { prefix: '', suffix: '（API）' }, 'pi-openai-api': { prefix: '', suffix: '（API）' } };
 // The model id a Work entrance and the launch body carry for a profile.
+const DSH_ROUTES = { dsh: 'opencode-go', 'dsh-venice': 'venice', 'dsh-refuseless': 'refuseless' };
+const SUBSCRIPTION_PROVIDERS = new Set(['claude', 'codex', 'antigravity', 'dsh']);
 function wireModel(harness, modelId) {
-  if (harness === 'dsh' || harness === 'dsh-venice') return JSON.stringify([harness === 'dsh' ? 'opencode-go' : 'venice', modelId]);
+  if (Object.hasOwn(DSH_ROUTES, harness)) return JSON.stringify([DSH_ROUTES[harness], modelId]);
   return (PAID_ROUTES[harness]?.prefix ?? '') + modelId;
 }
 
@@ -71,11 +73,82 @@ function manualEntranceExists(table, profile) {
   return typeof modelId === 'string' && (table.entrances ?? []).some((entry) => {
     const route = workRoute(entry);
     return entry.status === 'manual' && route?.provider === profile.harness && expandModelId(table, route.model) === wire &&
-      (route.thinking === profile.effort || (profile.harness === 'dsh-venice' && route.thinking == null));
+      (route.thinking === profile.effort || (['dsh-venice', 'dsh-refuseless'].includes(profile.harness) && route.thinking == null));
   });
 }
 
+// HQ chooses what is visible. Route/model ids and existing profile ids remain
+// the launch contract; display harness ids need not equal the provider id.
+function pickerOptions(table, availability) {
+  const picker = table.picker;
+  const harnesses = (Array.isArray(picker?.harnesses) ? picker.harnesses : [])
+    .filter((row) => typeof row?.id === 'string' && typeof row.name === 'string' && Number.isFinite(row.order))
+    .map(({ id, name, order, kind }) => ({ id, name, order, kind: kind ?? id }))
+    .sort((a, b) => a.order - b.order);
+  const knownHarnesses = new Set(harnesses.map((row) => row.id));
+  const chatHarness = harnesses.find(({ id }) => id === 'hermes');
+  const profiles = new Map();
+  const models = [];
+  const chatModels = new Map();
+  const defaultProfile = picker?.defaultProfile;
+  let validDefault = false;
+  for (const row of Array.isArray(picker?.models) ? picker.models : []) {
+    const { harnessId, model, defaultEffort, surfaces } = row ?? {};
+    const modelId = table.models?.[model]?.modelId;
+    if (!knownHarnesses.has(harnessId) || typeof modelId !== 'string' || !Array.isArray(row.profiles)
+      || !Array.isArray(surfaces) || !surfaces.some((surface) => surface === 'session' || surface === 'chat')) continue;
+    const choices = [];
+    const efforts = new Set();
+    for (const id of row.profiles) {
+      const profile = table.profiles?.[id];
+      if (profile?.model !== model || Object.hasOwn(table.aliases ?? {}, id) || typeof profile.effort !== 'string') continue;
+      const { harness: provider, effort } = profile;
+      const first = choices[0];
+      if (typeof provider !== 'string' || (first && first.provider !== provider) || efforts.has(effort)) continue;
+      const wire = wireModel(provider, modelId);
+      // Refuseless remains an opt-in manual route with an exact HQ entrance.
+      const metered = provider === 'dsh-refuseless';
+      if (metered && !(profile.manual === true && manualEntranceExists(table, profile))) continue;
+      choices.push(withAvailability({ id, label: table.models[model].label ?? modelId, provider,
+        model: wire, effort, fast: fastSupported(provider, modelId), ...(metered ? { manual: true, metered: true } : {}) },
+      availability?.(provider) ?? null));
+      efforts.add(effort);
+    }
+    if (!efforts.has(defaultEffort)) continue;
+    if (surfaces.includes('session')) {
+      for (const choice of choices) profiles.set(choice.id, choice);
+      validDefault ||= choices.some(({ id, effort }) => id === defaultProfile && effort === defaultEffort && table.profiles[id].manual !== true);
+    }
+    const first = choices[0];
+    const effectiveHarnessId = first.harness && first.harness !== first.provider && knownHarnesses.has(first.harness)
+      ? first.harness : harnessId;
+    models.push({ harnessId: effectiveHarnessId, provider: first.provider, model: first.model, label: first.label,
+      ...('harness' in first ? { harness: first.harness } : {}),
+      ...(first.available === false ? { available: false, unavailableReason: first.unavailableReason } : {}),
+      ...('fastHarness' in first ? { fastHarness: first.fastHarness } : {}),
+      ...(first.metered ? { metered: true, manual: true } : {}),
+      efforts: [...efforts], defaultEffort, profiles: choices.map((choice) => choice.id), surfaces });
+    const { provider } = first;
+    if (!chatHarness || !surfaces.includes('chat') || !SUBSCRIPTION_PROVIDERS.has(provider)) continue;
+    const chatProvider = table.employees?.providers?.[provider] ?? (provider === 'dsh' ? 'laa-dsh' : null);
+    if (typeof chatProvider !== 'string' || !chatProvider) continue;
+    // DSH's two Session groups share one Hermes route. Chat availability comes
+    // from Hermes, not the Work provider state used by the Session catalog.
+    const key = JSON.stringify([chatProvider, modelId]);
+    if (!chatModels.has(key)) chatModels.set(key, { harnessId: chatHarness.id,
+      provider, model: first.model, chatProvider, chatModel: modelId, label: table.models[model].label ?? modelId,
+      efforts: [...efforts], defaultEffort });
+  }
+  const published = validDefault ? [...profiles.values()] : [];
+  const usedHarnesses = new Set(models.flatMap((row) => [row.harnessId, row.fastHarness]));
+  return { profiles: published, switchProfiles: entranceProfiles(table, published),
+    defaultProfile: validDefault ? defaultProfile : null, defaultMode: 'bypass',
+    harnesses: validDefault ? harnesses.filter((row) => usedHarnesses.has(row.id)) : [], models: validDefault ? models : [],
+    chat: { harnesses: validDefault && chatModels.size ? [chatHarness] : [], models: validDefault ? [...chatModels.values()] : [] } };
+}
+
 export function sessionOptionsFrom(table, availability = null) {
+  if (Object.hasOwn(table ?? {}, 'picker')) return pickerOptions(table, availability);
   const aliases = table?.aliases ?? {};
   const manualProfiles = new Set(table?.dispatch?.manual_profiles ?? []);
   const paidRoute = (profile) => Object.hasOwn(PAID_ROUTES, profile.harness);
@@ -109,18 +182,37 @@ export function sessionOptionsFrom(table, availability = null) {
 }
 
 // `availability` is the engine's provider states (sharedProviderAvailability) or null.
-export function sessionOptionsReader({ file = resolveModelsFile(), availability = null } = {}) {
-  return () => {
+export function sessionOptionsReader({ file = resolveModelsFile(), availability = null, requirePicker = false } = {}) {
+  const readTable = () => {
     let table;
     try {
       table = JSON.parse(readFileSync(file, 'utf8'));
     } catch {
       throw new BridgeError(503, 'options_unavailable', 'the model table cannot be read', { retryable: true });
     }
-    const options = sessionOptionsFrom(table, availability ? (provider) => availability.get(provider) : null);
+    if (requirePicker && !Object.hasOwn(table ?? {}, 'picker')) {
+      throw new BridgeError(503, 'options_unavailable', 'the HQ model picker is missing', { retryable: true });
+    }
+    return table;
+  };
+  const readOptions = () => {
+    const options = sessionOptionsFrom(readTable(), availability ? (provider) => availability.get(provider) : null);
     if (options.profiles.length === 0) {
       throw new BridgeError(503, 'options_unavailable', 'the model table lists no usable profile', { retryable: true });
     }
     return options;
   };
+  // Previously saved pins may use efforts hidden by the new picker. This is
+  // deliberately not serialized or used to validate new project defaults.
+  readOptions.retainedProfile = (id) => {
+    const table = readTable();
+    const profile = table?.profiles?.[id];
+    if (!table?.picker || !profile || Object.hasOwn(table.aliases ?? {}, id)
+      || !SUBSCRIPTION_PROVIDERS.has(profile.harness) || typeof profile.effort !== 'string') return null;
+    const model = table.models?.[profile.model];
+    if (typeof model?.modelId !== 'string') return null;
+    return withAvailability({ id, provider: profile.harness, model: wireModel(profile.harness, model.modelId),
+      effort: profile.effort }, availability?.get(profile.harness) ?? null);
+  };
+  return readOptions;
 }

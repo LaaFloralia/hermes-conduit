@@ -155,7 +155,6 @@ export function createSessionService({
   // dispatch; only then does the first instruction carry the owner's mark (work-origin.mjs).
   async function createSession({ deviceId, body = {}, resumedFrom = null, owner = false, ownerName = owner }) {
     const requestId = parseRequestId(body.requestId);
-    let profile;
     const prompt = asText(body.prompt, 'prompt');
     const workspaceId = body.workspaceId === undefined || body.workspaceId === null || body.workspaceId === HOME_WORKSPACE_ID
       ? HOME_WORKSPACE_ID
@@ -174,11 +173,20 @@ export function createSessionService({
     // be refused as a different request, not silently re-run under new text.
     const project = projectId ? findProject(projectId) : null;
     if (projectId && !project) throw notFound('project not found');
-    profile = parseProfile(body.profile ?? project?.defaultProfile);
-    const defaultChoices = body.profile == null && project?.defaultProfile ? choices() : null;
-    if (defaultChoices && !(defaultChoices.switchProfiles ?? defaultChoices.profiles).some((item) => item.id === profile)) {
-      throw conflict('project_default_unavailable', 'the project model is no longer offered; choose another model');
+    const projectPin = body.profile == null ? project?.defaultProfile : null;
+    let catalog, retained;
+    const launchChoices = () => catalog ??= choices();
+    if (projectPin != null) {
+      const pin = parseProfile(projectPin);
+      const available = launchChoices();
+      if (!(available.switchProfiles ?? available.profiles).some((item) => item.id === pin)) {
+        retained = choices.retainedProfile?.(pin);
+        if (!retained) throw conflict('project_default_unavailable', 'the project model is no longer offered; choose another model');
+      }
     }
+    const existing = sessionStore.get(id);
+    // An unpinned retry keeps the profile already bound to its requestId.
+    const profile = parseProfile(body.profile ?? projectPin ?? existing?.profile ?? launchChoices().defaultProfile);
     const instructions = project && applyProjectInstructions ? resolveInstructions(project) : null;
     const files = project ? (resolveProjectFiles(project) ?? []) : [];
 
@@ -209,14 +217,13 @@ export function createSessionService({
     }));
     const legacyRequestDigest = sha(JSON.stringify(requestBody));
 
-    const existing = sessionStore.get(id);
     if (existing) {
       assertSameRequest(existing, { profile, workspaceId, parentId, projectId, requestDigest, legacyRequestDigest });
       return { session: existing, created: false };
     }
     if (project?.archivedAt) throw conflict('project_archived', 'choose an active project');
 
-    const offered = choices().profiles.find((item) => item.id === profile);
+    const offered = launchChoices().profiles.find((item) => item.id === profile) ?? retained ?? choices.retainedProfile?.(profile);
     if (offered?.available === false) {
       throw badRequest('model_choice_invalid', offered.usageNote ?? offered.unavailableReason ?? 'this provider cannot take a session now');
     }
@@ -263,7 +270,7 @@ export function createSessionService({
       cwd: workspace.path,
       task,
       title,
-      ...(owner ? { ownerSignature: ownerSignatureFor(profile, task.prompt, prompt) } : {}),
+      ...(owner ? { ownerSignature: ownerSignatureFor(offered, task.prompt, prompt) } : {}),
       ...(mode === 'bypass' ? { mode } : {}),
       ...(fast ? { fast } : {}),
       ...(plainPrompt ? { plainPrompt } : {}),
@@ -819,12 +826,9 @@ export function createSessionService({
   // owner typed (in its <user_request> block when project material comes first) as the tail
   // of the prompt: the delegation wrapper puts its brief before it and starts every session in
   // the home directory, with the wire provider and model of the profile.
-  function ownerSignatureFor(profile, composed, typed) {
+  function ownerSignatureFor(offered, composed, typed) {
     const text = composed === typed ? typed : `<user_request>\n${typed}\n</user_request>`;
-    if (!composed.endsWith(text)) return null;
-    let offered = null;
-    try { offered = choices().profiles.find((item) => item.id === profile) ?? null; } catch { offered = null; }
-    if (!offered) return null;
+    if (!offered || !composed.endsWith(text)) return null;
     return signWorkOrigin({ text, tail: text.length,
       create: { provider: offered.provider, model: offered.model, cwd: homedir(), callerAgentId: null } });
   }
