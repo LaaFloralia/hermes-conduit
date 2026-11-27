@@ -322,31 +322,45 @@ struct LAADecisionImageViewer: View {
     var body: some View {
         ZStack(alignment: .topTrailing) {
             Color.black.ignoresSafeArea()
-            TabView(selection: $index) {
-                ForEach(Array(images.enumerated()), id: \.element.id) { offset, image in
-                    LAADecisionViewerPage(item: request.item, image: image, index: offset,
-                                          label: label(image, offset)).tag(offset)
-                }
-            }
-            .tabViewStyle(.page(indexDisplayMode: images.count > 1 ? .automatic : .never))
-            .ignoresSafeArea()
-            .accessibilityIdentifier("work.decision.viewer")
-            Button { dismiss() } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 44, height: 44)
-                    .conduitGlassControl(cornerRadius: 22, tint: .black.opacity(0.25), interactive: true)
-            }
-            .buttonStyle(.plain)
-            .padding(LAASpacing.x4)
-            .accessibilityLabel(Text(verbatim: "Close"))
-            .accessibilityIdentifier("work.decision.viewer.close")
-            .keyboardShortcut(.cancelAction)
+            pager
+            closeButton
         }
         .overlay(alignment: .bottom) { caption }
         .onAppear { index = images.firstIndex(of: request.start) ?? 0 }
         .environment(\.colorScheme, .dark)
+    }
+
+    private var indexDisplay: PageTabViewStyle.IndexDisplayMode { images.count > 1 ? .automatic : .never }
+
+    private var pager: some View {
+        TabView(selection: $index) {
+            ForEach(Array(images.enumerated()), id: \.element.id) { offset, image in
+                page(image, offset)
+            }
+        }
+        .tabViewStyle(PageTabViewStyle(indexDisplayMode: indexDisplay))
+        .ignoresSafeArea()
+        .accessibilityIdentifier("work.decision.viewer")
+    }
+
+    private func page(_ image: LAADecision.Image, _ offset: Int) -> some View {
+        LAADecisionViewerPage(item: request.item, image: image, index: offset, label: label(image, offset))
+            .tag(offset)
+    }
+
+    private var closeButton: some View {
+        Button { dismiss() } label: {
+            Image(systemName: "xmark")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Color.white)
+                .frame(width: 44, height: 44)
+                .conduitGlassControl(cornerRadius: 22, tint: Color.black.opacity(0.25), interactive: true)
+        }
+        .buttonStyle(.plain)
+        .padding(LAASpacing.x4)
+        .accessibilityLabel(Text(verbatim: "Close"))
+        .accessibilityIdentifier("work.decision.viewer.close")
+        .keyboardShortcut(.cancelAction)
     }
 
     /// An option's picture names its option; general pictures need no words.
