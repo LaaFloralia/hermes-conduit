@@ -28,6 +28,8 @@ struct LAADecisionDetailView: View {
     @State private var stored: Bool?
     @FocusState private var noteFocused: Bool
     @State private var viewer: LAADecisionImageViewer.Request?
+    /// Option pictures retention removed: VoiceOver hears it on the picture.
+    @State private var removedPictures = Set<String>()
     @Environment(\.laaDecisionViewerOpen) private var viewerOpen
     @State private var browser: LAADecisionBrowserPage?
 
@@ -333,14 +335,17 @@ struct LAADecisionDetailView: View {
     /// a tap anywhere else on the row still chooses the option.
     private func optionThumb(_ image: LAADecision.Image, index: Int, option: LAADecision.Option) -> some View {
         Button { open(image) } label: {
-            LAADecisionImageView(decisionID: item.id, image: image, size: .thumb)
+            LAADecisionImageView(decisionID: item.id, image: image, size: .thumb) { phase in
+                if phase == .removed { removedPictures.insert(image.id) } else { removedPictures.remove(image.id) }
+            }
                 .frame(width: Self.optionThumb, height: Self.optionThumb)
                 .clipped()
                 .contentShape(Rectangle())
         }
         .buttonStyle(LAADecisionPressStyle())
         .padding(.trailing, LAASpacing.x3)
-        .accessibilityLabel(Text(verbatim: LAADecisionImageCopy.option(option.label)))
+        .accessibilityLabel(Text(verbatim: LAADecisionImageCopy.option(option.label)
+            + (removedPictures.contains(image.id) ? "、" + LAADecisionImageCopy.removed : "")))
         .accessibilityHint(Text(verbatim: LAADecisionImageCopy.openHint))
         .accessibilityAddTraits(.isImage)
         .accessibilityIdentifier("work.decision.option.\(index).image")

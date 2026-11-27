@@ -384,10 +384,13 @@ final class LAADecisionUITests: XCTestCase {
         XCTAssertEqual(thumbA.label, "A案 名前だけの画像")
         XCTAssertTrue(app.buttons["work.decision.option.1.image"].exists)
         // C's picture was removed by retention: a quiet line in its frame,
-        // no error banner. The frame is one button, so the line is its text.
+        // no error banner. The frame is one button whose label says so.
         let thumbC = app.buttons["work.decision.option.2.image"]
         for _ in 0..<3 where !(thumbC.exists && thumbC.isHittable) { app.swipeUp() }
-        XCTAssertTrue(thumbC.staticTexts["画像は削除されました"].waitForExistence(timeout: 10), thumbC.debugDescription)
+        let removed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", "画像は削除されました"),
+                                                object: thumbC)
+        XCTAssertEqual(XCTWaiter().wait(for: [removed], timeout: 10), .completed, thumbC.debugDescription)
+        XCTAssertEqual(thumbC.label, "C案 予定だけの画像、画像は削除されました")
         // Each option's row is at least as tall as its picture: no overlap.
         let thumbB = app.buttons["work.decision.option.1.image"]
         XCTAssertLessThanOrEqual(thumbB.frame.maxY, thumbC.frame.minY + 0.5, "\(thumbB.frame) \(thumbC.frame)")
