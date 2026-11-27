@@ -355,7 +355,7 @@ private struct LAAWorkPaneHeader: View {
         HStack(spacing: LAASpacing.x2) {
             if many { LAAWorkPaneBadge(value: .init(number: number, focused: focused)) }
             if let session {
-                LAAModelMark(model: model?.model, provider: model?.provider, size: 24)
+                LAAHarnessMark(harness: LAAHarness.work(session.harness ?? model?.provider), size: 24)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: LAASpacing.x1) {
@@ -463,7 +463,7 @@ struct LAAWorkPaneDragPreview: View {
 
     var body: some View {
         HStack(spacing: LAASpacing.x2) {
-            LAAModelMark(model: model?.model, provider: model?.provider, size: 20)
+            LAAHarnessMark(harness: LAAHarness.work(model?.provider), size: 20)
             Text(verbatim: title).laaTextStyle(.secondary).fontWeight(.semibold)
                 .foregroundStyle(LAAColor.text).lineLimit(1)
         }

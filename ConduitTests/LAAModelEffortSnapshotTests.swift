@@ -264,20 +264,21 @@ final class LAAModelEffortSnapshotTests: XCTestCase {
         }
     }
 
-    /// The harness capsule ahead of the model (owner, 2026-11-26): every
-    /// harness's mark beside a model it runs, the phone's mark-only capsule,
-    /// and the new-session sheet on the live options' shape (codex on Pi).
+    /// The harness's mark leads the model capsule (D-21 E3): every harness
+    /// beside a model it runs, DSH's Orchestrator on purple, and the
+    /// new-session sheet on the live options' shape (codex on Pi).
     func testHarnessCapsulesLightAndDark() throws {
         func harnessed(_ harness: String, _ model: String, _ provider: String, _ effort: String) -> some View {
             LAAModelEffortPickers(harness: LAAHarness.work(harness), model: model, provider: provider, effort: effort,
-                                  identifier: "snapshot") { EmptyView() } modelMenu: { EmptyView() } effortMenu: { EmptyView() }
+                                  identifier: "snapshot") { EmptyView() } effortMenu: { EmptyView() }
         }
         let board = VStack(alignment: .leading, spacing: LAASpacing.x5) {
             row("Claude Code", harnessed("claude", "claude-opus-5-5", "claude", "high"))
             row("Claude Code · Mythos", harnessed("claude", "claude-mythos-5-2", "claude", "max"))
             row("Pi", harnessed("pi", "gpt-6.2-sol", "codex", "high"))
             row("Codex（Fast）", harnessed("codex", "gpt-6.2-astra", "codex", "xhigh"))
-            row("DSH", harnessed("dsh", #"["opencode-go","deepseek-v4.1-flash"]"#, "dsh", "high"))
+            row("DSH Orchestrator", harnessed("dsh-orchestrator", #"["opencode-go","deepseek-v4.1-flash"]"#, "dsh", "high"))
+            row("DSH Worker", harnessed("dsh-worker", #"["opencode-go","deepseek-v4.1-flash"]"#, "dsh", "high"))
             row("Antigravity", harnessed("antigravity", "gemini-4-neon", "antigravity", "high"))
             row("Hermes", harnessed("hermes-openai-api", "gpt-6.2-sol", "codex", "high"))
             row("Echo（試験レーン）", harnessed("echo", "echo", "echo", "high"))
