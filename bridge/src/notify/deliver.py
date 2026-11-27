@@ -23,7 +23,25 @@ try:
     activate_dependencies(home / '.local/share/hermes-agent')
     from _laa_bridge_conduit import client
     payload = json.load(sys.stdin)
-    if client.load_state() is None:
+    if payload.get('type') == 'decision.badge':
+        # The sole content-free control event: relay routing needs the count
+        # in plaintext to set aps.badge without a notification extension.
+        # Send no other fields, under the existing pairing credential.
+        badge = payload.get('badge')
+        if type(badge) is not int or not 0 <= badge <= 2**31 - 1:
+            raise ValueError('invalid badge')
+        event = {'type': 'decision.badge', 'event_id': payload['event_id'], 'badge': badge}
+        targets = client.paired_devices()
+        delivered = bool(targets)
+        for _, state in targets:
+            try:
+                answer = client.request_json(f"{state['relay_url'].rstrip('/')}/v1/events", method='POST',
+                                             credential=state['credential'], payload=event, timeout=5)
+                delivered = (answer.get('delivered') is True or answer.get('duplicate') is True) and delivered
+            except Exception:
+                delivered = False
+        result = {'delivered': delivered}
+    elif client.load_state() is None:
         result = {'delivered': False, 'reason': 'not_paired'}
     else:
         client.send_now(payload, timeout=15)

@@ -49,10 +49,15 @@ case "$action" in
     echo "Installing the relay from $source_dir..."
     mkdir -p "$install_dir/app" "$install_dir/data"
     chmod 700 "$install_dir"
+    stage="$(mktemp -d "$install_dir/.relay.XXXXXX")"
+    trap 'rm -rf "$stage"' EXIT
+    cp -R "$source_dir/src" "$stage/src"
+    patch -f -s -F 0 -p0 -d "$stage/src" < "$repo/scripts/laa/relay-decision-badge.patch" || fail 'relay source does not match the badge overlay'
+    cp "$repo/scripts/laa/relay-decision-badge.mjs" "$stage/src/"
+    node --check "$stage/src/server.mjs" || fail "the copied relay does not parse"
     rm -rf "$install_dir/app/src"
-    cp -R "$source_dir/src" "$install_dir/app/src"
+    mv "$stage/src" "$install_dir/app/src"
     cp "$source_dir/package.json" "$install_dir/app/package.json"
-    node --check "$install_dir/app/src/server.mjs" || fail "the copied relay does not parse"
 
     cat > "$plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

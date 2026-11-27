@@ -176,6 +176,15 @@ export function createDecisionStore({ dir, now = () => Date.now() }) {
   return {
     file: file.file,
     all: () => access(() => structuredClone(read().records)),
+    expireAndReadOpen() {
+      const due = (r) => r.status === 'open' && r.deadline !== null && Date.parse(r.deadline) <= now();
+      const records = access(() => read().records);
+      if (!records.some(due)) return records;
+      return mutate((s) => {
+        for (const r of s.records.filter(due)) { r.status = 'withdrawn'; r.updatedAt = stamp(); }
+        return s.records;
+      });
+    },
     get: (id) => access(() => structuredClone(find(read(), id))),
     image(id, imgId, size) {
       if (!DECISION_ID.test(id) || !IMAGE_ID.test(imgId)) throw imageNotFound();

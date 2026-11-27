@@ -12,7 +12,7 @@ export const WAIT_LIMITS = Object.freeze({ fastMs: 15_000, fastForMs: 600_000, s
 export const isWaiting = (r) => r.status === 'answered' && r.delivery?.state === 'pending' && r.delivery.waitingSince !== undefined;
 export const onDecisionBoard = (r) => r.status === 'open' || (r.status === 'answered' && r.delivery?.state === 'failed') || isWaiting(r)
   || (r.answer?.answeredBy === 'monet' && r.delivery?.state !== 'gone');
-export const ownerBadgeCount = (records) => records.filter((r) => r.category === 'owner' && r.status === 'open').length;
+import { ownerBadgeCount } from './badge.mjs';
 
 export function mayDeliverDecisionNotice(kind, link, store) {
   if (kind === 'session.question' || kind === 'session.approval') return false;
@@ -36,7 +36,7 @@ function sinceTime(since) {
 }
 
 export function createDecisionService({ store, sessionStore = null, sessions = null, daemon = null, notify = notifyOwner,
-  refs = null, observeRefs = null, log = null, now = () => Date.now(), limits = WAIT_LIMITS }) {
+  refs = null, observeRefs = null, refreshBadge = null, log = null, now = () => Date.now(), limits = WAIT_LIMITS }) {
   const sessionRef = (id) => refs?.('session', id) ?? null;
   function view(record) {
     const { requestId, previousAttempt, ...visible } = record;
@@ -56,7 +56,6 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
       await observeRefs?.();
       const due = new Set();
       const records = store.all();
-      const badge = ownerBadgeCount(records);
       for (let r of records) {
         // An interrupted Bridge must not leave an accepted answer pending forever.
         // A waiting answer is not interrupted: `deliverWaiting` owns it.
@@ -72,7 +71,7 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
           const result = await notify({ kind: failed ? 'decision.failed' : 'decision.new', title: `${failed ? '届いていません' : '判断'}${ref ? ` ${ref}` : ''}: ${r.title}`,
             body: failed ? '回答を保存しました。判断ボードから再送してください。' : recommended ? `推奨: ${recommended.label}` : r.summary.slice(0, 160),
             meta: failed ? { id: r.id } : { id: r.id, o: r.options.map((o) => o.label), ...(r.deadline ? { d: Math.floor(Date.parse(r.deadline) / 1000) } : {}) },
-            deepLink: `laa://work/decisions/${r.id}`, dedupeKey, ownerBadgeCount: badge });
+            deepLink: `laa://work/decisions/${r.id}`, dedupeKey });
           // The notifier owns delivery retries only once its outbox accepted the event.
           if (result?.reason === 'invalid_notification'
             || (result?.delivered === false && !result.queued && !['duplicate', 'muted'].includes(result.reason))) throw new Error('notification_not_accepted');
@@ -116,9 +115,8 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
         return deleted.get(source.sessionId) === source.paseoAgentId;
       } catch { return false; }
     };
-    for (const r of store.all()) {
+    for (const r of store.expireAndReadOpen()) {
       if (r.status === 'open') {
-        if (r.deadline && Date.parse(r.deadline) < now()) { store.withdraw(r.id, 'deadline_passed', { ifOpen: true }); continue; }
         if (await askerGone(r.source, confirmedDeleted)) store.withdraw(r.id, 'source_gone', { ifOpen: true });
       } else if (r.status === 'answered' && r.delivery?.state === 'failed') {
         const reason = GONE.includes(r.delivery.error) ? r.delivery.error : await askerGone(r.source, confirmedDeleted);
@@ -280,6 +278,7 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
     },
     async answer({ id, deviceId, body, retry = false }) {
       const result = store.reserve(id, deviceId, body, retry);
+      if (!retry && !result.replayed && result.decision.category === 'owner') void refreshBadge?.();
       const decision = view(result.replayed ? result.decision : await deliver(result.decision));
       return { decision, ownerBadgeCount: ownerBadgeCount(store.all()) };
     },

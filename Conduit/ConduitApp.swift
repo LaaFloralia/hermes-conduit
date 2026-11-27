@@ -182,7 +182,27 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         }
         #endif
         #if LAA_BUILD
-        // Any push that wakes the app is a chance to send a waiting answer.
+        if userInfo["laa_decision_badge"] as? Bool == true {
+            #if targetEnvironment(macCatalyst)
+            // APNs sets the system badge. If Catalyst is running, also update
+            // its explicit Dock tile from the paired Bridge, not remote extras.
+            Task { @MainActor in
+                let bridge = LAABridgeSession()
+                bridge.retryReadingCredentialsIfNeeded()
+                guard bridge.status == .paired,
+                      let page: LAADecisionPage = try? await bridge.read("/v1/decisions") else {
+                    completionHandler(.noData)
+                    return
+                }
+                await LAADecisionIconBadge.apply(page.items.filter(\.countsTowardBadge).count)
+                completionHandler(.newData)
+            }
+            #else
+            completionHandler(.noData)
+            #endif
+            return
+        }
+        // Any other push that wakes the app is a chance to send a waiting answer.
         Task { @MainActor in await LAAQuickAnswerCenter.shared.retryPending() }
         #endif
         #if LAA_BUILD && !targetEnvironment(macCatalyst)

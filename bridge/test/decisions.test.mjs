@@ -6,7 +6,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 import { createDecisionStore } from '../src/decisions/store.mjs';
-import { createDecisionService, ownerBadgeCount } from '../src/decisions/service.mjs';
+import { createDecisionService } from '../src/decisions/service.mjs';
+import { createDecisionBadgePublisher, ownerBadgeCount } from '../src/decisions/badge.mjs';
 import { createSessionStore } from '../src/sessions/store.mjs';
 import { createSessionService } from '../src/sessions/service.mjs';
 import { daemonAdapter, daemonSessionID } from '../src/sessions/daemon.mjs';
@@ -98,11 +99,68 @@ test('badge: only waiting owner decisions count, and answering and withdrawing c
     { status: 'open' },
   ]), 0);
   await f.service.list();
-  assert.equal(f.notifications.find((e) => e.meta.id === first.id).ownerBadgeCount, 2);
+  assert.equal(ownerBadgeCount(f.store.all()), 2);
   const answer = await f.service.answer({ id: first.id, deviceId: 'phone', body: { optionIndex: 0, requestId: 'answer-1' } });
   assert.equal(answer.ownerBadgeCount, 1);
   f.service.withdraw(second.id, '取り下げ');
   assert.equal(ownerBadgeCount(f.store.all()), 0);
+});
+
+test('badge publisher observes out-of-process withdrawals and expiry without a board read', async (t) => {
+  const f = fixture(t);
+  const withdraw = f.service.add(request()).decision;
+  const expires = f.service.add(request({ requestId: 'expires', deadline: new Date(f.now() + 1000).toISOString() })).decision;
+  f.service.add(request({ requestId: 'proxy', impact: '【任せられる】' }));
+  const sent = [];
+  let next;
+  const publisher = createDecisionBadgePublisher({ store: f.store, now: f.now, deliver: async (event) => {
+    sent.push(event);
+    next?.();
+    return { delivered: true };
+  } });
+  await publisher.refresh();
+  t.after(publisher.start());
+  const changed = new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('withdraw did not trigger the live publisher')), 2500);
+    next = () => { clearTimeout(timeout); resolve(); };
+  });
+  createDecisionStore({ dir: f.dir, now: f.now }).withdraw(withdraw.id, '取り下げ');
+  await changed;
+  f.advance(1000);
+  await publisher.refresh();
+  if (sent.at(-1).badge !== 0) await publisher.refresh();
+  assert.equal(f.store.get(expires.id).status, 'withdrawn');
+  assert.deepEqual(sent.map((e) => e.badge), [2, 1, 0]);
+  assert(sent.every((e) => e.type === 'decision.badge' && Object.keys(e).length === 3));
+});
+
+test('badge publisher retries the same update and coalesces an answer before daemon delivery', async (t) => {
+  const f = fixture(t);
+  const row = f.service.add(request()).decision;
+  const attempts = [];
+  const publisher = createDecisionBadgePublisher({ store: f.store, now: f.now, deliver: async (event) => {
+    attempts.push(event);
+    return { delivered: attempts.length !== 1 };
+  } });
+  await publisher.refresh();
+  await publisher.refresh();
+  assert.equal(attempts.length, 1);
+  f.advance(30_000);
+  await publisher.refresh();
+  assert.equal(attempts[0].event_id, attempts[1].event_id);
+  let settle;
+  const deliveryStarted = new Promise((resolve) => { settle = resolve; });
+  let release;
+  const waiting = new Promise((resolve) => { release = resolve; });
+  const service = createDecisionService({ store: f.store, now: f.now, notify: null, refreshBadge: publisher.refresh,
+    daemon: { ...f.daemon, send: async (...args) => { settle(); await waiting; return f.daemon.send(...args); } } });
+  const answered = service.answer({ id: row.id, deviceId: 'phone', body: { optionIndex: 0, requestId: 'answer-before-delivery' } });
+  await deliveryStarted;
+  const badgeBeforeDelivery = attempts.at(-1).badge;
+  release();
+  assert.equal((await answered).ownerBadgeCount, 0);
+  assert.equal(badgeBeforeDelivery, 0);
+  assert.notEqual(attempts[1].event_id, attempts[2].event_id);
 });
 
 test('Monet delivery, idempotent replay, owner HTTP overturn, and answer-time stats', async (t) => {

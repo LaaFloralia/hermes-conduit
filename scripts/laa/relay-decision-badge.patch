@@ -1,0 +1,38 @@
+--- server.mjs
++++ server.mjs
+@@ -1,3 +1,4 @@
++import { decisionBadgePush, validDecisionBadge } from './relay-decision-badge.mjs';
+ import { createHash } from 'node:crypto';
+ import { createServer } from 'node:http';
+ import { appendFileSync, chmodSync, mkdirSync, readFileSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs';
+@@ -1333,7 +1334,7 @@
+   // and never paused by notification preferences (the user controls it in
+   // Conduit's location settings).
+   if (event.type === 'location.requested') return sendLocationRequest(response, installation, event, gateway);
+-  if (!shouldDeliver(installation.preferences, event.type)) return sendJson(response, 202, { accepted: true, delivered: false });
++  if (event.type !== 'decision.badge' && !shouldDeliver(installation.preferences, event.type)) return sendJson(response, 202, { accepted: true, delivered: false });
+   // A change Hermes may make without asking: wake Conduit silently, never
+   // a visible notification.
+   if (event.type === 'phone.changes' && event.mode === 'background') return sendPhoneBackground(response, installation, event, gateway);
+@@ -1345,7 +1346,9 @@
+   if (event.type === 'call.requested' && installation.voipToken && await ring(installation, event, gateway)) {
+     return sendJson(response, 202, { accepted: true, delivered: true, rang: true, watch });
+   }
+-  const notification = notificationFor(event, installation.preferences, gateway);
++  const notification = event.type === 'decision.badge'
++    ? decisionBadgePush(event.badge)
++    : notificationFor(event, installation.preferences, gateway);
+   let result;
+   // The token this push went to: the device can register a new one meanwhile.
+   const sentToken = installation.deviceToken;
+@@ -1614,4 +1617,10 @@
+ function validateEvent(body) {
++  if (body.type === 'decision.badge') {
++    if (!validDecisionBadge(body.badge)) throw httpError(400, 'invalid_decision_badge');
++    const eventId = body.event_id;
++    if (typeof eventId !== 'string' || !/^laa-decision-badge:[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(eventId)) throw httpError(400, 'invalid_event_id');
++    return { type: body.type, eventId, badge: body.badge };
++  }
+   const types = new Set(['approval.needed', 'input.needed', 'response.ready', 'turn.failed', 'background_task.finished', 'call.requested', 'location.requested', 'phone.changes', 'room.invite', 'plugin.hello']);
+   if (!types.has(body.type)) throw httpError(400, 'invalid_event_type');
+   const eventId = String(body.event_id ?? '');

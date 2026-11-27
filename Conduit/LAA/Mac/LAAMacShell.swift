@@ -65,7 +65,7 @@ struct LAAMacShell: View {
             .environmentObject(bridge)
             .environmentObject(employeeCalls)
             .environmentObject(usageState)
-            .modifier(LAADecisionBadgeSync(bridge: bridge, active: scenePhase == .active))
+            .modifier(LAADecisionBadgeSync(bridge: bridge, active: scenePhase != .background))
             .safeAreaInset(edge: .top, spacing: 0) {
                 if let context = employeeCalls.snapshot?.context,
                    !conversationVisible || context.profile != appState.conversationIdentityProfile
