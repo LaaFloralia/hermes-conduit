@@ -12,7 +12,7 @@ struct LAADecisionDetailView: View {
     @Environment(\.laaDesktop) private var laaDesktop
     @ObservedObject var board: LAADecisionBoard
     @ObservedObject var drafts: ComposerDraftStore
-    /// Called with the answered record so the list can move the row to 回答済み.
+    /// Called with the answered record so the list can move the row to Answered.
     let onAnswered: ((LAADecision) -> Void)?
     let onFinished: (_ removed: Bool) -> Void
 

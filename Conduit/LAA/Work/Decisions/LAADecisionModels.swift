@@ -242,6 +242,9 @@ enum LAADecisionDeadline {
 }
 
 enum LAADecisionCopy {
+    /// Section labels, in English like the sibling Work lists (Active, Recent).
+    static let openSection = "Open"
+    static let answeredSection = "Answered"
     static let recommended = "推奨"
     static let otherTitle = "選択肢以外で答える"
     static let notDelivered = "届いていません"

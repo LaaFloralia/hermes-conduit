@@ -347,9 +347,9 @@ final class LAAPaseoUITests: XCTestCase {
         XCTAssertTrue(question.waitForExistence(timeout: 15))
         capture(app, "question", appearance)
         app.buttons["A案"].tap()
-        let reply = app.buttons["回答を送信"]
+        let reply = app.buttons["work.session.decision.send"]
         XCTAssertTrue(reply.isEnabled); reply.tap()
-        XCTAssertTrue(app.staticTexts["確認と回答"].waitForNonExistence(timeout: 15))
+        XCTAssertTrue(app.descendants(matching: .any)["work.session.decision"].firstMatch.waitForNonExistence(timeout: 15))
     }
     private func capture(_ app: XCUIApplication, _ name: String, _ appearance: String) {
         let shot = XCTAttachment(screenshot: app.screenshot())

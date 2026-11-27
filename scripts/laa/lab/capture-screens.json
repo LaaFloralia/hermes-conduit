@@ -9,7 +9,7 @@
   {"id":"work-sessions","title":"Work｜実行中・判断待ちのセッション一覧","route":"Work → Sessions","fixture":"Work","mac":{"section":"work","launch":"sessions","observe":"/v1/sessions"}},
   {"id":"work-session-history","title":"Work｜長いセッションの履歴","route":"セッションリンク → 履歴の長いセッション","fixture":"Work 60 ターン"},
   {"id":"work-session-running","title":"Work｜実行中のセッション","route":"セッションリンク → 実行中のセッション","fixture":"Work running"},
-  {"id":"work-session-waiting","title":"Work｜判断待ちのセッション","route":"セッションリンク → 確認と回答のあるセッション","fixture":"Work awaiting_decision"},
+  {"id":"work-session-waiting","title":"Work｜判断待ちのセッション","route":"セッションリンク → 回答待ちの質問があるセッション","fixture":"Work awaiting_decision"},
   {"id":"work-decisions","title":"Work｜判断ボード","route":"Work → Decisions","fixture":"Work decisions","mac":{"section":"work","launch":"decisions","observe":"/v1/decisions"}},
   {"id":"work-decision-detail","title":"Work｜判断詳細","route":"Decisions → J1","fixture":"Work decisions"},
   {"id":"work-campaigns","title":"Work｜応募の判断","route":"Work → Campaigns","fixture":"Work campaign","mac":{"section":"work","launch":"campaigns","observe":"/v1/campaigns"}},
