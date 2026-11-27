@@ -18,7 +18,7 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
         }
         let items = try JSONDecoder().decode([LAAUsageItem].self, from: JSONSerialization.data(withJSONObject: rows))
         XCTAssertTrue(items.allSatisfy { $0.availableValue == nil })
-        XCTAssertEqual(LAAUsageGroup.consoleGroups(items).compactMap(\.serviceURL).map(\.scheme), ["https", "https", "https"])
+        XCTAssertEqual(LAAUsageGroup.displayGroups(items).compactMap(\.serviceURL).map(\.scheme), ["https", "https", "https"])
         XCTAssertNil(LAAUsageGroup(id: "unknown", label: "Unknown", items: []).serviceURL)
         XCTAssertEqual(LAAUsageGroup.billingURL(for: "provider.openai-api.balance")?.host, "platform.openai.com")
         XCTAssertEqual(LAAUsageGroup.billingURL(for: "provider.claude-api.balance")?.host, "platform.claude.com")
@@ -52,7 +52,7 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
     /// A reading of 0% stays 0%, an account never read stays 未取得.
     func testGoogleAIProGroupClosedAndOpenLightAndDark() async throws {
         let items = try fixture(stale: false) + googleFixture()
-        let groups = LAAUsageGroup.consoleGroups(items)
+        let groups = LAAUsageGroup.displayGroups(items)
         let google = try XCTUnwrap(groups.first { $0.id == "provider.google-ai-pro" })
         XCTAssertEqual(groups.map(\.id).prefix(4), ["provider.codex", "provider.claude", "provider.google-ai-pro", "provider.opencode-go"])
         XCTAssertEqual(google.label, "Google")

@@ -328,6 +328,13 @@ final class LAAQuickAnswerStore {
             if case .board = request.target {
                 let response: LAABridgeResponse<LAADecisionAnswerResult> = try await bridge.request(
                     method: "POST", path: request.path, jsonBody: request.body, idempotencyKey: key, timeout: 20)
+                if let count = response.data.ownerBadgeCount {
+                    await LAADecisionIconBadge.apply(count)
+                }
+                if response.data.decision.answer != nil || response.data.decision.isGone {
+                    NotificationCenter.default.post(name: LAADecisionIconBadge.recordClosed,
+                                                    object: response.data.decision.id)
+                }
                 return result(for: response.data.decision)
             }
             let _: LAABridgeResponse<Accepted> = try await bridge.request(

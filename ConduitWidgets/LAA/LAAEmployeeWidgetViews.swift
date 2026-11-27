@@ -409,7 +409,6 @@ struct LAAWidgetUsageColumn: View {
     @ScaledMetric(relativeTo: .caption) private var labelSize = LAACanvas.iphone.label
     @ScaledMetric(relativeTo: .footnote) private var readingSize = LAACanvas.iphone.small
     @ScaledMetric(relativeTo: .caption) private var providerWidth: CGFloat = 46
-    @ScaledMetric(relativeTo: .caption) private var periodWidth: CGFloat = 31
     @ScaledMetric(relativeTo: .caption) private var rowPitch: CGFloat = 22
 
     private typealias Row = LAAWidgetUsageBuilder.Row
@@ -480,7 +479,7 @@ struct LAAWidgetUsageColumn: View {
                     .lineLimit(1).frame(width: providerWidth, alignment: .leading)
                 Text(verbatim: row.period.abbreviation)
                     .font(.system(size: labelSize)).foregroundStyle(LAAColor.secondaryText)
-                    .lineLimit(1).frame(width: periodWidth, alignment: .leading)
+                    .lineLimit(1).fixedSize(horizontal: true, vertical: false)
                 Spacer(minLength: 2)
                 reading(value, reset: reset.flatMap { date in
                     switch form {
@@ -508,8 +507,6 @@ struct LAAWidgetUsageColumn: View {
                 Text(verbatim: reset).font(.system(size: labelSize)).monospacedDigit()
                     .foregroundStyle(LAAColor.secondaryText)
             }
-            LAAUsageMeterMark(level: LAAMeterLevel(remainingPercent: value?.amount))
-                .font(.system(size: labelSize))
             if let value {
                 Text(verbatim: LAAEmployeeWidgetView.percentageText(value.amount))
                     .font(.system(size: readingSize, weight: .semibold)).monospacedDigit()
@@ -521,7 +518,7 @@ struct LAAWidgetUsageColumn: View {
     }
 
     private func accessibilityValue(_ value: WidgetUsageMeter?, reset: Date?) -> String {
-        guard let value else { return LAAShape.unknown }
+        guard let value else { return "Unknown" }
         let text = LAAEmployeeWidgetView.displayValue(value, entryDate: entry.date, renderedAt: renderedAt,
                                                      anchor: entry.freshnessAnchor)
         return reset.map { text + ", Reset " + LAAUsageResetText.full($0, now: renderedAt) } ?? text

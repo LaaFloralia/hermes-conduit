@@ -3,6 +3,13 @@ import XCTest
 @testable import Conduit
 
 final class LAABrainDailyTests: XCTestCase {
+    func testFoldersHideDailyJournalWithoutChangingItsPath() {
+        let names = ["Archive", LAABrainDailyNote.folder, "daily journal notes"]
+        XCTAssertEqual(LAABrainView.visibleFolderNames(names, parent: ""), ["Archive", "daily journal notes"])
+        XCTAssertEqual(LAABrainView.visibleFolderNames(names, parent: "Brain"), ["Archive", "daily journal notes"])
+        XCTAssertEqual(LAABrainView.visibleFolderNames(names, parent: "HQ"), names)
+    }
+
     private var root: URL!
     private var history: URL!
     private let tokyo = TimeZone(secondsFromGMT: 9 * 3600)!

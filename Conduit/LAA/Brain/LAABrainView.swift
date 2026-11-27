@@ -725,13 +725,23 @@ struct LAABrainView: View {
     }
 
     private func folderNames(_ folder: String) -> [String] {
-        guard local.isReady else { return LAABrainPaths.folders(in: files, parent: folder) }
-        let prefix = folder.isEmpty ? "" : folder + "/"
-        return folderPaths.compactMap { candidate -> String? in
-            guard candidate.hasPrefix(prefix) else { return nil }
-            let remainder = String(candidate.dropFirst(prefix.count))
-            return remainder.isEmpty || remainder.contains("/") ? nil : remainder
-        }.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        let names: [String]
+        if local.isReady {
+            let prefix = folder.isEmpty ? "" : folder + "/"
+            names = folderPaths.compactMap { candidate -> String? in
+                guard candidate.hasPrefix(prefix) else { return nil }
+                let remainder = String(candidate.dropFirst(prefix.count))
+                return remainder.isEmpty || remainder.contains("/") ? nil : remainder
+            }.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        } else {
+            names = LAABrainPaths.folders(in: files, parent: folder)
+        }
+        return Self.visibleFolderNames(names, parent: folder)
+    }
+
+    static func visibleFolderNames(_ names: [String], parent: String) -> [String] {
+        guard parent.isEmpty || parent == "Brain" else { return names }
+        return names.filter { $0 != LAABrainDailyNote.folder }
     }
 
     private func folderNotes(_ folder: String) -> [LAABrainFile] {

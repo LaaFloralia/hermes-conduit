@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 import { createDecisionStore } from '../src/decisions/store.mjs';
-import { createDecisionService } from '../src/decisions/service.mjs';
+import { createDecisionService, ownerBadgeCount } from '../src/decisions/service.mjs';
 import { createSessionStore } from '../src/sessions/store.mjs';
 import { createSessionService } from '../src/sessions/service.mjs';
 import { daemonAdapter, daemonSessionID } from '../src/sessions/daemon.mjs';
@@ -85,6 +85,21 @@ test('strict impact prefix, legacy categories and owner-only pushes', async (t) 
   await assert.rejects(f.service.answerAsMonet({ id: owner.id, body: { optionIndex: 0 }, reason: '推奨' }), { code: 'decision_owner_only', status: 409 });
   await assert.rejects(f.service.answerAsMonet({ id: delegable.id, body: { optionIndex: 0 }, reason: '二\n行' }), code('decision_invalid'));
   assert.equal((await f.service.answerAsMonet({ id: legacy.id, body: { optionIndex: 0 }, reason: '任せられる件と確認' })).decision.answer.answeredBy, 'monet');
+});
+
+test('badge: only waiting owner decisions count, and answering and withdrawing clear them', async (t) => {
+  const f = fixture(t);
+  const first = f.service.add(request()).decision;
+  const second = f.service.add(request({ requestId: 'second' })).decision;
+  for (const impact of ['【任せられる】', '【必ず社長：気づき】', '【必ず社長：Notice】']) {
+    f.service.add(request({ requestId: impact, impact }));
+  }
+  await f.service.list();
+  assert.equal(f.notifications.find((e) => e.meta.id === first.id).ownerBadgeCount, 2);
+  const answer = await f.service.answer({ id: first.id, deviceId: 'phone', body: { optionIndex: 0, requestId: 'answer-1' } });
+  assert.equal(answer.ownerBadgeCount, 1);
+  f.service.withdraw(second.id, '取り下げ');
+  assert.equal(ownerBadgeCount(f.store.all()), 0);
 });
 
 test('Monet delivery, idempotent replay, owner HTTP overturn, and answer-time stats', async (t) => {

@@ -334,6 +334,10 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             completionHandler([.banner, .list])
             return
         }
+        if notification.request.content.badge != nil {
+            completionHandler([.badge])
+            return
+        }
         #endif
         // Directions to tap: posted from the background, kept if Conduit
         // came to the front before it showed.

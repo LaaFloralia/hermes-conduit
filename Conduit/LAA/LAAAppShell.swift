@@ -59,6 +59,8 @@ struct LAAAppShell: View {
             }
             .environmentObject(bridge)
             .environmentObject(employeeCalls)
+            .environmentObject(usageState)
+            .modifier(LAADecisionBadgeSync(bridge: bridge, active: scenePhase == .active))
             // A shortcut or widget may start a call outside a chat. Keep a
             // return control visible there too when the call is minimised.
             .safeAreaInset(edge: .top, spacing: 0) {
@@ -83,16 +85,6 @@ struct LAAAppShell: View {
                     await usageState.refreshAutomatically(bridge: bridge)
                 }
             }
-            // The Work tab's badge is the board's last count. Read it again on
-            // every activation, so an answer given elsewhere (a notification,
-            // another device) does not leave a stale number (2026-11-23).
-            .task(id: "decisions|\(bridge.revision)|\(scenePhase == .active)") {
-                guard scenePhase == .active else { return }
-                guard bridge.status == .paired else { return }
-                if let page: LAADecisionPage = try? await bridge.read("/v1/decisions"), !Task.isCancelled {
-                    decisionCount = page.items.filter(\.needsOwner).count
-                }
-            }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .background { LAAUsageBackground.schedule() }
             }
@@ -103,7 +95,7 @@ struct LAAAppShell: View {
                 appState.requestSettingsDismissal()
             }
             .sheet(isPresented: $showUsage) {
-                NavigationStack { LAAUsageView(state: usageState, onRequestSettings: onRequestSettings) }
+                NavigationStack { LAAUsageView(state: usageState).modifier(LAAUsageSheetClose()) }
                     .environmentObject(bridge)
             }
             .onChange(of: workLinkRequest.generation, initial: true) { _, _ in
@@ -339,7 +331,7 @@ private struct LAANonChatTab: View, Equatable {
                 } else if tab == .studio {
                     LAAAssetsView(onRequestSettings: onRequestSettings, initialStudioSelected: initialStudioSelected)
                 } else if tab == .usage {
-                    LAAUsageView(state: usageState, onRequestSettings: onRequestSettings)
+                    LAAUsageView(state: usageState)
                 } else if tab == .work {
                     LAAWorkHub(onRequestSettings: onRequestSettings)
                 } else {

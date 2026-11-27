@@ -52,9 +52,9 @@ enum LAAWidgetUsageBuilder {
     /// Which quota window a reading is.
     enum Period: String, CaseIterable {
         case fiveHour, weekly, fable
-        /// The period's short name, the same in every language (5h, 7d, Fable).
+        /// The period's short name, the same in every language (5h, 7d, Mythos).
         var abbreviation: String {
-            switch self { case .fiveHour: "5h"; case .weekly: "7d"; case .fable: "Fable" }
+            switch self { case .fiveHour: "5h"; case .weekly: "7d"; case .fable: "Mythos" }
         }
         var minutes: Double { self == .fiveHour ? 300 : 10_080 }
     }
@@ -79,7 +79,7 @@ enum LAAWidgetUsageBuilder {
     static let googleGroup = "google-ai-pro"
 
     /// The widget's rows in the owner's order (2026-11-25): Codex 7d, Claude
-    /// 5h / 7d / Fable, Google 5h / 7d.
+    /// 5h / 7d / Mythos, Google 5h / 7d.
     static let widgetRows: [Row] = [
         Row(provider: "codex", name: "Codex", period: .weekly),
         Row(provider: "claude", name: "Claude", period: .fiveHour),
@@ -90,7 +90,7 @@ enum LAAWidgetUsageBuilder {
     ]
 
     /// Which rows give way first when larger text leaves no room for six:
-    /// the five-hour readings, then Google's week, then Fable.
+    /// the five-hour readings, then Google's week, then Mythos.
     static let dropOrder: [String] = [
         widgetRows[4].id, widgetRows[1].id, widgetRows[5].id, widgetRows[3].id, widgetRows[2].id, widgetRows[0].id,
     ]
@@ -189,20 +189,21 @@ enum LAAWidgetUsageBuilder {
                               resetsAt: Date?, receivedAt: Date) -> WidgetUsageMeter {
         let freshUntil = item.detail?.freshUntil
         let observed = LAAUsageItem.date(item.observedAt)
-        let verified = item.detail?.sourceKind == "verified"
+        // A provider can mark its source verified; the snapshot's `verified`
+        // flag is reserved for USD balances, not its quota windows.
         let upstreamDeadline = LAAUsageItem.date(freshUntil)
         let limit = observed.map { min($0, item.freshnessAnchor ?? receivedAt, receivedAt).addingTimeInterval(10 * 60) }
         let deadline: Date?
         if freshUntil == nil {
-            deadline = verified ? nil : limit
+            deadline = limit
         } else {
             deadline = upstreamDeadline.flatMap { upstream in limit.map { min($0, upstream) } }
         }
         return WidgetUsageMeter(id: id, label: label, unit: .percent, amount: amount,
                                 observedAt: observed, freshUntil: deadline, resetsAt: resetsAt,
                                 stale: item.stale || item.retainedReason != nil || (freshUntil != nil && deadline == nil),
-                                retained: false, verified: verified,
-                                legacyFreshness: freshUntil == nil && !verified)
+                                retained: false, verified: false,
+                                legacyFreshness: freshUntil == nil)
     }
 }
 
@@ -213,19 +214,6 @@ typealias LAAUsageBarLevel = LAAMeterLevel
 extension LAAMeterLevel {
     init(remainingPercent: Double?) {
         self.init(remaining: remainingPercent.map { $0 / 100 })
-    }
-}
-
-/// The same status mark is used on every Usage surface. Text in the row
-/// remains independently addressable; the mark isn't a second AX element.
-struct LAAUsageMeterMark: View {
-    let level: LAAMeterLevel
-    @Environment(\.laaPalette) private var palette
-
-    var body: some View {
-        Text(verbatim: level.shape)
-            .foregroundStyle(level == .unknown ? palette.textMuted : palette.meter(level))
-            .accessibilityHidden(level != .unknown)
     }
 }
 

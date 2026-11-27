@@ -90,6 +90,7 @@ struct LAADecision: Codable, Identifiable, Equatable {
     let sourceRef: String?
     let createdAt: String?
     let category: String?
+    let ownerKind: String?
     let answer: Answer?
     let delivery: Delivery?
     /// Session items only: the Bridge session that holds the native question.
@@ -101,12 +102,12 @@ struct LAADecision: Codable, Identifiable, Equatable {
          options: [Option] = [], allowOther: Bool = true, impact: String? = nil, deadline: String? = nil,
          source: Source? = nil, sourceRef: String? = nil, createdAt: String? = nil,
          answer: Answer? = nil, delivery: Delivery? = nil, sessionId: String? = nil, category: String? = nil,
-         images: [Image] = []) {
+         images: [Image] = [], ownerKind: String? = nil) {
         self.kind = kind; self.id = id; self.ref = ref; self.status = status; self.title = title; self.summary = summary
         self.options = options; self.allowOther = allowOther; self.impact = impact; self.deadline = deadline
         self.source = source; self.sourceRef = sourceRef; self.createdAt = createdAt
         self.answer = answer; self.delivery = delivery; self.sessionId = sessionId; self.category = category
-        self.images = images
+        self.images = images; self.ownerKind = ownerKind
     }
 
     init(from decoder: Decoder) throws {
@@ -138,6 +139,7 @@ struct LAADecision: Codable, Identifiable, Equatable {
         sourceRef = try c.decodeIfPresent(String.self, forKey: .sourceRef)
         createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt)
         category = try c.decodeIfPresent(String.self, forKey: .category)
+        ownerKind = try c.decodeIfPresent(String.self, forKey: .ownerKind)
         answer = try c.decodeIfPresent(Answer.self, forKey: .answer)
         delivery = try c.decodeIfPresent(Delivery.self, forKey: .delivery)
         // An image's option index follows its option through the reorder
@@ -150,7 +152,7 @@ struct LAADecision: Codable, Identifiable, Equatable {
     }
     private enum CodingKeys: String, CodingKey {
         case kind, id, ref, status, title, summary, options, allowOther, impact, deadline, source, sourceRef
-        case createdAt, category, answer, delivery, sessionId, images
+        case createdAt, category, ownerKind, answer, delivery, sessionId, images
     }
 
     /// General pictures, then each option's picture in option order: the
@@ -176,6 +178,11 @@ struct LAADecision: Codable, Identifiable, Equatable {
     /// quietly among the answered rows and never counted (2026-11-26).
     /// Monet's queue (delegable, unmarked) is Monet's to answer, not the owner's.
     var needsOwner: Bool { !isGone && !isMonetQueue && (answer == nil || deliveryFailed) }
+    var countsTowardBadge: Bool {
+        kind == .board && category == "owner" && status == "open" && answer == nil && !isGone
+            && !["notice", "気づき"].contains(ownerKind?.lowercased() ?? "")
+    }
+
     /// Answered, and the Bridge delivers it by itself once the conversation is free.
     var deliveryWaiting: Bool { delivery?.state == "pending" && delivery?.waiting == true }
     /// The board's original option order is recommended-first; the answer's
@@ -200,7 +207,10 @@ struct LAADecisionPage: Codable {
 }
 
 /// The answer endpoint's envelope.
-struct LAADecisionAnswerResult: Codable { let decision: LAADecision }
+struct LAADecisionAnswerResult: Codable {
+    let decision: LAADecision
+    var ownerBadgeCount: Int? = nil
+}
 
 enum LAADecisionOrder {
     /// The Bridge's order, applied again so a merged or cached list reads the

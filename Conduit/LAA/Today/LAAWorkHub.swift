@@ -9,20 +9,19 @@ struct LAAWorkHub: View {
     @Environment(\.laaDesktop) private var laaDesktop
     @ObservedObject private var linkRequest = LAAWorkLinkRequest.shared
     @StateObject private var drafts = LAAWorkDrafts.makeStore()
-    @StateObject private var usageState = LAAUsageState()
-    @StateObject private var decisions = LAADecisionBoard()
+    @EnvironmentObject private var usageState: LAAUsageState
+    @EnvironmentObject private var decisions: LAADecisionBoard
+    @State private var decisionSection: DecisionSection = .decisions
     @StateObject private var campaigns = LAACampaignBoard()
     @State private var section: Section = .projects
     @State private var showPairing = false
     @State private var showUsage = false
     @State private var createID = 0
     @State private var refreshID = 0
-    @AppStorage("laa.work.decisionCount") private var decisionCount = 0
     @State private var search = ""
     @FocusState private var searchFocused: Bool
     @Environment(\.laaThemeID) private var themeID
     @Environment(\.laaPalette) private var palette
-    @State private var decisionDevice: String?
     @State private var linkedProject: String?
 
     /// Projects opens first: opening a project shows its requirements, done
@@ -30,19 +29,23 @@ struct LAAWorkHub: View {
     /// opened first since 2026-11-11). The board stays beside Sessions, so
     /// what waits for the owner is one tap away.
     enum Section: String, CaseIterable, Identifiable {
-        case projects, sessions, decisions, campaigns, tasks
+        case projects, sessions, decisions, tasks
         var id: String { rawValue }
         var title: String {
             switch self {
             case .projects: String("Projects")
             case .sessions: String("Sessions")
             case .decisions: String("Decisions")
-            case .campaigns: LAACampaignCopy.section
             case .tasks: String("Tasks")
             }
         }
         /// The board keeps its own list and pull to refresh; nothing to search.
-        var searchable: Bool { self != .decisions && self != .campaigns }
+        var searchable: Bool { self != .decisions }
+    }
+
+    enum DecisionSection: String, CaseIterable {
+        case decisions, campaigns
+        var title: String { self == .decisions ? Section.decisions.title : LAACampaignCopy.section }
     }
 
     private func select(_ value: Section) {
@@ -57,8 +60,12 @@ struct LAAWorkHub: View {
             LAAScreenHeader(title: "Work", identifier: "laa.work.title")
                 .padding(.horizontal, LAASpacing.horizontal)
             LAAWorkSectionSelector(selection: Binding(get: { section }, set: select),
-                                   decisions: decisions.count, campaigns: campaigns.count)
+                                   decisions: decisions.count)
                 .padding(.horizontal, LAASpacing.horizontal)
+            if section == .decisions {
+                Self.decisionPicker(selection: $decisionSection)
+                    .padding(.horizontal, LAASpacing.horizontal)
+            }
             if bridge.status != .paired { connectionState }
             else {
                 if !laaDesktop && section.searchable {
@@ -133,24 +140,19 @@ struct LAAWorkHub: View {
             if linkedProject != nil {
                 section = .projects
             } else if linkRequest.decisionsLink {
+                decisionSection = .decisions
                 decisions.linkedID = linkRequest.decisionTarget
                 select(.decisions)
             } else {
                 select(linkRequest.sessionTarget == nil ? .tasks : .sessions)
             }
         }
-        .task(id: "\(bridge.revision)-\(scenePhase == .active)") {
-            if decisionDevice != bridge.deviceID { decisions.reset(); campaigns.reset(); decisionDevice = bridge.deviceID }
-            if let cached = LAAWorkSessionCache.read([LAADecision].self, store: drafts, device: bridge.deviceID, target: "decisions") {
-                decisions.restoreIfNeeded(cached)
-            }
-            await decisions.refreshIfStale(bridge)
-            await campaigns.refreshIfStale(bridge)
-            guard scenePhase == .active else { return }
+        .onChange(of: bridge.revision) { _, _ in campaigns.reset() }
+        .task(id: "campaigns|\(bridge.revision)|\(scenePhase == .active)|\(section)|\(decisionSection)") {
+            guard scenePhase == .active, section == .decisions, decisionSection == .campaigns else { return }
             while !Task.isCancelled {
-                do { try await Task.sleep(for: .seconds(15)) } catch { return }
-                await decisions.refreshIfStale(bridge)
                 await campaigns.refreshIfStale(bridge)
+                do { try await Task.sleep(for: .seconds(15)) } catch { return }
             }
         }
         // The gauge reads Usage's last readings; opening Work refreshes them at
@@ -159,13 +161,9 @@ struct LAAWorkHub: View {
         #if DEBUG
         .task { await debugLaunch() }
         #endif
-        .onChange(of: decisions.items) { _, items in
-            LAAWorkSessionCache.save(items, store: drafts, device: bridge.deviceID, target: "decisions")
-        }
-        .onChange(of: decisions.count, initial: true) { _, count in decisionCount = count }
         .sheet(isPresented: $showPairing) { LAAPairingView().environmentObject(bridge) }
         .navigationDestination(isPresented: $showUsage) {
-            LAAUsageView(state: usageState, onRequestSettings: onRequestSettings)
+            LAAUsageView(state: usageState)
         }
     }
 
@@ -188,10 +186,32 @@ struct LAAWorkHub: View {
                         .padding(.horizontal, LAASpacing.horizontal).padding(.bottom, LAASpacing.x8)
                 }.refreshable { refreshID += 1; await decisions.load(bridge) }
             }
-        case .decisions: LAADecisionBoardView(board: decisions, drafts: drafts)
-        case .campaigns: LAACampaignBoardView(board: campaigns)
+        case .decisions:
+            switch decisionSection {
+            case .decisions: LAADecisionBoardView(board: decisions, drafts: drafts)
+            case .campaigns: LAACampaignBoardView(board: campaigns)
+            }
         case .tasks: LAALinearTasksView(drafts: drafts, query: search, createID: createID, onCreateConsumed: { createID = 0 })
         }
+    }
+
+    static func decisionPicker(selection: Binding<DecisionSection>) -> some View {
+        Menu {
+            Picker("Decision Board", selection: selection) {
+                ForEach(DecisionSection.allCases, id: \.self) { page in
+                    Text(verbatim: page.title).tag(page)
+                }
+            }
+        } label: {
+            Label {
+                Text(verbatim: selection.wrappedValue.title).laaTextStyle(.body)
+            } icon: {
+                Image(systemName: "chevron.down").accessibilityHidden(true)
+            }
+            .frame(minHeight: LAASpacing.minimumTouchTarget)
+            .contentShape(Rectangle())
+        }
+        .accessibilityIdentifier("work.decisions.sections")
     }
 
     #if DEBUG
@@ -206,7 +226,12 @@ struct LAAWorkHub: View {
             guard let index = arguments.firstIndex(of: flag), arguments.indices.contains(index + 1) else { return nil }
             return arguments[index + 1]
         }
-        if let raw = value("-laa-work-section"), let wanted = Section(rawValue: raw) { section = wanted }
+        if let raw = value("-laa-work-section") {
+            if raw == DecisionSection.campaigns.rawValue {
+                section = .decisions
+                decisionSection = .campaigns
+            } else if let wanted = Section(rawValue: raw) { section = wanted }
+        }
         guard arguments.contains("-LAA_UI_TEST_ISOLATED_BRIDGE"), let code = value("-LAA_UI_TEST_PAIR_CODE"),
               bridge.status != .paired else { return }
         try? await bridge.pair(address: LAABridgeEndpoint.defaultAddress, code: code, name: "UI test")

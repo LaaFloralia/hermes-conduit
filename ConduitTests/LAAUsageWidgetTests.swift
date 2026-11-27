@@ -66,7 +66,7 @@ final class LAAUsageWidgetTests: XCTestCase {
         ]
         // Only Claude's rows: its weekly reading, then 5h and Fable unknown.
         XCTAssertEqual(LAAWidgetUsageBuilder.make(items: items, receivedAt: now).meters.map(\.label),
-                       ["Claude 7d", "Claude 5h", "Claude Fable"])
+                       ["Claude 7d", "Claude 5h", "Claude Mythos"])
         // nanoGPT was cancelled (2026-11-11): neither the feed nor a saved row brings it back.
         let saved = WidgetUsageSnapshot(meters: [
             WidgetUsageMeter(id: "provider.nanogpt.quota.weekly", label: "nanoGPT", unit: .percent, amount: 80,
@@ -74,7 +74,7 @@ final class LAAUsageWidgetTests: XCTestCase {
                              stale: false, retained: false),
         ], checkedAt: now)
         XCTAssertTrue(saved.displayableMeters.isEmpty)
-        XCTAssertNil(LAAUsageGroup.consoleGroups(items).first { $0.id == "provider.nanogpt" })
+        XCTAssertNil(LAAUsageGroup.displayGroups(items).first { $0.id == "provider.nanogpt" })
     }
 
     /// Work's gauge points at the tightest weekly quota, from the listed quotas only.
@@ -226,18 +226,18 @@ final class LAAUsageWidgetTests: XCTestCase {
         let items = try [unavailable("fal"), unavailable("venice"), unavailable("jev"), unavailable("google-cloud"),
                          unavailable("google-flow"), unavailable("magnific", label: "Magnific"),
                          unavailable("antigravity"), unavailable("codex"), unavailable("claude")]
-        XCTAssertEqual(LAAUsageGroup.consoleGroups(items).map(\.id), ["provider.codex", "provider.claude", "provider.magnific",
+        XCTAssertEqual(LAAUsageGroup.displayGroups(items).map(\.id), ["provider.codex", "provider.claude", "provider.magnific",
             "provider.venice"])
-        XCTAssertEqual(LAAUsageGroup.consoleGroups(items).first?.label, "Codex")
+        XCTAssertEqual(LAAUsageGroup.displayGroups(items).first?.label, "Codex")
         let refuseless = try item("refuseless", kind: "balance", label: "Refuseless", value: 30, unit: "usd")
-        XCTAssertEqual(LAAUsageGroup.consoleGroups([refuseless]).map(\.label), ["Refuseless"])
-        XCTAssertEqual(LAAUsageGroup.consoleGroups([refuseless]).first?.serviceURL?.host, "refuseless.com")
+        XCTAssertEqual(LAAUsageGroup.displayGroups([refuseless]).map(\.label), ["Refuseless"])
+        XCTAssertEqual(LAAUsageGroup.displayGroups([refuseless]).first?.serviceURL?.host, "refuseless.com")
         XCTAssertFalse(LAAWidgetUsageBuilder.widgetSlots.contains { $0.provider == "refuseless" })
         let liquid = try item("liquid", kind: "usage", label: "Liquid AI", value: 1, unit: "tokens")
-        XCTAssertEqual(LAAUsageGroup.consoleGroups([liquid]).map(\.label), ["Liquid AI"])
-        XCTAssertEqual(LAAUsageGroup.consoleGroups([try item("opencode-go", label: "OpenCode Go")]).map(\.label), ["OpenCode"])
+        XCTAssertEqual(LAAUsageGroup.displayGroups([liquid]).map(\.label), ["Liquid AI"])
+        XCTAssertEqual(LAAUsageGroup.displayGroups([try item("opencode-go", label: "OpenCode Go")]).map(\.label), ["OpenCode"])
         let widget = LAAWidgetUsageBuilder.make(items: items, receivedAt: now)
-        XCTAssertEqual(widget.meters.map(\.label), ["Codex 7d", "Claude 7d", "Claude 5h", "Claude Fable"])
+        XCTAssertEqual(widget.meters.map(\.label), ["Codex 7d", "Claude 7d", "Claude 5h", "Claude Mythos"])
         XCTAssertTrue(widget.meters.allSatisfy { !$0.available })
         XCTAssertEqual(LAAWidgetUsageBuilder.widgetMeters(widget).count, widget.meters.count)
         let retired = ["jev", "google-cloud", "google-flow", "fal", "antigravity"]

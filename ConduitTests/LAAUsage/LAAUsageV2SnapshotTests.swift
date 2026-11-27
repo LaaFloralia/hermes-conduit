@@ -26,7 +26,7 @@ final class LAAUsageV2SnapshotTests: XCTestCase {
 
     func testMediumWidgetDrawsAllSixRows() throws {
         let live = entry(try F.items())
-        XCTAssertEqual(live.usage?.meters.map(\.label), ["Codex 7d", "Claude 5h", "Claude 7d", "Claude Fable", "Google 5h", "Google 7d"])
+        XCTAssertEqual(live.usage?.meters.map(\.label), ["Codex 7d", "Claude 5h", "Claude 7d", "Claude Mythos", "Google 5h", "Google 7d"])
         for (size, tag) in [(Self.proMaxMedium, "364x170"), (Self.compactMedium, "329x155")] {
             for style in [UIUserInterfaceStyle.light, .dark] {
                 let name = "v2-widget-\(tag)-\(style == .dark ? "dark" : "light")"
@@ -66,7 +66,7 @@ final class LAAUsageV2SnapshotTests: XCTestCase {
             }
             XCTAssertEqual(try render(live, size: size, style: .light, dynamicTypeSize: .large, name: "v2-type-\(tag)-default").rows, 6)
         }
-        XCTAssertEqual(LAAWidgetUsageColumn.rows(dropping: 2).map(\.label), ["Codex 7d", "Claude 7d", "Claude Fable", "Google 7d"])
+        XCTAssertEqual(LAAWidgetUsageColumn.rows(dropping: 2).map(\.label), ["Codex 7d", "Claude 7d", "Claude Mythos", "Google 7d"])
     }
 
     /// The timeline has an entry at Fable's reset; from then the Fable row

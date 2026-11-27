@@ -23,14 +23,16 @@ final class LAAShellNavigationUITests: XCTestCase {
             segment.tap()
             XCTAssertTrue(segment.isSelected)
         }
-        // Five sections, one row, every one on screen and tappable; no overflow menu (D-21 B).
+        // Four primary sections; Campaigns is inside Decisions.
         XCTAssertFalse(app.buttons["work.section.more"].exists)
         XCTAssertFalse(app.buttons["work.section.routines"].exists)
-        for name in ["projects", "sessions", "decisions", "campaigns", "tasks"] {
+        XCTAssertFalse(app.buttons["work.section.campaigns"].exists)
+        for name in ["projects", "sessions", "decisions", "tasks"] {
             XCTAssertTrue(app.buttons["work.section.\(name)"].isHittable, "\(name) is hidden")
         }
         LAAWorkSectionUI.open("campaigns", in: app)
-        XCTAssertTrue(app.buttons["work.section.campaigns"].isSelected)
+        XCTAssertTrue(app.buttons["work.section.decisions"].isSelected)
+        XCTAssertEqual(app.buttons["work.decisions.sections"].label, "Campaigns")
         XCTAssertTrue(app.buttons["work.section.projects"].exists)
         XCTAssertFalse(app.buttons["work.section.skills"].exists)
         XCTAssertTrue(app.buttons["work.usage"].exists)

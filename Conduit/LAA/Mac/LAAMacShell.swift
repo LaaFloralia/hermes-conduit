@@ -64,6 +64,8 @@ struct LAAMacShell: View {
             }
             .environmentObject(bridge)
             .environmentObject(employeeCalls)
+            .environmentObject(usageState)
+            .modifier(LAADecisionBadgeSync(bridge: bridge, active: scenePhase == .active))
             .safeAreaInset(edge: .top, spacing: 0) {
                 if let context = employeeCalls.snapshot?.context,
                    !conversationVisible || context.profile != appState.conversationIdentityProfile
@@ -97,7 +99,7 @@ struct LAAMacShell: View {
                 appState.requestSettingsDismissal()
             }
             .sheet(isPresented: $showUsage) {
-                NavigationStack { LAAUsageView(state: usageState, onRequestSettings: onRequestSettings) }
+                NavigationStack { LAAUsageView(state: usageState).modifier(LAAUsageSheetClose()) }
                     .environmentObject(bridge)
                     .laaSheetSize(.page)
             }
@@ -211,7 +213,7 @@ struct LAAMacShell: View {
             // Usage centres its own card grid; a readable width here would
             // narrow it back to two columns.
             NavigationStack {
-                LAAUsageView(state: usageState, onRequestSettings: onRequestSettings)
+                LAAUsageView(state: usageState)
             }
             .laaCompactColumn()
         }

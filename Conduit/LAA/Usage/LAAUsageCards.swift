@@ -2,8 +2,8 @@
 import SwiftUI
 import LAAKit
 
-/// One quota window on a provider card: `5h`, `7d` or Claude's `Fable`.
-/// `remainingPercent` nil is unknown (track and ○ only), never zero.
+/// One quota window on a provider card: `5h`, `7d` or Claude's `Mythos`.
+/// `remainingPercent` nil is unknown (empty track), never zero.
 struct LAAUsageCardWindow: Equatable, Identifiable {
     let id: String
     let label: String
@@ -25,6 +25,10 @@ enum LAAUsageCardModel {
             .sorted { $0.id < $1.id }
     }
 
+    static func displayedAccount(_ accounts: [LAAUsageItem], provider: String) -> LAAUsageItem? {
+        LAAWidgetUsageBuilder.activeAccount(accounts) ?? (provider == "muse" ? accounts.first : nil)
+    }
+
     /// "Sub2" from "Google Sub2": the card already says Google.
     static func accountName(_ item: LAAUsageItem) -> String {
         let label = item.label.hasPrefix("Google ") ? String(item.label.dropFirst("Google ".count)) : item.label
@@ -33,7 +37,7 @@ enum LAAUsageCardModel {
 
     /// The windows a card draws. Codex and Google show the 5h and 7d windows
     /// their reading has (both, unknown, when there is none); Claude always
-    /// shows 5h and 7d, then Fable on the next row; Muse has only its weekly
+    /// shows 5h and 7d, then Mythos on the next row; Muse has only its weekly
     /// Free allowance.
     static func windows(provider: String, item: LAAUsageItem?, now: Date) -> [LAAUsageCardWindow] {
         let usable = item.map { $0.availability == "available" } ?? false
@@ -174,7 +178,7 @@ struct LAAUsageWindowGrid: View {
 
 /// One window: label 12 muted and the value 13/500 in tabular digits on a
 /// line, the 4pt square bar, and the reset 12 muted below. Unknown draws
-/// the track and ○ only.
+/// the empty track only.
 struct LAAUsageWindowCell: View {
     let window: LAAUsageCardWindow
     let now: Date
@@ -196,8 +200,6 @@ struct LAAUsageWindowCell: View {
             HStack(alignment: .firstTextBaseline, spacing: LAASpace.s4) {
                 Text(verbatim: window.label).laaFont(tokens.windowLabel).foregroundStyle(LAAColor.secondaryText)
                 Spacer(minLength: LAASpace.s4)
-                LAAUsageMeterMark(level: LAAMeterLevel(remainingPercent: window.remainingPercent))
-                    .laaTextStyle(.note)
                 if let remaining = window.remainingPercent {
                     Text(verbatim: LAAEmployeeUsageText.percent(remaining))
                         .laaFont(tokens.windowValue, weight: .medium).monospacedDigit().foregroundStyle(LAAColor.text)
@@ -217,7 +219,7 @@ struct LAAUsageWindowCell: View {
     }
 
     private var accessibilityValue: String {
-        guard let value = window.remainingPercent else { return LAAShape.unknown }
+        guard let value = window.remainingPercent else { return "Unknown" }
         let text = LAAEmployeeUsageText.percent(value)
         return window.resetsAt.map { text + ", Reset " + LAAUsageResetText.full($0, now: now) } ?? text
     }

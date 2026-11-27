@@ -76,8 +76,8 @@ final class LAACapacityModelTests: XCTestCase {
         let rows = [try unavailable(id: "capacity.icloud", reason: "unsupported"),
                     try item(id: "capacity.google-drive", total: 2e12, free: 1.4e12),
                     try item(id: "capacity.mac-mini.memory", total: 64 * gib, free: 38 * gib)]
-        XCTAssertEqual(LAACapacity.items(rows).map(\.id), ["capacity.mac-mini.memory", "capacity.google-drive", "capacity.icloud"])
-        XCTAssertTrue(LAAUsageGroup.consoleGroups(rows).isEmpty)
+        XCTAssertEqual(LAACapacity.items(rows).map(\.id), ["capacity.mac-mini.memory", "capacity.google-drive"])
+        XCTAssertTrue(LAAUsageGroup.displayGroups(rows).isEmpty)
     }
 
     private func item(id: String, total: Double, free: Double, used: Double? = nil, status: String = "unknown",
