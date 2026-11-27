@@ -15,7 +15,7 @@ struct LAADecisionBoardView: View {
     /// The decision shown in the Mac detail column.
     @State private var selectedID: String?
     /// Answers sent from this screen. A delivered answer leaves the board, so
-    /// the list keeps its own record for the 回答済み section and the detail.
+    /// the list keeps its own record for the Answered section and the detail.
     @State private var answered: [LAADecision] = []
     /// For each row in `answered`, the board reads started when it got there.
     /// It leaves once a later read has come back without it, so a delivered
@@ -133,37 +133,66 @@ struct LAADecisionBoardView: View {
         return answered.first { $0.id == selectedID } ?? board.items.first { $0.id == selectedID }
     }
 
+    /// Ruled rows on the paper under English section labels, like Tasks and
+    /// Sessions: no card per section (work-good, 2026-11-28).
     private var phoneList: some View {
         List {
             if case .failed(let text) = board.phase {
                 Section {
-                    Text(verbatim: text).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
-                    Button { Task { await board.load(bridge) } } label: { Text(verbatim: "Retry") }
+                    VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                        Text(verbatim: text).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
+                        Button { Task { await board.load(bridge) } } label: { Text(verbatim: "Retry") }
+                    }
+                    .listRowInsets(EdgeInsets(top: 0, leading: LAASpacing.horizontal, bottom: 0, trailing: LAASpacing.horizontal))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 }
             }
             if !openItems.isEmpty {
                 Section {
-                    ForEach(openItems) { item in
-                        row(item)
-                            .listRowBackground(LAAColor.surface)
-                    }
+                    ForEach(openItems) { item in phoneRow(item) }
                 } header: {
-                    sectionText("未回答", count: openItems.count)
+                    phoneHeader(LAADecisionCopy.openSection, count: openItems.count)
                 }
             }
             if !answeredItems.isEmpty {
                 Section {
-                    ForEach(answeredItems) { item in
-                        row(item)
-                            .listRowBackground(LAAColor.surface)
-                    }
+                    ForEach(answeredItems) { item in phoneRow(item) }
                 } header: {
-                    sectionText("回答済み")
+                    phoneHeader(LAADecisionCopy.answeredSection, count: answeredItems.count)
                 }
             }
         }
-        .listStyle(.insetGrouped)
+        .listStyle(.plain).textCase(nil)
+        .environment(\.defaultMinListRowHeight, LAASpacing.minimumRowHeight)
         .scrollContentBackground(.hidden)
+    }
+
+    /// A flagged row gives its leading inset to the plum rule, so the rule sits
+    /// in the margin and every title starts on the same line, at every text size.
+    private func phoneRow(_ item: LAADecision) -> some View {
+        let gutter = Self.needsAttention(item) ? LAADecisionRow.ruleGutter : 0
+        return row(item)
+            .listRowInsets(EdgeInsets(top: 0, leading: LAASpacing.horizontal - gutter, bottom: 0, trailing: LAASpacing.horizontal))
+            .listRowBackground(Color.clear)
+            .listRowSeparatorTint(LAAColor.separator)
+            .alignmentGuide(.listRowSeparatorLeading) { dimensions in dimensions[.leading] + gutter }
+    }
+
+    /// `Open 4`, as Tasks writes its section headers: the name, then the count.
+    private func phoneHeader(_ title: String, count: Int) -> some View {
+        HStack(spacing: LAASpacing.x2) {
+            Text(verbatim: title).laaTextStyle(.section).foregroundStyle(LAAColor.text)
+            Text(verbatim: "\(count)").laaTextStyle(.secondary).monospacedDigit()
+                .foregroundStyle(LAAColor.secondaryText)
+            Spacer(minLength: 0)
+        }
+        .frame(minHeight: LAASpacing.minimumTouchTarget)
+        .padding(.horizontal, LAASpacing.horizontal)
+        .listRowInsets(EdgeInsets())
+        .background(LAAColor.background)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
     }
 
     private var desktopBoard: some View {
@@ -191,13 +220,13 @@ struct LAADecisionBoardView: View {
                             .padding(LAASpacing.x3)
                         }
                         if !openItems.isEmpty {
-                            sectionTitle("未回答", count: openItems.count)
+                            sectionTitle(LAADecisionCopy.openSection, count: openItems.count)
                             ForEach(openItems) { item in
                                 row(item, selected: selectedID == item.id)
                             }
                         }
                         if !answeredItems.isEmpty {
-                            sectionTitle("回答済み")
+                            sectionTitle(LAADecisionCopy.answeredSection)
                             ForEach(answeredItems) { item in
                                 row(item, selected: selectedID == item.id)
                             }
@@ -231,8 +260,7 @@ struct LAADecisionBoardView: View {
         .accessibilityIdentifier("work.decisions.desktop")
     }
 
-    /// `未回答 2`. The Mac label starts where a row's title does; the phone's
-    /// List styles its own section headers.
+    /// `Open 2`. The Mac label starts where a row's title does.
     private func sectionText(_ title: String, count: Int? = nil) -> Text {
         Text(verbatim: count.map { "\(title) \($0)" } ?? title)
     }
@@ -259,7 +287,11 @@ struct LAADecisionBoardView: View {
                 // with the answer it no longer waits for.
                 .accessibilityIdentifier(item.answer == nil ? "work.decision.\(item.id)"
                                                             : "work.decision.answered.\(item.id)")
-            if item.deliveryFailed { undelivered(item) }
+            if item.deliveryFailed {
+                undelivered(item)
+                    // Under the title, not under the phone's rule gutter.
+                    .padding(.leading, !laaDesktop && Self.needsAttention(item) ? LAADecisionRow.ruleGutter : 0)
+            }
         }
         .padding(.horizontal, laaDesktop ? LAASpacing.x2 : 0)
     }
@@ -350,7 +382,7 @@ struct LAADecisionBoardView: View {
         linkedOnly.insert(item.id)
     }
 
-    /// An answer that left for the conversation: the row moves to 回答済み
+    /// An answer that left for the conversation: the row moves to Answered
     /// until the next board read comes back.
     private func remember(_ item: LAADecision) {
         withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(duration: 0.35)) {
@@ -362,7 +394,7 @@ struct LAADecisionBoardView: View {
         linkedOnly.remove(item.id)
     }
 
-    /// Drops the 回答済み rows a read that began after them no longer lists.
+    /// Drops the Answered rows a read that began after them no longer lists.
     private func pruneAnswered(after start: Int) {
         let keep = Self.keptAnswered(answered, marks: answeredMark, linkedOnly: linkedOnly,
                                      selectedID: selectedID, boardIDs: Set(board.items.map(\.id)), lastLoadStart: start)
@@ -435,7 +467,7 @@ struct LAADecisionBoardView: View {
         }
     }
 
-    /// The same record with its delivery confirmed, so the 回答済み row does
+    /// The same record with its delivery confirmed, so the Answered row does
     /// not keep the retry block after it went through.
     static func delivered(_ item: LAADecision) -> LAADecision {
         LAADecision(kind: item.kind, id: item.id, ref: item.ref, status: item.status, title: item.title,
@@ -540,9 +572,20 @@ private struct LAADecisionRow: View {
 
     private var attention: Bool { LAADecisionBoardView.needsAttention(item) }
 
+    /// The plum rule's width and the gap after it. On the phone the row's
+    /// list inset gives this much back, so titles stay aligned with the rows
+    /// that carry no rule.
+    static let ruleWidth: CGFloat = 2
+    static let ruleGutter: CGFloat = ruleWidth + LAASpacing.x2
+
     var body: some View {
         Button(action: open) {
-            HStack(alignment: .top, spacing: LAASpacing.x3) {
+            HStack(alignment: .top, spacing: 0) {
+                // A column of its own, never laid over the text: the earlier
+                // overlay drew over the subtitle's first glyphs and under the ▲.
+                if attention && !desktop {
+                    rule.padding(.trailing, LAASpacing.x2)
+                }
                 VStack(alignment: .leading, spacing: LAASpacing.x1) {
                     HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
                         if attention {
@@ -568,22 +611,29 @@ private struct LAADecisionRow: View {
                         Text(meta).laaTextStyle(.secondary).lineLimit(1)
                     }
                 }
+                .padding(.vertical, desktop ? LAASpacing.x3 : LAASpacing.x2)
                 Spacer(minLength: 0)
-
             }
+            .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, desktop ? LAASpacing.x3 : 0)
-            .padding(.vertical, desktop ? LAASpacing.x3 : LAASpacing.x2)
             .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
             .contentShape(Rectangle())
             .background(background, in: RoundedRectangle(cornerRadius: LAASpacing.x2))
+            // On the Mac the rule sits in the row's own padding (x3), clear of the text.
             .overlay(alignment: .leading) {
-                if attention { Rectangle().fill(LAAColor.attention).frame(width: 2) }
+                if attention && desktop { rule }
             }
             .clipShape(RoundedRectangle(cornerRadius: LAASpacing.x2))
         }
         .buttonStyle(LAADecisionPressStyle())
         .onHover { hovering = $0 }
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private var rule: some View {
+        Rectangle().fill(LAAColor.attention).frame(width: Self.ruleWidth)
+            .frame(maxHeight: .infinity)
+            .accessibilityHidden(true)
     }
 
     private var background: Color {

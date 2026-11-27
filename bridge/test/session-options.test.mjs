@@ -248,12 +248,12 @@ test('provider discovery coalesces cold calls, refreshes stale rows and backs of
   assert.equal(calls, 2);
 });
 
-test('new sessions forward explicit Max, Ultra Code and Venice profile keys unchanged', async (t) => {
+test('new sessions forward explicit Max and Refuseless profile keys unchanged', async (t) => {
   const calls = [];
   const requested = {
-    'astra-max': { provider: 'codex', model: 'gpt-6-astra', effort: 'max' },
-    'fable-ultracode': { provider: 'claude', model: 'claude-fable-5-2', effort: 'ultracode' },
-    'uncensored-max': { provider: 'dsh-venice', model: '["venice","deepseek-uncensored"]', effort: 'max' },
+    'astra-max': { provider: 'codex', model: 'gpt-6.2-astra', effort: 'max' },
+    'mythos-max': { provider: 'claude', model: 'claude-mythos-5-2', effort: 'max' },
+    'deepseek-uncensored-max': { provider: 'dsh-refuseless', model: '["refuseless","deepseek-v4.1-flash-abliterated-fast"]', effort: 'max' },
   };
   const bridge = await startBridge({ sessions: { adapter: {
     create: async ({ profile }) => {

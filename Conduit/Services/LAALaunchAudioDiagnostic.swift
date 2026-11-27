@@ -6,7 +6,7 @@ import OSLog
 @MainActor enum LAALaunchAudioDiagnostic {
     private static let launchArgument = "-LAA_DEBUG_LAUNCH_AUDIO_REPORT"
     private static var didCapture = false
-    private static let logger = Logger(subsystem: "com.laa.conduit", category: "LaunchAudio")
+    private static let logger = Logger(subsystem: "com.laa.hortensia", category: "LaunchAudio")
 
     static func begin() {
         guard !didCapture, ProcessInfo.processInfo.arguments.contains(launchArgument) else { return }

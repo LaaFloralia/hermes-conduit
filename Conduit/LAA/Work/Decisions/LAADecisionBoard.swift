@@ -41,14 +41,14 @@ import UserNotifications
 
     private var loadedAt: Date?
     /// Board reads started so far, and the start number of the last read
-    /// that finished. A row answered here leaves 回答済み once a read that
+    /// that finished. A row answered here leaves Answered once a read that
     /// began after the answer has come back (2026-11-23: answered rows stayed
     /// on the board for as long as the screen lived).
     private(set) var loadsStarted = 0
     @Published private(set) var lastLoadStart = 0
     /// Decisions answered from this device. A read that was already under way
     /// when the answer went out still lists them as open; they must not come
-    /// back to 未回答 because of it.
+    /// back to Open because of it.
     private var answeredHere = Set<String>()
 
     /// The badge and segment number: only what still needs the owner.

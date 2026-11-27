@@ -23,6 +23,7 @@ import { grantInstructions, grantScopes, grantStudio, issuePairing, revokeDevice
 import { TASKS_USAGE, tasksCommand } from './cli-tasks.mjs';
 import { HABITS_USAGE, habitsCommand } from './cli-habits.mjs';
 import { DECISIONS_USAGE, decisionsCommand } from './cli-decisions.mjs';
+import { FINDINGS_USAGE, findingsCommand } from './cli-findings.mjs';
 import { PHONE_USE_USAGE, phoneUseCommand } from './cli-phone-use.mjs';
 import { REFS_USAGE, refsCommand } from './refs/cli.mjs';
 import { PROJECTS_USAGE, projectsCommand } from './cli-projects.mjs';
@@ -60,6 +61,7 @@ Usage:
 ${TASKS_USAGE}
 ${HABITS_USAGE}
 ${DECISIONS_USAGE}
+${FINDINGS_USAGE}
 ${PHONE_USE_USAGE}
 ${PROJECTS_USAGE}
 ${CALENDAR_USAGE}
@@ -69,7 +71,7 @@ Loopback port:   ${resolvePort()} (override with LAA_BRIDGE_PORT)
 `;
 
 function fail(message, code = 1) {
-  if (code === 2 && process.argv[2] === 'habits' && process.argv.includes('--json')) {
+  if (code === 2 && ['habits', 'finding'].includes(process.argv[2]) && process.argv.includes('--json')) {
     process.stdout.write(`${JSON.stringify({ ok: false, error: { code: 'usage_error', message } })}\n`);
   }
   process.stderr.write(`laa-bridge: ${message}\n`);
@@ -256,6 +258,9 @@ if (flags.help) {
 } else switch (command) {
   case 'decide':
     process.exitCode = await decisionsCommand(positional, flags);
+    break;
+  case 'finding':
+    process.exitCode = await findingsCommand(positional, flags);
     break;
   case 'calendar':
     process.exitCode = await calendarCommand(positional, flags);

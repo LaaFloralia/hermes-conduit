@@ -1,5 +1,12 @@
 import SwiftUI
 
+extension LAAPlatform {
+    var controlHitArea: Double { self == .mac ? LAAControl.Mac.hitArea : LAAControl.IPhone.hitArea }
+    var iconControl: LAAIconButtonSize { self == .mac ? LAAControl.Mac.iconButton : LAAControl.IPhone.iconButton }
+    var secondaryControl: LAAControlSize { self == .mac ? LAAControl.Mac.secondary : LAAControl.IPhone.secondary }
+    var compactControl: LAAControlSize { self == .mac ? LAAControl.Mac.secondary : LAAControl.IPhone.compact }
+}
+
 /// Button sizes from `control`: the visual stays small for its label; the hit area is padded to 44 (Mac 28)
 /// with transparent space. One filled (primary) button per screen.
 public struct LAAButtonStyle: ButtonStyle {
@@ -13,14 +20,11 @@ public struct LAAButtonStyle: ButtonStyle {
     private var size: LAAControlSize {
         switch (LAAPlatform.current, kind) {
         case (.mac, .primary): LAAControl.Mac.primary
-        case (.mac, _): LAAControl.Mac.secondary
         case (.iphone, .primary): LAAControl.IPhone.primary
-        case (.iphone, .compact): LAAControl.IPhone.compact
-        case (.iphone, _): LAAControl.IPhone.secondary
+        case (let platform, .compact): platform.compactControl
+        case (let platform, _): platform.secondaryControl
         }
     }
-
-    private var hit: Double { LAAPlatform.current == .mac ? LAAControl.Mac.hitArea : LAAControl.IPhone.hitArea }
 
     public func makeBody(configuration: Configuration) -> some View {
         let s = size
@@ -29,7 +33,7 @@ public struct LAAButtonStyle: ButtonStyle {
             .laaFont(s.label, weight: s.weight >= 600 ? .semibold : .medium)
             .lineLimit(1)
             .padding(.horizontal, kind == .text ? 0 : s.paddingH)
-            .frame(minHeight: kind == .text ? nil : s.height)
+            .frame(minHeight: s.height)
             .foregroundStyle(foreground)
             .background {
                 switch kind {
@@ -41,7 +45,7 @@ public struct LAAButtonStyle: ButtonStyle {
             .overlay {
                 if kind == .secondary || kind == .compact { shape.strokeBorder(palette.rule, lineWidth: LAAStroke.rule) }
             }
-            .frame(minHeight: hit)
+            .frame(minWidth: LAAPlatform.current.controlHitArea, minHeight: LAAPlatform.current.controlHitArea)
             .contentShape(Rectangle())
             .opacity(enabled ? 1 : 0.45)
             .animation(.spring(response: LAAMotionToken.snappy.response, dampingFraction: LAAMotionToken.snappy.damping),
@@ -78,8 +82,8 @@ public struct LAAIconButton: View {
     }
 
     public var body: some View {
-        let size = LAAPlatform.current == .mac ? LAAControl.Mac.iconButton : LAAControl.IPhone.iconButton
-        let hit = LAAPlatform.current == .mac ? LAAControl.Mac.hitArea : LAAControl.IPhone.hitArea
+        let size = LAAPlatform.current.iconControl
+        let hit = LAAPlatform.current.controlHitArea
         Button(action: action) {
             LAAIconImage(icon, size: size.icon)
                 .foregroundStyle(palette.textMuted)
@@ -121,7 +125,8 @@ public struct LAASegmentedBar<ID: Hashable>: View {
     }
 
     public var body: some View {
-        let height = LAAPlatform.current == .mac ? LAAControl.Mac.secondary.height : LAAControl.IPhone.compact.height
+        let platform = LAAPlatform.current
+        let size = platform.compactControl
         HStack(spacing: 0) {
             ForEach(items) { item in
                 let on = item.id == selection
@@ -132,17 +137,17 @@ public struct LAASegmentedBar<ID: Hashable>: View {
                 } label: {
                     HStack(spacing: LAASpace.s4) {
                         if let icon = item.icon { LAAIconImage(icon, size: LAAIconSize.inline, selected: on) }
-                        Text(item.label).laaFont(LAAPlatform.current.canvas.small, weight: on ? .semibold : .regular)
+                        Text(item.label).laaFont(size.label, weight: on ? .semibold : .regular)
                     }
                     .foregroundStyle(on ? palette.accent : palette.textMuted)
-                    .frame(maxWidth: .infinity, minHeight: height)
+                    .frame(maxWidth: .infinity, minHeight: size.height)
                     .background {
                         if on {
                             // laa-design:allow pill Selection inside the glass segmented bar follows the OS shape.
                             Capsule().fill(palette.selection).matchedGeometryEffect(id: "selection", in: namespace)
                         }
                     }
-                    .frame(minHeight: LAAPlatform.current == .mac ? LAAControl.Mac.hitArea : LAAControl.IPhone.hitArea)
+                    .frame(minWidth: platform.controlHitArea, minHeight: platform.controlHitArea)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -150,6 +155,8 @@ public struct LAASegmentedBar<ID: Hashable>: View {
             }
         }
         .padding(.horizontal, LAASpace.s4)
-        .laaGlassCapsule(interactive: true)
+        .background {
+            Color.clear.frame(height: size.height).laaGlassCapsule(interactive: true)
+        }
     }
 }

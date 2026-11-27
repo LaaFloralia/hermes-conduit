@@ -324,6 +324,10 @@ struct LAAModelCapsule: View {
             let words = match.2.split(separator: "-").map { $0.prefix(1).uppercased() + $0.dropFirst() }
             return (["Gemini", String(match.1)] + words).joined(separator: " ")
         }
+        // Cognition's models: "swe-2-1-medium" → "SWE-2.1" (the effort suffix is the effort's).
+        if let match = lower.firstMatch(of: #/^swe-(\d+)(?:-(\d+))?(?:-(?:low|medium|high|xhigh|max))?$/#) {
+            return "SWE-\(match.1)" + (match.2.map { ".\($0)" } ?? "")
+        }
         if lower.hasPrefix("deepseek") {
             // "deepseek-v4.1-flash" → "DeepSeek V4.1 Flash", each word as written.
             let words = raw.dropFirst("deepseek".count).split(separator: "-").map { $0.prefix(1).uppercased() + $0.dropFirst() }

@@ -691,7 +691,7 @@ test('legacy session creation and retry keep one project; the local CLI can atta
     method: 'POST', token, key: 'add', headers: { 'if-match': p.etag }, body: { title: 'Check', source: 'owner' },
   })).body.data;
   const reqId = requirement.requirements[0].id;
-  const body = { requestId: 'app-v1-fallback', profile: 'opus-high', prompt: 'legacy no project' };
+  const body = { requestId: 'app-v1-fallback', profile: 'opus-medium', prompt: 'legacy no project' };
   const legacy = await api.request('/v1/sessions', { method: 'POST', token, key: 'legacy', body });
   assert.equal(legacy.status, 201);
   assert.equal(legacy.body.data.projectId, DEFAULT_PROJECT_ID);

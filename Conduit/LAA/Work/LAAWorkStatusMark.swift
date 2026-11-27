@@ -186,7 +186,17 @@ struct LAAWorkSessionTallyLine: View {
     private var parts: some View {
         ForEach(tally.parts, id: \.label) { part in
             HStack(spacing: LAASpace.s4) {
-                LAAStatusMark(mark(part.status, count: part.count))
+                if part.status == .decision {
+                    // ▲ 要確認 is plum (design standard: 状態の印), the same
+                    // mark the rows and the decision board carry. The kit's
+                    // .attention state draws caution, which is the meter's ▲.
+                    Text(LAAShape.attention)
+                        .laaFont(LAAPlatform.current.canvas.label)
+                        .foregroundStyle(LAAColor.attention)
+                        .accessibilityHidden(true)
+                } else {
+                    LAAStatusMark(mark(part.status, count: part.count))
+                }
                 Text(verbatim: "\(part.label) \(part.count)")
                     .laaTextStyle(.secondary).monospacedDigit()
                     .foregroundStyle(LAAColor.secondaryText)

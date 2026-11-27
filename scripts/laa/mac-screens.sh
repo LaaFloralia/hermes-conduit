@@ -185,7 +185,7 @@ build() {
     grep -m5 "error:" "${BUILD_LOG:-$DERIVED/build.log}" >&2
     exit 1
   fi
-  APP="$DERIVED/Build/Products/Debug-maccatalyst/Conduit.app"
+  APP="$DERIVED/Build/Products/Debug-maccatalyst/Hortensia.app"
   [ -d "$APP" ] || { echo "no app at $APP" >&2; exit 1; }
   # The build is only for these shots: it is this script's own bundle id.
   /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Contents/Info.plist" 2>/dev/null \
@@ -212,7 +212,7 @@ launch() {
     APP_LOG=$(mktemp "$DERIVED/lab-app.XXXXXX") || return 1
   fi
   CFFIXED_USER_HOME="$DERIVED/home" \
-    "$APP/Contents/MacOS/Conduit" "${args[@]}" ${extra[@]+"${extra[@]}"} >"$APP_LOG" 2>&1 &
+    "$APP/Contents/MacOS/Hortensia" "${args[@]}" ${extra[@]+"${extra[@]}"} >"$APP_LOG" 2>&1 &
   APP_PID=$!
 }
 
@@ -238,8 +238,8 @@ stop_app() {
 }
 
 mkdir -p "$OUT/$OWNER" || exit 1
-if [ "$SKIP_BUILD" = 1 ] && [ -d "$DERIVED/Build/Products/Debug-maccatalyst/Conduit.app" ]; then
-  APP="$DERIVED/Build/Products/Debug-maccatalyst/Conduit.app"
+if [ "$SKIP_BUILD" = 1 ] && [ -d "$DERIVED/Build/Products/Debug-maccatalyst/Hortensia.app" ]; then
+  APP="$DERIVED/Build/Products/Debug-maccatalyst/Hortensia.app"
 else
   build
 fi

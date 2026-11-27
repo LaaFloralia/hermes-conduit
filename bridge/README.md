@@ -83,6 +83,7 @@ laa-bridge decide add --title '公開日を決める' --summary '日付を選ん
 laa-bridge decide status dec_<16hex> --json
 laa-bridge decide list --json
 laa-bridge decide withdraw dec_<16hex> --reason '解決済み'
+laa-bridge finding help  # Non-blocking findings (add, list, show, delegate, dismiss, pickup, done, stats)
 ```
 
 `--agent` defaults to `$PASEO_AGENT_ID`; `--name`, `--deadline` (ISO 8601) and

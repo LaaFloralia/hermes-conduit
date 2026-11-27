@@ -228,8 +228,9 @@ function privateDir(path) {
 
 const expired = (record, now) => record.status !== 'open' && now - Date.parse(record.updatedAt) >= RETENTION;
 
-export function createDecisionImages(dir) {
-  const root = join(dir, 'decision-images'), staging = join(root, '.staging');
+export function createDecisionImages(dir, { directory = 'decision-images', recordId = DECISION_ID,
+  isExpired = expired, isClosed = (record) => record.status !== 'open', versioned = false } = {}) {
+  const root = join(dir, directory), staging = join(root, '.staging');
   return {
     stage(inputs, order) {
       if (!inputs.length) return null;
@@ -255,7 +256,12 @@ export function createDecisionImages(dir) {
         const images = opened.map((input) => createCopies(path, input));
         if (!validDecisionImages(images, order.length)) throw new Error('invalid rendered decision images');
         return { images, publish(id) {
-          const target = join(root, id);
+          if (!recordId.test(id)) throw new Error('invalid image record id');
+          const base = join(root, id);
+          // A replaceable set publishes under a fresh name before the JSON
+          // commit. A failed commit leaves the previously listed set intact.
+          if (versioned) privateDir(base);
+          const target = versioned ? join(base, images[0].id) : base;
           if (lstat(target)) throw new Error('decision image directory already exists');
           renameSync(path, target);
         }, cleanup: () => rmSync(path, { recursive: true, force: true }) };
@@ -272,7 +278,15 @@ export function createDecisionImages(dir) {
       for (const entry of readdirSync(root, { withFileTypes: true })) {
         if (!entry.isDirectory() || entry.name === '.staging') continue;
         const path = join(root, entry.name), r = byId.get(entry.name);
-        if (r ? expired(r, now) : now - (lstat(path)?.mtimeMs ?? now) > HOUR) rmSync(path, { recursive: true, force: true });
+        if (r ? isExpired(r, now) : now - (lstat(path)?.mtimeMs ?? now) > HOUR) rmSync(path, { recursive: true, force: true });
+        else if (versioned && r) {
+          for (const batch of readdirSync(path, { withFileTypes: true })) {
+            const batchPath = join(path, batch.name);
+            if (batch.isDirectory() && batch.name !== r.images[0]?.id && now - (lstat(batchPath)?.mtimeMs ?? now) > HOUR) {
+              rmSync(batchPath, { recursive: true, force: true });
+            }
+          }
+        }
       }
       if (!lstat(staging)?.isDirectory()) return;
       for (const entry of readdirSync(staging, { withFileTypes: true })) {
@@ -282,14 +296,16 @@ export function createDecisionImages(dir) {
       }
     },
     read(record, imgId, size, now) {
-      if (!DECISION_ID.test(record?.id ?? '') || !IMAGE_ID.test(imgId) || !record.images?.some(({ id }) => id === imgId)) throw imageNotFound();
-      const path = join(root, record.id);
+      if (!recordId.test(record?.id ?? '') || !IMAGE_ID.test(imgId) || !record.images?.some(({ id }) => id === imgId)) throw imageNotFound();
       // Serve no bytes after the deadline, even before the next sync. A closed
       // record can later get a delivery update, but its image dir is never restored.
-      if (expired(record, now)) throw imageExpired();
+      if (isExpired(record, now)) throw imageExpired();
       if (!lstat(root)?.isDirectory()) throw imageNotFound();
+      const base = join(root, record.id);
+      if (versioned && !lstat(base)?.isDirectory()) throw imageNotFound();
+      const path = versioned ? join(base, record.images[0].id) : base;
       const stat = lstat(path);
-      if (!stat && record.status !== 'open') throw imageExpired();
+      if (!stat && isClosed(record)) throw imageExpired();
       if (!stat?.isDirectory()) throw imageNotFound();
       for (const [ext, contentType] of [['png', 'image/png'], ['jpg', 'image/jpeg']]) {
         let fd;

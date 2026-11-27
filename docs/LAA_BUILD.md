@@ -149,10 +149,10 @@ scripts/laa/relay-install.sh uninstall  # the rollback
 
 - The source is the relay shipped with the installed `conduit_push` plugin
   (`~/.hermes/plugins/conduit_push/relay`, `hermes plugins update
-  conduit_push`), copied into `~/.local/share/laa-conduit-relay-laa/app`, so a
+  conduit_push`), copied into `~/.local/share/laa-hortensia-relay/app`, so a
   plugin update never changes a running relay by itself.
-- launchd job `com.laa.conduit-relay-laa` runs `scripts/laa/relay-run.sh`,
-  which asks 1Password for the APNs key (`~/.config/laa/conduit-relay-laa.env.tpl`,
+- launchd job `com.laa.hortensia-relay` runs `scripts/laa/relay-run.sh`,
+  which asks 1Password for the APNs key (`~/.config/laa/hortensia-relay.env.tpl`,
   item "APNs Auth Key (LAA)", key `8P6ANW8JG8`), writes it to a 0600 file under
   `~/.config/laa/tmp-secrets` for the relay's lifetime only, and removes it
   when the relay exits.

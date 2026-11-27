@@ -22,14 +22,18 @@ struct LAAWorkSessionDecision: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x3) {
-            Text(verbatim: "確認と回答").fontWeight(.semibold)
             if let snapshot {
                 ForEach(snapshot.requests) { request in
-                    Text(verbatim: request.kind == "question" ? "質問" : request.name).fontWeight(.semibold)
+                    // One heading per request; the card itself needs no title.
+                    Text(verbatim: request.kind == "question" ? "Question" : request.name)
+                        .laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
+                        .accessibilityAddTraits(.isHeader)
                     if let pending = pendingSubmission(request.id) {
                         Text(verbatim: "前の回答の結果は未確認です。同じ要求IDで再照合できます。")
                             .foregroundStyle(LAAColor.attention)
-                        Button { Task { await perform(pending) } } label: { Text(verbatim: "前の回答を再照合") }
+                        Button { Task { await perform(pending) } } label: { Text(verbatim: "Check Again") }
+                            .laaGlassButton()
+                            .accessibilityIdentifier("work.session.decision.recheck")
                     }
                     if request.kind == "question" && !request.questions.isEmpty {
                         ForEach(Array(request.questions.enumerated()), id: \.offset) { index, question in
@@ -55,26 +59,60 @@ struct LAAWorkSessionDecision: View {
                             Text(verbatim: "選ばずに書くと、その内容で答えます。")
                                 .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                         }
-                        Button { reply(request, decision: "answer") } label: { Text(verbatim: "回答を送信") }
-                            .disabled(pendingSubmission(request.id) != nil || !request.questions.indices.allSatisfy { !(answers["\(request.id):\($0)"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+                        actions(request, primary: "Send", decision: "answer", identifier: "work.session.decision.send",
+                                ready: request.questions.indices.allSatisfy { !(answers["\(request.id):\($0)"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
                     } else {
                         Text(verbatim: request.detail).textSelection(.enabled).font(.system(.caption, design: .monospaced))
                         if request.kind == "tool" {
-                            Button { reply(request, decision: "allow") } label: { Text(verbatim: "この操作を許可") }.disabled(pendingSubmission(request.id) != nil)
+                            actions(request, primary: "Allow", decision: "allow", identifier: "work.session.decision.allow", ready: true)
+                        } else {
+                            actions(request, primary: nil, decision: "", identifier: "", ready: false)
                         }
                     }
-                    Button(role: .destructive) { reply(request, decision: "deny") } label: { Text(verbatim: "拒否") }.disabled(pendingSubmission(request.id) != nil)
                     Divider()
                 }
             } else { LAALoadingDots() }
             if let failure { Text(verbatim: failure).foregroundStyle(LAAColor.attention) }
-            Button { Task { await load() } } label: { Text(verbatim: "確認内容を更新") }
+            Button { Task { await load() } } label: {
+                Label { Text(verbatim: "Refresh") } icon: { Image(systemName: "arrow.clockwise") }
+                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.link)
+                    .frame(minHeight: LAASpacing.minimumTouchTarget)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("work.session.decision.refresh")
         }
         .disabled(sending)
         .workCard()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("work.session.decision")
         .task(id: sessionID) { await load() }
+    }
+
+    /// One accent primary (Send or Allow) and Deny beside it as a secondary
+    /// button; they stack when the text is too large to sit side by side.
+    @ViewBuilder private func actions(_ request: LAAWorkDecision.Request, primary: String?, decision: String,
+                                      identifier: String, ready: Bool) -> some View {
+        let blocked = pendingSubmission(request.id) != nil
+        let send = primary.map { title in
+            Button { reply(request, decision: decision) } label: {
+                Text(verbatim: title).fontWeight(.semibold)
+            }
+            .laaGlassButton(prominent: true)
+            .disabled(blocked || !ready)
+            .accessibilityIdentifier(identifier)
+        }
+        let deny = Button(role: .destructive) { reply(request, decision: "deny") } label: {
+            // Ink on glass, not the system red: colour is for states only.
+            Text(verbatim: "Deny").foregroundStyle(LAAColor.text)
+        }
+            .laaGlassButton()
+            .disabled(blocked)
+            .accessibilityIdentifier("work.session.decision.deny")
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: LAASpacing.x3) { send; deny; Spacer(minLength: 0) }
+            VStack(alignment: .leading, spacing: LAASpacing.x2) { send; deny }
+        }
     }
     private func answer(_ id: String, _ index: Int) -> Binding<String> {
         Binding(get: { answers["\(id):\(index)"] ?? "" }, set: { answers["\(id):\(index)"] = $0 })
@@ -131,7 +169,7 @@ struct LAAWorkSessionDecision: View {
             failure = LAAWorkHTTP.message(error)
         } catch {
             drafts.markSubmissionUnknown(submission.id)
-            failure = "回答の結果は未確認です。再送せず、確認内容を更新してください。"
+            failure = "回答の結果は未確認です。再送せず、Refresh で確認内容を読み直してください。"
         }
     }
 }
