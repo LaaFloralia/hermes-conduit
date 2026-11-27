@@ -37,7 +37,9 @@ fi
             home = root / 'home'
             home.mkdir()
             common = dict(os.environ, HOME=str(home), PATH=f'{node.parent}:/usr/bin:/bin',
-                          TEST_SLOT=str(root / 'slot.lock'), TEST_LOG=str(log))
+                          TEST_SLOT=str(root / 'slot.lock'), TEST_LOG=str(log),
+                          LAA_BRIDGE_URL='https://bridge.fixture.ts.net:8445',
+                          LAA_RELAY_PUBLIC_URL='https://relay.example.test:9443')
             first = subprocess.Popen(['/bin/bash', str(script)], env=dict(common, TEST_LABEL='one', TEST_NUMBER='101'),
                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             second = None
@@ -63,6 +65,19 @@ fi
                     if process is not None and process.poll() is None:
                         process.terminate()
                         process.wait(timeout=5)
+
+    def test_release_stops_before_any_work_without_the_private_endpoints(self):
+        script = Path(__file__).parents[1] / 'laa/testflight.sh'
+        for missing in ('LAA_BRIDGE_URL', 'LAA_RELAY_PUBLIC_URL'):
+            env = {'HOME': '/nonexistent', 'PATH': '/usr/bin:/bin',
+                   'LAA_BRIDGE_URL': 'https://bridge.fixture.ts.net:8445',
+                   'LAA_RELAY_PUBLIC_URL': 'https://relay.example.test:9443'}
+            del env[missing]
+            result = subprocess.run(['/bin/bash', str(script)], env=env, capture_output=True, text=True, timeout=10)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(f'{missing} must be set', result.stderr)
+            self.assertNotIn('fixture.ts.net', result.stderr + result.stdout)
+            self.assertNotIn('relay.example.test', result.stderr + result.stdout)
 
 
 if __name__ == '__main__':
