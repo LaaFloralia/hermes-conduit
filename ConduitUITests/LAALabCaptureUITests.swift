@@ -135,7 +135,13 @@ final class LAALabCaptureUITests: XCTestCase {
                     // larger text sizes. Find it through the real search UI.
                     let search = wait("laa.work.search", app)
                     search.tap()
-                    search.typeText("T30")
+                    // Submit closes the keyboard; at the largest sizes the
+                    // match can still sit under the tab bar, so bring it up.
+                    search.typeText("T30\n")
+                    _ = wait(task, app)
+                    for _ in 0..<4 where hitTarget(task, app) == nil {
+                        app.swipeUp(velocity: .slow)
+                    }
                     tap(task, app)
                     shot("work-task-detail", after: "work.task.detail.title", app)
                     tap("work.task.detail.close", app)
