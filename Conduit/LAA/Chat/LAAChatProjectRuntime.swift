@@ -92,7 +92,7 @@ enum LAAChatProjectPrompt {
 }
 
 @MainActor enum LAAChatProjectRunner {
-    private static let log = Logger(subsystem: "com.laa.hortensia", category: "ChatProjectTurns")
+    private static let log = Logger(subsystem: "com.laa.conduit", category: "ChatProjectTurns")
 
     /// Runtime output is accepted only after it has identified the exact pin.
     /// Pokémon facts are deterministic; a model edit cannot change them, or

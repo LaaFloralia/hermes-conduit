@@ -308,14 +308,14 @@ echo "  version $(plutil -extract ApplicationProperties.CFBundleShortVersionStri
 
 # Fail before export/upload if any shipped LAA component still shows the old
 # product names or a required component/resource cannot be inspected.
-python3 "$repo/scripts/laa/check-brand-bundle.py" "$archive/Products/Applications/Hortensia.app" --require-endpoints \
+python3 "$repo/scripts/laa/check-brand-bundle.py" "$archive/Products/Applications/Conduit.app" --require-endpoints \
   || fail "LAA bundle inspection failed; nothing was exported or uploaded"
 
 # Fail before export/upload if the app or any extension imports the weak-linked
 # Foundation Date.<= / Date.>= (scripts/laa/check-weak-date-ops.sh).
 date_bundles=()
 while IFS= read -r bundle; do date_bundles+=("$bundle"); done \
-  < <(find "$archive/Products/Applications/Hortensia.app" -type d \( -name '*.app' -o -name '*.appex' \))
+  < <(find "$archive/Products/Applications/Conduit.app" -type d \( -name '*.app' -o -name '*.appex' \))
 "$repo/scripts/laa/check-weak-date-ops.sh" "${date_bundles[@]}" \
   || fail "weak Date comparison check failed; nothing was exported or uploaded"
 

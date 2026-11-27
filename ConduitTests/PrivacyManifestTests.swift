@@ -68,12 +68,7 @@ final class PrivacyManifestTests: XCTestCase {
             ("ConduitShareExtension", app.appendingPathComponent("PlugIns/ConduitShareExtension.appex")),
             ("ConduitWatch", app.appendingPathComponent("Watch/ConduitWatch.app")),
         ]
-        for (folder, upstream) in embedded {
-            // The LAA build names its products Hortensia*; without this each one is silently skipped.
-            let renamed = upstream.deletingLastPathComponent().appendingPathComponent(
-                upstream.lastPathComponent.replacingOccurrences(of: "Conduit", with: "Hortensia"))
-            guard let bundle = [upstream, renamed].first(where: { FileManager.default.fileExists(atPath: $0.path) })
-            else { continue }
+        for (folder, bundle) in embedded where FileManager.default.fileExists(atPath: bundle.path) {
             let manifest = try Self.manifest(at: bundle.appendingPathComponent("PrivacyInfo.xcprivacy"))
             XCTAssertEqual(try Self.accessedReasons(manifest), Self.expected[folder], folder)
         }

@@ -350,21 +350,7 @@ struct LAABridgeClient {
 }
 
 struct LAABridgeKeychain {
-    private let service: String
-    /// The name from before D-35, read and mirrored while a rollback is possible.
-    private let legacy: String?
-
-    init() {
-        service = Self.regularService()
-        legacy = service == Self.currentService ? Self.legacyService : nil
-    }
-
-    #if DEBUG
-    /// Tests name their own items, so a real pairing is never read or removed.
-    init(testService: String, legacy: String?) { service = testService; self.legacy = legacy }
-    #endif
-
-    private static func regularService() -> String {
+    private let service: String = {
         #if DEBUG
         let policy = LAALabNetworkPolicy.current
         if policy.isActive {
@@ -372,20 +358,13 @@ struct LAABridgeKeychain {
             let suffix = [policy.laneID, env["LAA_LAB_KEYCHAIN_NAMESPACE"]].compactMap { $0 }
             // The simulator runner sets a fresh namespace per app under test;
             // relaunches of that app keep it. Never fall through to the regular service.
-            return (["com.laa.hortensia.bridge.lab"] + suffix).joined(separator: ".")
+            return (["com.laa.conduit.bridge.lab"] + suffix).joined(separator: ".")
         }
         #endif
-        return Self.currentService
-    }
-    /// D-35 renamed the service. Until a later release removes the old item,
-    /// both names hold the pairing: a build from before the rename (a rollback)
-    /// reads and writes only the old one, so every save here is mirrored to it
-    /// and a read takes the old item when it is missing here or was changed later.
-    static let currentService = "com.laa.hortensia.bridge"
-    static let legacyService = "com.laa.conduit.bridge"
+        return "com.laa.conduit.bridge"
+    }()
     private let account = "device"
-    private var query: [String: Any] { query(service: service) }
-    private func query(service: String) -> [String: Any] {
+    private var query: [String: Any] {
         [kSecClass as String: kSecClassGenericPassword,
          kSecAttrService as String: service, kSecAttrAccount as String: account]
     }
@@ -406,7 +385,7 @@ struct LAABridgeKeychain {
               let namespace = env["LAA_PERF_KEYCHAIN_NAMESPACE"],
               UUID(uuidString: namespace)?.uuidString == namespace,
               env["LAA_LAB_KEYCHAIN_NAMESPACE"] == namespace,
-              service == "com.laa.hortensia.bridge.lab." + namespace,
+              service == "com.laa.conduit.bridge.lab." + namespace,
               let cache = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return }
         let status = SecItemDelete(query as CFDictionary)
         let result = status == errSecSuccess ? "deleted" : status == errSecItemNotFound ? "absent" : "error \(status)"
@@ -422,76 +401,18 @@ struct LAABridgeKeychain {
         #if DEBUG && targetEnvironment(macCatalyst)
         if keepsIsolatedMacPairingInMemory { return Self.isolatedMacCredentials }
         #endif
-        let current = try Self.item(query)
-        // Only the regular service has a predecessor; lab services never fall back.
-        guard let legacy else { return try current.map { try decode($0.data) } }
-        // A locked device throws above or here and never reads as "no pairing".
-        // Once this service answers, a broken old item cannot hide a good pairing.
-        let old: (data: Data, modified: Date?)?
-        if current == nil { old = try Self.item(query(service: legacy)) }
-        else { old = try? Self.item(query(service: legacy)) }
-        guard let current else {
-            guard let old else { return nil }
-            let credentials = try decode(old.data)
-            // Insert only: a pairing saved at this moment is never overwritten.
-            if Self.insert(old.data, query) == errSecDuplicateItem, let saved = try Self.item(query) {
-                return try decode(saved.data)
-            }
-            return credentials
-        }
-        // An older build paired again after a rollback: its item is the live one.
-        // Nothing is written here; the next save puts both names in step.
-        if let old, old.data != current.data, let then = current.modified, let later = old.modified,
-           later > then, let credentials = try? decode(old.data) {
-            return credentials
-        }
-        return try decode(current.data)
-    }
-
-    private func decode(_ data: Data) throws -> LAABridgeCredentials {
-        guard let credentials = try? JSONDecoder().decode(LAABridgeCredentials.self, from: data),
-              (try? LAABridgeEndpoint.parse(credentials.baseURL.absoluteString)) == credentials.baseURL else {
-            throw LAABridgeError.keychain
-        }
-        return credentials
-    }
-
-    /// The stored bytes and when they last changed. Only "not found" is nil;
-    /// every other status, a locked device included, throws.
-    static func item(_ query: [String: Any]) throws -> (data: Data, modified: Date?)? {
         var search = query
         search[kSecReturnData as String] = true
-        search[kSecReturnAttributes as String] = true
         search[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: CFTypeRef?
         let status = SecItemCopyMatching(search as CFDictionary, &result)
         if status == errSecItemNotFound { return nil }
-        guard status == errSecSuccess, let found = result as? [String: Any],
-              let data = found[kSecValueData as String] as? Data else { throw LAABridgeError.keychain }
-        return (data, found[kSecAttrModificationDate as String] as? Date)
-    }
-
-    /// Adds the item only when none exists; returns the status for the caller to judge.
-    @discardableResult static func insert(_ data: Data, _ query: [String: Any]) -> OSStatus {
-        var add = query
-        add[kSecValueData as String] = data
-        add[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        return SecItemAdd(add as CFDictionary, nil)
-    }
-
-    /// Same protection as the item always had; no access group, so the app's own.
-    static func store(_ data: Data, _ query: [String: Any]) throws {
-        let attrs: [String: Any] = [kSecValueData as String: data,
-                                    kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly]
-        var status = SecItemUpdate(query as CFDictionary, attrs as CFDictionary)
-        if status == errSecItemNotFound {
-            var add = query
-            attrs.forEach { add[$0.key] = $0.value }
-            status = SecItemAdd(add as CFDictionary, nil)
-            // Another read copied it forward at the same moment.
-            if status == errSecDuplicateItem { status = SecItemUpdate(query as CFDictionary, attrs as CFDictionary) }
+        guard status == errSecSuccess, let data = result as? Data,
+              let credentials = try? JSONDecoder().decode(LAABridgeCredentials.self, from: data),
+              (try? LAABridgeEndpoint.parse(credentials.baseURL.absoluteString)) == credentials.baseURL else {
+            throw LAABridgeError.keychain
         }
-        guard status == errSecSuccess else { throw LAABridgeError.keychain }
+        return credentials
     }
 
     #if DEBUG && targetEnvironment(macCatalyst)
@@ -511,8 +432,14 @@ struct LAABridgeKeychain {
         if keepsIsolatedMacPairingInMemory { Self.isolatedMacCredentials = credentials; return }
         #endif
         let data = try JSONEncoder().encode(credentials)
-        try Self.store(data, query)
-        if let legacy { try? Self.store(data, query(service: legacy)) }
+        let attrs: [String: Any] = [kSecValueData as String: data,
+                                    kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly]
+        let status = SecItemUpdate(query as CFDictionary, attrs as CFDictionary)
+        if status == errSecItemNotFound {
+            var add = query
+            attrs.forEach { add[$0.key] = $0.value }
+            guard SecItemAdd(add as CFDictionary, nil) == errSecSuccess else { throw LAABridgeError.keychain }
+        } else if status != errSecSuccess { throw LAABridgeError.keychain }
     }
 }
 #endif

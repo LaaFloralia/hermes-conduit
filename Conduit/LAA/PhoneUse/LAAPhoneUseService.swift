@@ -4,7 +4,7 @@ import Foundation
 import os
 import UIKit
 
-private let phoneUseLog = Logger(subsystem: "com.laa.hortensia", category: "PhoneUse")
+private let phoneUseLog = Logger(subsystem: "com.laa.conduit", category: "PhoneUse")
 
 /// The app's half of asking before an agent operates the iPhone in use
 /// (`LAAPhoneUseAttributes`): hands the Bridge the push-to-start token and

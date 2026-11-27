@@ -193,9 +193,9 @@ if ! /usr/bin/python3 "$storage" guard xcodebuild archive -hideShellScriptEnviro
 fi
 [ -d "$archive" ] || fail 'archive did not produce an xcarchive'
 archive_complete=1
-app="$archive/Products/Applications/Hortensia.app"
+app="$archive/Products/Applications/Conduit.app"
 [ -d "$app" ] || app="$archive/Products/Applications/LAA.app"
-[ -d "$app" ] || fail 'archive did not produce LAA.app or Hortensia.app'
+[ -d "$app" ] || fail 'archive did not produce LAA.app or Conduit.app'
 check_args=()
 [ "$archive_only" -eq 1 ] || check_args+=(--require-endpoints)
 python3 "$repo/scripts/laa/check-brand-bundle.py" "$app" ${check_args[@]+"${check_args[@]}"} \
@@ -254,8 +254,8 @@ if ! /usr/bin/python3 "$storage" guard xcodebuild -exportArchive -jobs "$jobs" -
     fail "export failed; see $work/export.log"
 fi
 app="$work/export/LAA.app"
-[ -d "$app" ] || app="$work/export/Hortensia.app"
-[ -d "$app" ] || fail 'export did not produce LAA.app or Hortensia.app'
+[ -d "$app" ] || app="$work/export/Conduit.app"
+[ -d "$app" ] || fail 'export did not produce LAA.app or Conduit.app'
 executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
 for architecture in arm64 x86_64; do
     /usr/bin/lipo -verify_arch "$architecture" "$app/Contents/MacOS/$executable" || fail 'application is not universal'

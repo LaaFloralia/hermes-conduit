@@ -206,12 +206,10 @@ final class LAABridgeSimulatorCleanupTests: XCTestCase {
             XCTFail("The simulator credential did not match the test device; nothing was removed.")
             return
         }
-        for service in [LAABridgeKeychain.currentService, LAABridgeKeychain.legacyService] {
-            let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
-                                        kSecAttrService as String: service,
-                                        kSecAttrAccount as String: "device"]
-            XCTAssertTrue([errSecSuccess, errSecItemNotFound].contains(SecItemDelete(query as CFDictionary)))
-        }
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+                                    kSecAttrService as String: "com.laa.conduit.bridge",
+                                    kSecAttrAccount as String: "device"]
+        XCTAssertEqual(SecItemDelete(query as CFDictionary), errSecSuccess)
         XCTAssertNil(try LAABridgeKeychain().read())
     }
 }
