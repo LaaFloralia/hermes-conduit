@@ -91,9 +91,12 @@ test('badge: only waiting owner decisions count, and answering and withdrawing c
   const f = fixture(t);
   const first = f.service.add(request()).decision;
   const second = f.service.add(request({ requestId: 'second' })).decision;
-  for (const impact of ['【任せられる】', '【必ず社長：気づき】', '【必ず社長：Notice】']) {
-    f.service.add(request({ requestId: impact, impact }));
-  }
+  f.service.add(request({ requestId: 'delegable', impact: '【任せられる】' }));
+  assert.equal(ownerBadgeCount([
+    { category: 'unmarked', status: 'open' },
+    { category: 'future-category', status: 'open' },
+    { status: 'open' },
+  ]), 0);
   await f.service.list();
   assert.equal(f.notifications.find((e) => e.meta.id === first.id).ownerBadgeCount, 2);
   const answer = await f.service.answer({ id: first.id, deviceId: 'phone', body: { optionIndex: 0, requestId: 'answer-1' } });

@@ -29,10 +29,10 @@ final class LAADecisionTests: XCTestCase {
 
     func testIconBadgeCountsOnlyOpenOwnerQuestions() throws {
         let rows: [[String: String]] = [
-            ["id": "owner", "category": "owner", "ownerKind": "scope"],
-            ["id": "delegate", "category": "delegable"], ["id": "legacy"],
-            ["id": "notice", "category": "owner", "ownerKind": "気づき"],
-            ["id": "en-notice", "category": "owner", "ownerKind": "Notice"],
+            ["id": "owner", "category": "owner"],
+            ["id": "delegate", "category": "delegable"],
+            ["id": "unmarked", "category": "unmarked"], ["id": "legacy"],
+            ["id": "future", "category": "future-category"],
             ["id": "gone", "category": "owner", "status": "withdrawn"],
             ["id": "closed", "category": "owner", "status": "answered"],
             ["kind": "session", "sessionId": "sess", "category": "owner"],

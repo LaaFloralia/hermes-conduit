@@ -12,9 +12,7 @@ export const WAIT_LIMITS = Object.freeze({ fastMs: 15_000, fastForMs: 600_000, s
 export const isWaiting = (r) => r.status === 'answered' && r.delivery?.state === 'pending' && r.delivery.waitingSince !== undefined;
 export const onDecisionBoard = (r) => r.status === 'open' || (r.status === 'answered' && r.delivery?.state === 'failed') || isWaiting(r)
   || (r.answer?.answeredBy === 'monet' && r.delivery?.state !== 'gone');
-const countsTowardBadge = (r) => r.category === 'owner' && r.status === 'open' && !r.answer
-  && r.delivery?.state !== 'gone' && !['notice', '気づき'].includes(r.ownerKind?.toLowerCase());
-export const ownerBadgeCount = (records) => records.filter(countsTowardBadge).length;
+export const ownerBadgeCount = (records) => records.filter((r) => r.category === 'owner' && r.status === 'open').length;
 
 export function mayDeliverDecisionNotice(kind, link, store) {
   if (kind === 'session.question' || kind === 'session.approval') return false;
