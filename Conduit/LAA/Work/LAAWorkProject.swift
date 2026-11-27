@@ -171,18 +171,17 @@ struct LAAWorkProjectEditor: View {
             let choices = options?.switchingOptions
             let selected = choices?.profiles.first { $0.id == defaultProfile }
             let model = LAAWorkModelSelection.model(of: defaultProfile, in: choices)
-            LAAModelEffortPickers(model: selected?.model, provider: selected?.provider, effort: selected?.effort,
+            let groups = LAAWorkModelSelection.harnesses(LAAWorkModelSelection.models(choices), picker: choices)
+            let group = LAAWorkModelSelection.group(of: defaultProfile, fast: false, in: groups)
+            LAAModelEffortPickers(harness: group?.harness,
+                                 model: selected?.model, provider: selected?.provider, effort: selected?.effort,
                                  name: model?.label ?? (defaultProfile.isEmpty ? "共通の既定値" : "現在は選べないモデル"),
+                                 effortFixed: (model?.efforts.count ?? 0) == 1,
                                  identifier: "work.project.default") {
                 Button { defaultProfile = "" } label: { Text(verbatim: "共通の既定値") }
-                ForEach(LAAWorkModelSelection.providers(LAAWorkModelSelection.models(choices)), id: \.name) { group in
-                    Section(group.name) {
-                        ForEach(group.models) { choice in
-                            Button {
-                                if let next = LAAWorkModelSelection.profile(switchingTo: choice, from: selected) { defaultProfile = next.id }
-                            } label: { LAAModelMenu.Name(label: choice.label, model: choice.model) }
-                        }
-                    }
+                LAAWorkHarnessMenu(groups: groups, current: group, chosen: model,
+                                   identifier: "work.project.default.harness") { _, choice in
+                    if let next = LAAWorkModelSelection.profile(switchingTo: choice, from: selected) { defaultProfile = next.id }
                 }
             } effortMenu: {
                 ForEach(model?.efforts ?? [], id: \.self) { effort in

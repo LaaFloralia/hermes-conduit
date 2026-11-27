@@ -329,7 +329,10 @@ enum LAAChatModelCatalog {
 
     /// The efforts offered: Low to Max, and a level Hermes reports outside
     /// them ("minimal"), listed to be read.
-    static func efforts(current: String?, model: String? = nil, provider: String? = nil) -> [String] {
+    static func efforts(current: String?, model: String? = nil, provider: String? = nil,
+                        table: LAAChatModelAllowList? = nil) -> [String] {
+        // The model table's range when the Bridge gave one (D-21 E6).
+        if let listed = table?.efforts(for: model) { return listed }
         // Hermes agent/reasoning_effort.py CODEX_ASTRA_EFFORTS and the
         // OpenAI Astra model contract: none/minimal are rejected.
         if ["openai-codex", "codex", "openai"].contains(provider ?? ""),
@@ -362,8 +365,12 @@ enum LAAChatModelCatalog {
 /// the Bridge cannot be read; with none, Chat shows Hermes' list unfiltered.
 struct LAAChatModelAllowList: Equatable, Codable {
     let keys: Set<String>
+    /// The efforts the model table offers each Chat model, by `key` (D-23):
+    /// Chat's effort menu shows these and no list of its own. Nil from an
+    /// older Bridge or copy.
+    var efforts: [String: [String]]? = nil
 
-    init(keys: Set<String>) { self.keys = keys }
+    init(keys: Set<String>, efforts: [String: [String]]? = nil) { self.keys = keys; self.efforts = efforts }
 
     init?(options: LAAWorkSessionOptions) {
         let ids = options.profiles.map(\.model) + (options.switchProfiles ?? []).map(\.model)
@@ -371,6 +378,17 @@ struct LAAChatModelAllowList: Equatable, Codable {
         let keys = Set(ids.map(Self.key).filter { !$0.isEmpty })
         guard !keys.isEmpty else { return nil }
         self.keys = keys
+        var efforts: [String: [String]] = [:]
+        for row in options.chat?.models ?? [] {
+            if let list = row.efforts, !list.isEmpty { efforts[Self.key(row.chatModel)] = list }
+        }
+        self.efforts = efforts.isEmpty ? nil : efforts
+    }
+
+    /// The table's efforts for a Chat model, in LAA's order, or nil.
+    func efforts(for model: String?) -> [String]? {
+        guard let model, let list = efforts?[Self.key(model)] ?? efforts?[Self.withoutEffort(Self.key(model))] else { return nil }
+        return list.sorted { LAAEffort.rank($0) < LAAEffort.rank($1) }
     }
 
     func allows(_ id: String) -> Bool {
@@ -639,14 +657,13 @@ struct LAAChatModelPickers: View {
         // long (LAAWrapRow); none is ever cut.
         LAAWrapRow {
             LAAModelEffortPickers(
-                harness: harness, harnessHint: modelLock ?? "この会話の実行基盤を変更",
+                harness: harness,
                 model: display.model, provider: display.provider, effort: display.effort, current: display.current,
-                changingModel: switching, changingEffort: writingEffort, identifier: "composer.runtime",
+                changingModel: switching, changingEffort: writingEffort, effortFixed: effortChoices.count == 1,
+                identifier: "composer.runtime",
                 modelHint: modelLock ?? "この会話のモデルを変更", effortHint: effortLock ?? "この会話の推論の強さを変更",
                 placeholder: display.placeholder
             ) {
-                harnessMenu
-            } modelMenu: {
                 modelMenu
             } effortMenu: {
                 effortMenu
@@ -674,38 +691,16 @@ struct LAAChatModelPickers: View {
         if let currentChoice { return LAAChatModelCatalog.harness(of: currentChoice) }
         return shown.provider.map { LAAHarness.chat(provider: $0) }
     }
-    /// The choices on the running harness: the model menu offers only these.
-    private var harnessChoices: [LAAChatModelCatalog.Choice] {
-        guard let harness else { return choices }
-        let own = choices.filter { LAAChatModelCatalog.harness(of: $0).id == harness.id }
-        return own.isEmpty ? choices : own
-    }
-
-    /// One section per harness, headed by its name, holding only its own
-    /// models: picking one switches this chat to that model on that harness
-    /// through Hermes.
-    @ViewBuilder private var harnessMenu: some View {
-        if let modelLock { LAAMenuReason(text: modelLock) }
-        ForEach(LAAChatModelCatalog.harnesses(choices), id: \.harness.id) { group in
-            let sections = LAAChatModelCatalog.sections(group.choices)
-            Section(header: Text(verbatim: group.harness.name)) {
-                ForEach(sections, id: \.name) { section in
-                    let route = sections.count > 1 || LAAChatModelCatalog.meteredSection(section.choices)
-                        ? sectionTitle(section) : nil
-                    ForEach(section.choices) { choice in
-                        let isCurrent = choice.id == currentChoice?.id
-                        LAAHarnessModelRow(title: choice.label, route: route, current: isCurrent) { switchModel(choice) }
-                            .disabled(modelLock != nil || isCurrent)
-                            .accessibilityIdentifier("composer.runtime.harness.\(group.harness.id).\(choice.model)")
-                    }
-                }
-            }
-        }
-    }
-
-    /// A metered route's heading says so (LAAHarness.metered).
-    private func sectionTitle(_ section: (name: String, choices: [LAAChatModelCatalog.Choice])) -> String {
-        LAAChatModelCatalog.meteredSection(section.choices) ? section.name + " · Metered" : section.name
+    /// One section per harness (D-21 E2), headed by its mark and name, the
+    /// running harness first, holding only its own models. Picking one on
+    /// another harness hands the conversation over through Hermes, so its
+    /// row says so.
+    private var harnessGroups: [(harness: LAAHarness, choices: [LAAChatModelCatalog.Choice])] {
+        let groups = LAAChatModelCatalog.harnesses(choices)
+        guard let harness, let index = groups.firstIndex(where: { $0.harness.id == harness.id }) else { return groups }
+        var out = groups
+        out.insert(out.remove(at: index), at: 0)
+        return out
     }
 
     @ViewBuilder private var modelMenu: some View {
@@ -721,29 +716,43 @@ struct LAAChatModelPickers: View {
                 Label { Text(verbatim: "読み直す") } icon: { Image(systemName: "arrow.clockwise") }
             }
         }
-        ForEach(LAAChatModelCatalog.sections(harnessChoices), id: \.name) { section in
-            Section(sectionTitle(section)) {
-                ForEach(section.choices) { choice in
-                    let isCurrent = choice.id == currentChoice?.id
-                    Button { switchModel(choice) } label: {
-                        if isCurrent {
-                            Label { Text(verbatim: choice.label) } icon: { Image(systemName: "checkmark") }
-                        } else {
-                            LAAModelMenu.Name(label: choice.label, model: choice.model)
-                        }
+        ForEach(harnessGroups, id: \.harness.id) { group in
+            let sections = LAAChatModelCatalog.sections(group.choices)
+            let other = harness != nil && group.harness.id != harness?.id
+            Section {
+                LAAHarnessHeading(harness: group.harness)
+                ForEach(sections, id: \.name) { section in
+                    let route = sections.count > 1 || LAAChatModelCatalog.meteredSection(section.choices)
+                        ? sectionTitle(section) : nil
+                    ForEach(section.choices) { choice in
+                        let isCurrent = choice.id == currentChoice?.id
+                        let note = [route, other ? "Hands over" : nil].compactMap { $0 }
+                        LAAHarnessModelRow(title: choice.label, route: note.isEmpty ? nil : note.joined(separator: " · "),
+                                           model: choice.model, provider: choice.provider,
+                                           current: isCurrent) { switchModel(choice) }
+                            .disabled(modelLock != nil || isCurrent)
+                            .accessibilityIdentifier("composer.runtime.harness.\(group.harness.id).\(choice.model)")
                     }
-                    .disabled(modelLock != nil || isCurrent)
-                    .accessibilityIdentifier("composer.runtime.model.\(choice.model)")
                 }
             }
         }
+    }
+
+    /// A metered route's heading says so (LAAHarness.metered).
+    private func sectionTitle(_ section: (name: String, choices: [LAAChatModelCatalog.Choice])) -> String {
+        LAAChatModelCatalog.meteredSection(section.choices) ? section.name + " · Metered" : section.name
+    }
+
+    private var effortChoices: [String] {
+        LAAChatModelCatalog.efforts(current: shown.effort, model: shown.model, provider: shown.provider,
+                                    table: LAAChatModelAllowList.current())
     }
 
     @ViewBuilder private var effortMenu: some View {
         if let effortLock { LAAMenuReason(text: effortLock) }
         if let reason = display.reason, reason != effortLock { LAAMenuReason(text: reason) }
         Section {
-            ForEach(LAAChatModelCatalog.efforts(current: shown.effort, model: shown.model, provider: shown.provider), id: \.self) { effort in
+            ForEach(effortChoices, id: \.self) { effort in
                 LAAEffortMenu.Row(effort: effort, selected: effort == shown.effort,
                                   identifier: "composer.runtime.effort.\(effort)") { changeEffort(effort) }
                     .disabled(effortLock != nil || effort == shown.effort || !LAAEffort.order.contains(effort))

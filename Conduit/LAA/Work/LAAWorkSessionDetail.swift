@@ -843,8 +843,7 @@ struct LAAWorkSessionHeaderPill: View {
     var body: some View {
         HStack(spacing: 8) {
             // Who the owner is talking to, as in the transcript below.
-            LAAModelMark(model: (session.observed ?? session.requested)?.model,
-                         provider: (session.observed ?? session.requested)?.provider, size: 26)
+            LAAHarnessMark(harness: LAAHarness.work(session.harness ?? (session.observed ?? session.requested)?.provider), size: 26)
             VStack(alignment: .center, spacing: 2) {
                 Text(verbatim: session.name)
                     .laaTextStyle(.body).fontWeight(.semibold)

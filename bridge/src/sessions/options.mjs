@@ -129,15 +129,19 @@ function pickerOptions(table, availability) {
       ...(first.metered ? { metered: true, manual: true } : {}),
       efforts: [...efforts], defaultEffort, profiles: choices.map((choice) => choice.id), surfaces });
     const { provider } = first;
-    if (!chatHarness || !surfaces.includes('chat') || !SUBSCRIPTION_PROVIDERS.has(provider)) continue;
-    const chatProvider = table.employees?.providers?.[provider] ?? (provider === 'dsh' ? 'laa-dsh' : null);
+    // D-33 追記7: the uncensored DeepSeek (Refuseless, manual) is offered in Chat
+    // too, on Hermes' own uncensored route; every other Chat row is a subscription.
+    const chatUncensored = provider === 'dsh-refuseless';
+    if (!chatHarness || !surfaces.includes('chat') || !(SUBSCRIPTION_PROVIDERS.has(provider) || chatUncensored)) continue;
+    const chatProvider = chatUncensored ? 'laa-monet-uncensored'
+      : table.employees?.providers?.[provider] ?? (provider === 'dsh' ? 'laa-dsh' : null);
     if (typeof chatProvider !== 'string' || !chatProvider) continue;
     // DSH's two Session groups share one Hermes route. Chat availability comes
     // from Hermes, not the Work provider state used by the Session catalog.
     const key = JSON.stringify([chatProvider, modelId]);
     if (!chatModels.has(key)) chatModels.set(key, { harnessId: chatHarness.id,
       provider, model: first.model, chatProvider, chatModel: modelId, label: table.models[model].label ?? modelId,
-      efforts: [...efforts], defaultEffort });
+      efforts: [...efforts], defaultEffort, ...(chatUncensored ? { metered: true, manual: true } : {}) });
   }
   const published = validDefault ? [...profiles.values()] : [];
   const usedHarnesses = new Set(models.flatMap((row) => [row.harnessId, row.fastHarness]));

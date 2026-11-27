@@ -189,7 +189,8 @@ struct LAAEmployeeChatOpeningView: View {
                         .accessibilityIdentifier("laa.chats.preview.composer")
                     HStack(spacing: LAASpacing.x2) {
                         let runtime = runtimeDisplay
-                        LAAModelEffortPickers(model: runtime.model, provider: runtime.provider, effort: runtime.effort,
+                        LAAModelEffortPickers(harness: runtime.provider.map { LAAHarness.chat(provider: $0) },
+                            model: runtime.model, provider: runtime.provider, effort: runtime.effort,
                             current: runtime.current,
                             identifier: "laa.chats.preview.runtime", modelHint: "接続後に変更できます", effortHint: "接続後に変更できます",
                             placeholder: runtime.placeholder) {

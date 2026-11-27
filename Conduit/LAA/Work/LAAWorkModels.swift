@@ -275,6 +275,23 @@ struct LAAWorkSessionOptions: Decodable {
         let model: String
         let efforts: [String]
     }
+    /// A harness of the model table's picker (D-23): its id
+    /// (`dsh-orchestrator` and `dsh-worker` apart), name and place.
+    struct Harness: Decodable, Hashable {
+        let id: String
+        let name: String
+        let order: Int
+    }
+    /// One model under one harness, with the profiles that start it.
+    struct PickerModel: Decodable, Hashable {
+        let harnessId: String
+        let provider: String
+        let model: String
+        var efforts: [String]? = nil
+        var defaultEffort: String? = nil
+        let profiles: [String]
+        var surfaces: [String]? = nil
+    }
     let profiles: [Profile]
     let defaultProfile: String?
     let defaultMode: String?
@@ -282,8 +299,22 @@ struct LAAWorkSessionOptions: Decodable {
     /// be asked; the profiles then stand in.
     var efforts: [ModelEfforts]? = nil
     var switchProfiles: [Profile]? = nil
+    /// The picker's harnesses and models, absent from a Bridge before D-23:
+    /// the profiles' providers then stand in for the harnesses.
+    var harnesses: [Harness]? = nil
+    var models: [PickerModel]? = nil
+    /// Chat's models in the same table, with the efforts each offers (D-23).
+    struct Chat: Decodable, Hashable {
+        struct Model: Decodable, Hashable {
+            let chatModel: String
+            var efforts: [String]? = nil
+        }
+        var models: [Model]? = nil
+    }
+    var chat: Chat? = nil
     var switchingOptions: Self {
-        Self(profiles: switchProfiles ?? profiles, defaultProfile: defaultProfile, defaultMode: defaultMode, efforts: efforts)
+        Self(profiles: switchProfiles ?? profiles, defaultProfile: defaultProfile, defaultMode: defaultMode, efforts: efforts,
+             harnesses: harnesses, models: models, chat: chat)
     }
 }
 
