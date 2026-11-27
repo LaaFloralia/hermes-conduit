@@ -13,10 +13,10 @@ const execute = promisify(execFile);
 export const GROUPS_USAGE = `  laa-bridge groups list
   laa-bridge groups state <id>
   laa-bridge groups log <id>
-  laa-bridge groups create --id <id> --name <name> --members <profile,profile,...> --chair <member_id> [--policy <json>]
+  laa-bridge groups create --id <id> --name <name> --members <profile[:Handle],...> --chair <member_id> [--policy <json>]
   laa-bridge groups send <id> <text>
   laa-bridge groups disband <id> --confirm <id>
-    Uses the local Hermes dashboard (Node 22+). Each member's id and handle equal its profile name.
+    Uses the local Hermes dashboard (Node 22+). Each member's id is its profile name; the handle defaults to it (profile:Handle overrides).
     Log returns the first gateway page. Send posts to the main thread.`;
 
 class GroupsError extends Error {
@@ -64,7 +64,10 @@ export function groupsRequest([action, ...args]) {
       }
       const roomId = flags.get('--id');
       const name = flags.get('--name');
-      const profiles = flags.get('--members')?.split(',').map((part) => part.trim());
+      const entries = flags.get('--members')?.split(',').map((part) => part.trim().split(':'));
+      if (entries?.some((e) => e.length > 2 || (e.length === 2 && !/^[A-Za-z][A-Za-z0-9_]{0,31}$/.test(e[1])))) usage('member handle must be a letter followed by letters, digits or _');
+      const handles = new Map(entries?.map(([profile, handle]) => [profile, handle || profile]));
+      const profiles = entries?.map(([profile]) => profile);
       const chair = flags.get('--chair');
       if (!validId(roomId) || !name || !profiles || profiles.length < 2 || profiles.length > 7
           || !profiles.every(validId) || new Set(profiles.map((profile) => profile.toLowerCase())).size !== profiles.length
@@ -75,7 +78,8 @@ export function groupsRequest([action, ...args]) {
         if (!options.policy || typeof options.policy !== 'object' || Array.isArray(options.policy)) usage('--policy must be a JSON object');
       }
       return make({ room_id: roomId, name, members: profiles.map((profile) => ({
-        member_id: profile, profile, handle: profile,
+        member_id: profile, profile, handle: handles.get(profile),
+        ...(handles.get(profile) !== profile ? { display_name: handles.get(profile) } : {}),
       })), ...options });
     }
     default:

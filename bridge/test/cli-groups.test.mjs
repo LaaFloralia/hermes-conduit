@@ -58,6 +58,11 @@ test('groups requests match the hosted-room RPC wire shapes', () => {
     },
   });
   assert.equal(Object.hasOwn(groupsRequest(input).params, 'policy'), false);
+  const named = groupsRequest(['create', '--id', 'r', '--name', 'R', '--members', 'laa-monet:Monet,laa-cto', '--chair', 'laa-monet']);
+  assert.deepEqual(named.params.members, [
+    { member_id: 'laa-monet', profile: 'laa-monet', handle: 'Monet', display_name: 'Monet' },
+    { member_id: 'laa-cto', profile: 'laa-cto', handle: 'laa-cto' }]);
+  assert.throws(() => groupsRequest(['create', '--id', 'r', '--name', 'R', '--members', 'laa-monet:9x,laa-cto', '--chair', 'laa-monet']), /handle/);
   assert.throws(() => groupsRequest([...input, '--policy', 'null']), /JSON object/);
   assert.throws(() => groupsRequest([...input, '--id', 'another-room']), /repeated/);
   const send = groupsRequest(['send', 'room-1', '--literal text\nsecond line']);
