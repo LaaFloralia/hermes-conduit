@@ -31,6 +31,9 @@ extension LAACopy {
     static let chatPhotoDim = "Darkness"
     static let chatPhotoBlur = "Blur"
     static let chatFixturePhoto = "試験用の写真"
+    static func chatCronReports(_ count: Int) -> String { "定期報告 \(count)件" }
+    static let chatCronReportsExpanded = "開いています"
+    static let chatCronReportsCollapsed = "閉じています"
 }
 
 private struct LAAChatDesignKey: EnvironmentKey {
@@ -145,6 +148,77 @@ struct LAAChatDetachedHistoryDivider: View {
             .frame(height: 1)
             .frame(maxWidth: .infinity)
             .accessibilityHidden(true)
+    }
+}
+
+/// A run of cron reports folded into one row (D-25): the first report
+/// draws the run's line, and itself under it while the run is open; the
+/// others draw only while it is open (ChatMessageScrollTarget.drawsRow).
+/// Observes the run toggles, so opening it redraws these rows only.
+struct LAAChatCronReportRun: View {
+    let message: ChatMessage
+    let notice: ChatNoticePlacement
+    let gatewayResolver: GatewayMediaDataURLResolver?
+    let disclosure: ChatRowDisclosure
+    @ObservedObject var toggles: ChatStepGroupToggles
+
+    var body: some View {
+        let _ = toggles.revision
+        let expanded = disclosure.isNoticeRunExpanded(notice.runID)
+        VStack(alignment: .leading, spacing: LAASpace.s8) {
+            if notice.index == 0 {
+                LAAChatCronReportRunHeader(
+                    count: notice.count,
+                    latestTitle: notice.latestTitle,
+                    expanded: expanded
+                ) {
+                    withAnimation(ConduitMotion.response) {
+                        Haptics.light()
+                        disclosure.willToggleNoticeRun(notice.runID, to: !expanded)
+                    }
+                }
+            }
+            if notice.index > 0 || expanded {
+                SystemBubble(message: message, gatewayResolver: gatewayResolver)
+            }
+        }
+    }
+}
+
+/// The line of a folded run of cron reports: how many, the newest
+/// routine's name, and the chevron that opens or closes the run.
+struct LAAChatCronReportRunHeader: View {
+    let count: Int
+    let latestTitle: String
+    let expanded: Bool
+    let toggle: () -> Void
+
+    var body: some View {
+        Button(action: toggle) {
+            HStack(spacing: LAASpace.s8) {
+                Text(verbatim: LAACopy.chatCronReports(count))
+                    .laaTextStyle(.secondary)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(LAAColor.secondaryText)
+                if !latestTitle.isEmpty {
+                    Text(verbatim: latestTitle)
+                        .laaTextStyle(.secondary)
+                        .foregroundStyle(LAAColor.secondaryText)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: LAASpace.s8)
+                Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                    .laaTextStyle(.secondary)
+                    .foregroundStyle(LAAColor.secondaryText)
+                    .accessibilityHidden(true)
+            }
+            .frame(minHeight: LAASpacing.minimumTouchTarget)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .laaPhotoSupportingText()
+        .accessibilityValue(expanded ? LAACopy.chatCronReportsExpanded : LAACopy.chatCronReportsCollapsed)
+        .accessibilityIdentifier("chat.cronReports.toggle")
     }
 }
 

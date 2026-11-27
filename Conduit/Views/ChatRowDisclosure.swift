@@ -91,7 +91,21 @@ final class ChatRowDisclosure {
         groupToggles.revision &+= 1
     }
 
+    /// A run of cron reports draws folded until the reader opens it.
+    func isNoticeRunExpanded(_ runID: String) -> Bool {
+        followConversation()
+        return states[Self.noticeKey(runID)] ?? false
+    }
+
+    func willToggleNoticeRun(_ runID: String, to expanded: Bool) {
+        engine?.userWillToggleRow()
+        followConversation()
+        states[Self.noticeKey(runID)] = expanded
+        groupToggles.revision &+= 1
+    }
+
     private static func groupKey(_ id: String) -> String { "steps:" + id }
+    private static func noticeKey(_ id: String) -> String { "notices:" + id }
     private static func thinkingKey(_ id: String) -> String { "thinking:" + id }
 
     private func followConversation() {

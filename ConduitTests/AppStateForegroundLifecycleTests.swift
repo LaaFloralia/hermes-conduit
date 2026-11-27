@@ -1838,7 +1838,14 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         await runSceneActivation(harness)
 
         XCTAssertEqual(probeCount, 1)
+        #if LAA_BUILD
+        // The rotated page holds replies but no owner row, so the LAA
+        // reconcile reads one older page looking for the last exchange
+        // (D-25); it answers with the same rows, so nothing changes.
+        XCTAssertEqual(transcriptReads, 4, "Freshness read + the recovery reconcile's bounded read + one owner-exchange page")
+        #else
         XCTAssertEqual(transcriptReads, 3, "Freshness read + the recovery reconcile's bounded read")
+        #endif
         XCTAssertEqual(
             resumeCount, resumesBeforeForeground + 1,
             "Anchor-less freshness must take the bounded resume recovery exactly once"

@@ -5371,7 +5371,7 @@ enum MessageNormalizer {
     /// The first line of a cron job's report shown in a chat
     /// (conduit_push `cron_bot_chat.HEADER`); the job's name has no `"`.
     private static let cronReportHeader = try? NSRegularExpression(
-        pattern: #"^\[Cron job "[^"\r\n]*" report: shown in the chat, no reply asked for\]$"#
+        pattern: #"^\[Cron job "([^"\r\n]*)" report: shown in the chat, no reply asked for\]$"#
     )
 
     /// One whole line holding one `@image:` or `@file:` reference, quoted
@@ -5384,9 +5384,29 @@ enum MessageNormalizer {
     /// chat shows as a system card.
     static func isCronReportNote(_ text: String) -> Bool {
         guard let expression = cronReportHeader else { return false }
+        // `isNewline`, not "\n"/"\r": a CRLF pair is one Character.
         let first = String(text.trimmingCharacters(in: .whitespacesAndNewlines)
-            .prefix(while: { $0 != "\n" && $0 != "\r" }))
+            .prefix(while: { !$0.isNewline }))
         return expression.firstMatch(in: first, range: NSRange(first.startIndex..<first.endIndex, in: first)) != nil
+    }
+
+    /// A cron report note as its card shows it: the routine's name as the
+    /// title, and the report below the internal header line as the body
+    /// (`cronReportMarkdown` without that line). Nil for any other text.
+    /// The row's content keeps the whole note: dedup, grouping and the
+    /// saved copy read it.
+    static func cronReport(_ text: String) -> (title: String, body: String)? {
+        guard let expression = cronReportHeader else { return nil }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let first = String(trimmed.prefix(while: { !$0.isNewline }))
+        guard let match = expression.firstMatch(in: first, range: NSRange(first.startIndex..<first.endIndex, in: first)),
+              let nameRange = Range(match.range(at: 1), in: first) else { return nil }
+        let title = String(first[nameRange]).trimmingCharacters(in: .whitespaces)
+        let markdown = cronReportMarkdown(trimmed)
+        let body = markdown.firstIndex(where: \.isNewline).map {
+            String(markdown[$0...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        } ?? ""
+        return (title.isEmpty ? AppLocalization.string("System") : title, body)
     }
 
     /// A cron report note as its card's Markdown reads it. The note's

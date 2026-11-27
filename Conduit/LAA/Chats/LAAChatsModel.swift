@@ -53,7 +53,8 @@ enum LAAChatsPreview {
         if let live { return Choice(text: live.content, timestamp: live.timestamp) }
         if let cached { return Choice(text: cached.content, timestamp: cached.timestamp) }
         guard let roster, !isNoReplySentinel(roster) else { return nil }
-        return Choice(text: roster, timestamp: nil)
+        // A cron report never shows its internal header line.
+        return Choice(text: MessageNormalizer.cronReport(roster)?.body ?? roster, timestamp: nil)
     }
 }
 

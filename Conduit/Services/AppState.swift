@@ -320,7 +320,7 @@ enum PersistedTranscriptOutcome {
 
 struct PersistedSessionTranscript {
     let resolvedSessionId: String?
-    let messages: [ChatMessage]
+    var messages: [ChatMessage]
     /// Pagination echo of the response this transcript was parsed from.
     /// Nil (or an echo without the `order=latest` tail contract) means the
     /// backend served a one-shot full transcript.
@@ -330,6 +330,15 @@ struct PersistedSessionTranscript {
     /// a validated `order=latest` page. Empty for legacy one-shot reads,
     /// whose row identity is positional and untrustworthy.
     var durableRowIDs: Set<String> = []
+
+    /// The same transcript with each repeated cron report shown once
+    /// (`PersistedTranscriptWindow.droppingDuplicateCronReports`). Page
+    /// counts and durable ids stay as fetched.
+    func droppingDuplicateCronReports() -> PersistedSessionTranscript {
+        var transcript = self
+        transcript.messages = PersistedTranscriptWindow.droppingDuplicateCronReports(messages)
+        return transcript
+    }
 }
 
 struct ComposerSubmissionContext: Equatable {
@@ -17290,7 +17299,8 @@ final class AppState: ObservableObject {
                 async let transcriptOutcome = persistedTranscriptOutcome(
                     sessionId: sessionId,
                     profile: conversationScopeProfile ?? profile,
-                    using: bridge
+                    using: bridge,
+                    reachingOwnerTurn: Self.reconcileReachesOwnerTurn
                 )
                 do {
                     result = try await resumedSession
@@ -21507,8 +21517,16 @@ final class AppState: ObservableObject {
     ) {
         var knownIDs = Set(messages.map { $0.id })
         var merged = messages
-        merged.reserveCapacity(merged.count + newRows.count)
-        for row in newRows where knownIDs.insert(row.id).inserted {
+        // A cron report the transcript already shows (compaction's second
+        // copy) is not appended again.
+        let freshRows = PersistedTranscriptWindow.droppingDuplicateCronReports(
+            newRows,
+            heldKeys: PersistedTranscriptWindow.cronReportKeys(
+                messages + (persistedTranscriptWindow?.detachedEarlier ?? [])
+            )
+        )
+        merged.reserveCapacity(merged.count + freshRows.count)
+        for row in freshRows where knownIDs.insert(row.id).inserted {
             // The persisted twin of a steer Conduit already confirmed
             // locally takes the local row's place instead of repeating it.
             if row.isSteer,
@@ -31122,14 +31140,18 @@ final class AppState: ObservableObject {
                 ),
                 page: page,
                 durableRowIDs: Set(rawMessages.compactMap(Self.durablePersistedRowID(from:)))
-            ))
+            ).droppingDuplicateCronReports())
         }
     }
 
+    /// `reachingOwnerTurn`: an open that lands on the chat walks older
+    /// pages until the last owner↔employee exchange is held (only the
+    /// reconcile asks; see `walkingToOwnerExchange`).
     private func persistedTranscriptOutcome(
         sessionId: String,
         profile: String,
-        using bridge: DashboardTicketBridge?
+        using bridge: DashboardTicketBridge?,
+        reachingOwnerTurn: Bool = false
     ) async -> PersistedTranscriptOutcome {
         let fetchStartedAt = Date()
         let fetchOutcome = await fetchPersistedHistoryPayload(
@@ -31197,7 +31219,7 @@ final class AppState: ObservableObject {
                             imageScope: Self.transcriptImageScope(in: fullResponse, sessionId: sessionId, profile: profile)
                         ),
                         page: nil
-                    ))
+                    ).droppingDuplicateCronReports())
                 case .unavailable:
                     return .unavailable
                 case .failed(let error):
@@ -31217,17 +31239,119 @@ final class AppState: ObservableObject {
 
             // The dashboard server returns `messages`; the API-server variant
             // returns `data`, so accept both public Hermes response shapes.
-            return .hydrated(PersistedSessionTranscript(
+            let imageScope = Self.transcriptImageScope(in: response, sessionId: sessionId, profile: profile)
+            let hydrated = PersistedSessionTranscript(
                 resolvedSessionId: Self.resolvedSessionId(in: response),
-                messages: await Self.normalizeTranscriptRows(
-                    rawMessages,
-                    imageScope: Self.transcriptImageScope(in: response, sessionId: sessionId, profile: profile)
-                ),
+                messages: await Self.normalizeTranscriptRows(rawMessages, imageScope: imageScope),
                 page: page,
                 durableRowIDs: Set(rawMessages.compactMap(Self.durablePersistedRowID(from:)))
-            ))
+            )
+            #if LAA_BUILD
+            if reachingOwnerTurn, let page {
+                return .hydrated(await walkingToOwnerExchange(
+                    hydrated,
+                    firstPage: page,
+                    rawRows: rawMessages,
+                    sessionId: sessionId,
+                    profile: profile,
+                    imageScope: imageScope,
+                    using: bridge
+                ).droppingDuplicateCronReports())
+            }
+            #endif
+            return .hydrated(hydrated.droppingDuplicateCronReports())
         }
     }
+
+    #if LAA_BUILD
+    /// Older tail pages read until `transcript` holds the last exchange
+    /// between the owner and the employee (D-25: Monet's newest 40 rows
+    /// were cron reports and tool rows, so the chat opened to cards alone).
+    /// Bounded to `ownerTurnWalkPages` extra pages; a chat whose first page
+    /// already holds an exchange, or that is shorter than one page, makes
+    /// no extra request. Every page must keep the tail contract, durable
+    /// row ids and the same stored session; rows already seen (offset
+    /// drift) are dropped, and the whole run of raw rows is normalized
+    /// again, so a tool call and its result fold across a page seam. A
+    /// page that fails keeps what is already read: the open never fails
+    /// on the walk.
+    private func walkingToOwnerExchange(
+        _ transcript: PersistedSessionTranscript,
+        firstPage: PersistedTranscriptPagination.PageInfo,
+        rawRows: [Any],
+        sessionId: String,
+        profile: String,
+        imageScope: TranscriptImageScope,
+        using bridge: DashboardTicketBridge?
+    ) async -> PersistedSessionTranscript {
+        guard firstPage.honorsTailContract,
+              firstPage.mayHaveOlderRows(fetchedRowCount: rawRows.count),
+              PersistedTranscriptWindow.rowsHaveDurableIdentity(rawRows) else { return transcript }
+        var rows = rawRows
+        var messages = transcript.messages
+        var seen = transcript.durableRowIDs
+        var covered = rawRows.count
+        var reachedOldest = false
+        var walked = 0
+        while !reachedOldest,
+              walked < PersistedTranscriptPagination.ownerTurnWalkPages,
+              !PersistedTranscriptWindow.containsOwnerExchange(messages) {
+            walked += 1
+            let outcome = await fetchPersistedHistoryPayload(
+                sessionId: sessionId,
+                profile: profile,
+                query: PersistedTranscriptPagination.tailQuery(
+                    offset: covered,
+                    limit: PersistedTranscriptPagination.ownerTurnWalkPageSize
+                ),
+                using: bridge
+            )
+            guard case .payload(let response) = outcome,
+                  let older = Self.persistedMessageRows(in: response),
+                  let page = PersistedTranscriptPagination.parse(response, rawRowCount: older.count),
+                  page.honorsTailContract,
+                  PersistedTranscriptWindow.rowsHaveDurableIdentity(older),
+                  Self.resolvedSessionId(in: response) == transcript.resolvedSessionId else { break }
+            guard !older.isEmpty else {
+                reachedOldest = true
+                break
+            }
+            var freshIDs = seen
+            var fresh: [Any] = []
+            for row in older {
+                if let id = Self.durablePersistedRowID(from: row) {
+                    guard freshIDs.insert(id).inserted else { continue }
+                }
+                fresh.append(row)
+            }
+            // Nothing new: coverage stays where the rows really end.
+            guard !fresh.isEmpty else { break }
+            seen = freshIDs
+            covered += older.count
+            if !page.mayHaveOlderRows(fetchedRowCount: older.count) { reachedOldest = true }
+            rows = fresh + rows
+            messages = await Self.normalizeTranscriptRows(rows, imageScope: imageScope)
+        }
+        guard covered > rawRows.count || reachedOldest else { return transcript }
+        var walkedTranscript = transcript
+        walkedTranscript.messages = messages
+        walkedTranscript.durableRowIDs = seen
+        walkedTranscript.page = PersistedTranscriptPagination.PageInfo(
+            limit: firstPage.limit,
+            offset: firstPage.offset,
+            order: firstPage.order,
+            returned: firstPage.returned,
+            rawReturned: covered,
+            reachedOldest: reachedOldest
+        )
+        return walkedTranscript
+    }
+
+    /// The open the reconcile performs walks to the last owner exchange.
+    private static let reconcileReachesOwnerTurn = true
+    #else
+    private static let reconcileReachesOwnerTurn = false
+    #endif
 
     private func fetchPersistedHistoryPayload(
         sessionId: String,
@@ -31549,9 +31673,14 @@ final class AppState: ObservableObject {
             }
             var didPrepend = false
             if fetchedRowCount > 0 {
-                let normalizedPage = MessageNormalizer.normalizeMessages(
-                    rawRows.map(AnyCodable.from),
-                    imageScope: Self.transcriptImageScope(in: response, sessionId: wireSessionId, profile: profile)
+                // A report already held (the newer copy) is not shown again
+                // above it; raw counts and offsets stay as fetched.
+                let normalizedPage = PersistedTranscriptWindow.droppingDuplicateCronReports(
+                    MessageNormalizer.normalizeMessages(
+                        rawRows.map(AnyCodable.from),
+                        imageScope: Self.transcriptImageScope(in: response, sessionId: wireSessionId, profile: profile)
+                    ),
+                    heldKeys: PersistedTranscriptWindow.cronReportKeys(messages + current.detachedEarlier)
                 )
                 // A page boundary can split a tool call from its result row:
                 // the landing folds trailing call cards back together with
@@ -31721,10 +31850,12 @@ final class AppState: ObservableObject {
     /// whole turns leave the live transcript and stay reachable through
     /// backfill. Never while detached history shows or a backfill runs.
     func trimLiveTranscriptHeadIfNeeded() {
-        guard let cap = heldTranscriptRowCap, turnState == .idle, messages.count > cap,
+        // Cron reports draw folded and do not count toward the cap.
+        guard let cap = heldTranscriptRowCap, turnState == .idle,
+              PersistedTranscriptWindow.heldWeight(messages, cap: cap) > cap,
               var window = persistedTranscriptWindow, window.detachedEarlier.isEmpty,
               !window.isLoadingEarlier, persistedTranscriptWindowOwnershipIsCurrent(window) else { return }
-        let split = PersistedTranscriptWindow.safeSplitIndex(messages, keepingLast: cap)
+        let split = PersistedTranscriptWindow.safeSplitIndex(messages, keepingLast: cap, cap: cap)
         guard split > 0 else { return }
         messages = Array(messages[split...])
         window.nextOffset = min(window.nextOffset, liveTranscriptPersistedCoverage)

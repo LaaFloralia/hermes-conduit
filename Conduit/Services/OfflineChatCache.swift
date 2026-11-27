@@ -528,6 +528,16 @@ final class OfflineChatCacheStore {
         if let row = snapshot.sessions.first(where: { $0.id == sessionID }) {
             allIdentities.formUnion(row.aliases)
         }
+        #if LAA_BUILD
+        // A page of cron reports and tool rows alone (an open whose walk to
+        // the last exchange failed) never replaces a copy that has the
+        // conversation in it: that copy opened blank (D-25).
+        if !Self.containsAnyConversationTurn(rows),
+           let stored = loadTranscript(sessionID, dashboardID: dashboardID, profile: profile),
+           Self.containsAnyConversationTurn(stored.messages) {
+            return
+        }
+        #endif
         let transcript = OfflineCachedTranscript(sessionID: sessionID, title: title, savedAt: now, messages: Array(rows))
         // Its rows land first, so the index never lists a copy that isn't there.
         guard write(transcript, dashboardID: dashboardID, profile: profile) else { return }
@@ -548,6 +558,17 @@ final class OfflineChatCacheStore {
         removeUnlistedTranscripts(snapshot, dashboardID: dashboardID, profile: profile)
     }
 
+    /// The conversation's own words: a user or assistant row with text.
+    static func isTurn(_ row: OfflineCachedMessage) -> Bool {
+        (row.role == .user || row.role == .assistant)
+            && !row.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Whether `rows` hold any of the conversation's own words.
+    static func containsAnyConversationTurn(_ rows: [OfflineCachedMessage]) -> Bool {
+        rows.contains(where: isTurn)
+    }
+
     /// The newest turns always kept, however many tool rows follow them.
     static let minConversationTurns = 20
 
@@ -560,10 +581,6 @@ final class OfflineChatCacheStore {
     static func trimmedRows(_ rows: [OfflineCachedMessage]) -> [OfflineCachedMessage] {
         let limit = maxMessagesPerTranscript
         guard rows.count > limit else { return rows }
-        func isTurn(_ row: OfflineCachedMessage) -> Bool {
-            (row.role == .user || row.role == .assistant)
-                && !row.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        }
         let tailStart = rows.count - limit
         let tailTurns = rows[tailStart...].filter(isTurn).count
         guard tailTurns < minConversationTurns else { return Array(rows[tailStart...]) }
