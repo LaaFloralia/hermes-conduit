@@ -271,6 +271,11 @@ final class LAACronReportDisplayTests: XCTestCase {
         ]
     }
 
+    /// Some hosts bridge an Int fixture id through Double ("46791.0").
+    private static func rowID(_ id: String) -> String {
+        id.hasSuffix(".0") ? String(id.dropLast(2)) : id
+    }
+
     private static func rawTool(_ id: Int) -> [String: Any] {
         ["id": id, "role": "tool", "tool_call_id": "call-\(id)", "content": "ok \(id)", "timestamp": "2026-11-27T08:00:00Z"]
     }
@@ -389,11 +394,11 @@ final class LAACronReportDisplayTests: XCTestCase {
             PersistedTranscriptPagination.tailQuery(offset: 0),
             "?limit=120&offset=40&order=latest&include_compacted=true&inline_images=false"
         ])
-        let ids = Set(appState.messages.map(\.id))
+        let ids = Set(appState.messages.map { Self.rowID($0.id) })
         XCTAssertTrue(ids.isSuperset(of: ["46791", "46792", "46808"]), "The last exchange is on screen")
         XCTAssertEqual(appState.messages.filter(\.isCronReport).count, 8, "Each report shows once")
         XCTAssertEqual(
-            Set(appState.messages.filter(\.isCronReport).map(\.id)),
+            Set(appState.messages.filter(\.isCronReport).map { Self.rowID($0.id) }),
             Set((46862..<46870).map(String.init)),
             "The newest copy of each report stays"
         )
@@ -475,7 +480,7 @@ final class LAACronReportDisplayTests: XCTestCase {
             return Self.payload(Array(Self.monetPageOne.suffix(115)) + Array(Self.monetPageZero.prefix(5)), offset: offset, limit: 120)
         }
         _ = await appState.openSession("stored-a")
-        let ids = appState.messages.map(\.id)
+        let ids = appState.messages.map { Self.rowID($0.id) }
         XCTAssertEqual(Set(ids).count, ids.count, "No row shows twice")
         XCTAssertTrue(Set(ids).isSuperset(of: ["46791", "46792"]))
     }
