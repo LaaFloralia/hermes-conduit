@@ -47,6 +47,7 @@ import { voiceLeaseRoutes } from './voice-lease.mjs';
 import { deviceRoutes } from './devices.mjs';
 import { createDecisionStore } from '../decisions/store.mjs';
 import { createDecisionService, isWaiting, mayDeliverDecisionNotice, onDecisionBoard } from '../decisions/service.mjs';
+import { createDecisionBadgePublisher } from '../decisions/badge.mjs';
 import { createDecisionRoutes } from './decisions.mjs';
 import { monetRoutes, resolveMonetTrigger } from './monet.mjs';
 import { createCompletionReporter } from '../notify/completion-report.mjs';
@@ -92,8 +93,11 @@ export function businessRoutes({ store, now = () => Date.now(), options = {}, la
   let sessionService;
   const decisionsOptions = options.decisions ?? {};
   const decisionStore = decisionsOptions.store ?? createDecisionStore({ dir: store.dir, now });
+  const badgePublisher = !sessionOptions.service && sessionOptions.live && !lane && process.env.NODE_TEST_CONTEXT === undefined
+    ? createDecisionBadgePublisher({ store: decisionStore, now }) : null;
   const decisions = decisionsOptions.service ?? createDecisionService({
     refs: (kind, key) => refs.refFor(kind, key), observeRefs: () => refs.observeSource('decision'), log: options.log,
+    refreshBadge: badgePublisher?.refresh,
     ...decisionsOptions, store: decisionStore, sessionStore,
     sessions: { syncDaemon: () => sessionService.syncDaemon(), decision: (id) => sessionService.decision(id) }, daemon, now,
   });
@@ -128,6 +132,10 @@ export function businessRoutes({ store, now = () => Date.now(), options = {}, la
     .map((d) => ({ key: d.id, title: d.title, createdAt: d.createdAt, external: { sessionId: d.source?.sessionId ?? null } })));
 
   if (!sessionOptions.service && sessionOptions.live) {
+    if (badgePublisher) {
+      const stopBadges = badgePublisher.start();
+      sessionOptions.registerCleanup?.(stopBadges);
+    }
     const timer = setInterval(() => { sessionService.syncDaemon().catch(() => {}); }, 5000);
     timer.unref();
     sessionOptions.registerCleanup?.(() => clearInterval(timer));

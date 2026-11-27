@@ -46,19 +46,6 @@ final class LAADecisionTests: XCTestCase {
         XCTAssertEqual(board.badgeCount, 0)
     }
 
-    func testOnlyDecisionPushCanCarryOwnerBadgeCount() throws {
-        let id = "dec_0123456789abcdef"
-        func badge(kind: String, count: Int) throws -> Int? {
-            let encoded = try JSONSerialization.data(withJSONObject: ["k": kind, "b": count])
-                .base64EncodedString().replacingOccurrences(of: "+", with: "-")
-                .replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
-            return LAANotificationMeta.parse("laa://work/decisions/\(id)#\(encoded)")?.ownerBadgeCount
-        }
-        XCTAssertEqual(try badge(kind: "decision.new", count: 0), 0)
-        XCTAssertNil(try badge(kind: "decision.new", count: -1))
-        XCTAssertNil(try badge(kind: "monet.report", count: 1))
-    }
-
     /// A failed delivery is a board recovery action, not an unanswered question.
     func testOnlyOpenQuestionsAndFailedDeliveriesNeedTheOwner() throws {
         func item(_ id: String, answered: Bool, delivery: String?) -> String {

@@ -32,20 +32,41 @@ def send_now(payload, timeout):
     assert available
     assert payload["session_id"] == "laa-bridge:laa://today"
     assert timeout == 15
+
+def paired_devices():
+    return ${paired ? `[(None, {'relay_url': 'https://fixture.invalid/', 'credential': 'phone-fixture'}),
+                         ('mac', {'relay_url': 'https://fixture.invalid', 'credential': 'mac-fixture'})]` : '[]'}
+
+def request_json(url, method, credential, payload, timeout):
+    assert url == 'https://fixture.invalid/v1/events'
+    assert method == 'POST' and timeout == 5
+    assert payload == {'type': 'decision.badge', 'event_id': 'badge-fixture', 'badge': 0}
+    if credential == 'phone-fixture':
+        # A successful retry's already-acknowledged device is a duplicate.
+        return {'accepted': True, 'duplicate': True}
+    assert credential == 'mac-fixture'
+    return {'accepted': True, 'delivered': True}
 `);
   return home;
 }
 
-function deliver(home) {
+function deliver(home, payload = { type: 'response.ready', session_id: 'laa-bridge:laa://today' }) {
   const run = spawnSync('python3', ['-I', script], {
     env: { ...process.env, HOME: home },
-    input: JSON.stringify({ type: 'response.ready', session_id: 'laa-bridge:laa://today' }),
+    input: JSON.stringify(payload),
     encoding: 'utf8', timeout: 10_000,
   });
   assert.equal(run.status, 0, run.stderr);
   assert.equal(run.stderr, '');
   return JSON.parse(run.stdout);
 }
+
+test('badge delivery uses paired installations and sends no text or decision data', (t) => {
+  const payload = { type: 'decision.badge', event_id: 'badge-fixture', badge: 0, title: 'must not leave Bridge' };
+  assert.deepEqual(deliver(fixture(t), payload), { delivered: true });
+  assert.deepEqual(deliver(fixture(t, { paired: false }), payload), { delivered: false });
+  assert.deepEqual(deliver(fixture(t), { ...payload, badge: true }), { delivered: false, reason: 'delivery_unavailable' });
+});
 
 test('notification delivery activates the installed Hermes dependencies before loading the plugin', (t) => {
   assert.deepEqual(deliver(fixture(t)), { delivered: true });
