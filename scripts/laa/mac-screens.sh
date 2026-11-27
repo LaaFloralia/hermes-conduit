@@ -172,7 +172,7 @@ build() {
   write_spec || { echo "could not write $SPEC" >&2; exit 1; }
   DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodegen generate --spec "$SPEC" >/dev/null || exit 1
   DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
-  /bin/bash /Users/laa/hq/harness/build-slot.sh \
+  "${LAA_MAC_SCREENS_BUILD_DRIVER:-/Users/laa/hq/harness/build-slot.sh}" \
     xcodebuild build -project Conduit.xcodeproj -scheme Conduit -configuration Debug \
       -destination 'platform=macOS,variant=Mac Catalyst' \
       -derivedDataPath "$DERIVED" -jobs 4 -packageAuthorizationProvider netrc \
