@@ -5,15 +5,19 @@ const MAX_BYTES = 256 * 1024;
 const counts = ['runningAll', 'readyPending', 'stalled', 'needsJudgement', 'reportedUnverified',
   'memoryPending', 'boardDelegable', 'boardOwnerOnly'];
 const metrics = ['tickDurationMs', 'inspectP95Ms'];
-const timestamp = /^(\d{4}-\d{2}-\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.(\d+))?(?:Z|[+-]\d{2}:\d{2})$/;
+const timestamp = /^((?!0000)\d{4}-\d{2}-\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.(\d{1,9}))?(?:Z|[+-]\d{2}:\d{2})$/;
 function parseTime(value) {
   const match = typeof value === 'string' && timestamp.exec(value);
   if (!match) return null;
-  const [, date, fraction = ''] = match;
+  const [, date, digits = ''] = match;
   const midnight = Date.parse(`${date}T00:00:00Z`), ms = Date.parse(value);
+  const utcYear = new Date(ms).getUTCFullYear();
+  if (!(utcYear >= 1 && utcYear <= 9999)) return null;
   // Date.parse can normalize an invalid calendar date (e.g. February 30).
-  if (!Number.isFinite(midnight) || !Number.isFinite(ms) || new Date(midnight).toISOString().slice(0, 10) !== date) return null;
-  return { ms, fraction: fraction.replace(/0+$/, '') };
+  if (!Number.isFinite(midnight) || new Date(midnight).toISOString().slice(0, 10) !== date) return null;
+  let end = digits.length;
+  while (end > 0 && digits[end - 1] === '0') end--;
+  return { ms, fraction: digits.slice(0, end) };
 }
 const count = (value) => Number.isSafeInteger(value) && value >= 0;
 const metric = (value) => Number.isFinite(value) && value >= 0 && value <= Number.MAX_SAFE_INTEGER;

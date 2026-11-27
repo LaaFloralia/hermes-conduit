@@ -77,6 +77,29 @@ test('status rejects incomplete, invalid and reversed supervisor timestamps with
   }
 });
 
+test('status bounds supervisor precision and checks the normalized UTC year', async (t) => {
+  const { api, path } = await rig(t);
+  const token = await api.token();
+  const statusFor = async (timing) => {
+    writeFileSync(path, JSON.stringify({ ...fixture(), ...timing }));
+    const res = await api.request('/v1/status', { token });
+    assert.equal(res.status, 200);
+    return res.body.data.supervisor.status;
+  };
+  const invalid = {
+    'overprecision in checkedAt': { checkedAt: '2026-11-26T10:30:00.1234567890Z' },
+    'long fraction in nextCheckBy': { nextCheckBy: `2026-11-26T10:35:00.${'0'.repeat(16_384)}1Z` },
+    'UTC underflow': { checkedAt: '0001-01-01T00:00:00+01:00' },
+    'UTC overflow': { nextCheckBy: '9999-12-31T23:59:59-01:00' },
+    'unrepresentable local year': { checkedAt: '0000-12-31T23:59:59-01:00' },
+  };
+  for (const [name, timing] of Object.entries(invalid)) assert.equal(await statusFor(timing), 'missing', name);
+  assert.equal(await statusFor({ checkedAt: '2026-11-26T10:35:00.1234Z',
+    nextCheckBy: '2026-11-26T11:35:00.123400000+01:00' }), 'ok');
+  assert.equal(await statusFor({ checkedAt: '0001-01-01T00:00:00Z',
+    nextCheckBy: '9999-12-31T23:59:59Z' }), 'ok');
+});
+
 test('missing, malformed, oversized or symlinked status is not reported as healthy', async (t) => {
   const { api, path } = await rig(t);
   const token = await api.token();
