@@ -189,7 +189,6 @@ final class LAADecisionImageStore {
 
 enum LAADecisionImageCopy {
     static let removed = "画像は削除されました"
-    static let loading = "画像を読み込み中"
     static let unavailable = "画像を表示できません"
     static let openHint = "全画面で拡大できます"
 
@@ -321,7 +320,9 @@ struct LAADecisionImageViewer: View {
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            Color.black.ignoresSafeArea()
+            // The viewer always reads dark (set below), so the paper turns to
+            // the dark set's ground and the picture keeps its own colours.
+            LAAColor.background.ignoresSafeArea()
             pager
             closeButton
         }
@@ -349,18 +350,10 @@ struct LAADecisionImageViewer: View {
     }
 
     private var closeButton: some View {
-        Button { dismiss() } label: {
-            Image(systemName: "xmark")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Color.white)
-                .frame(width: 44, height: 44)
-                .conduitGlassControl(cornerRadius: 22, tint: Color.black.opacity(0.25), interactive: true)
-        }
-        .buttonStyle(.plain)
-        .padding(LAASpacing.x4)
-        .accessibilityLabel(Text(verbatim: "Close"))
-        .accessibilityIdentifier("work.decision.viewer.close")
-        .keyboardShortcut(.cancelAction)
+        LAACloseButton(glass: true) { dismiss() }
+            .padding(LAASpacing.x4)
+            .accessibilityIdentifier("work.decision.viewer.close")
+            .keyboardShortcut(.cancelAction)
     }
 
     /// An option's picture names its option; general pictures need no words.
@@ -369,7 +362,7 @@ struct LAADecisionImageViewer: View {
            request.item.options.indices.contains(option) {
             Text(verbatim: request.item.options[option].label)
                 .laaTextStyle(.secondary)
-                .foregroundStyle(.white)
+                .foregroundStyle(LAAColor.text)
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, LAASpacing.horizontal)
@@ -407,11 +400,11 @@ private struct LAADecisionViewerPage: View {
                     Text(verbatim: LAADecisionImageCopy.removed)
                 }
                 .laaTextStyle(.body)
-                .foregroundStyle(.white.opacity(0.8))
+                .foregroundStyle(LAAColor.secondaryText)
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("work.decision.viewer.removed")
             } else {
-                LAALoadingDots().accessibilityLabel(Text(verbatim: LAADecisionImageCopy.loading))
+                LAALoadingDots()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
