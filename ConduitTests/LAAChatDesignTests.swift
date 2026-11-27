@@ -138,21 +138,21 @@ final class LAAChatDesignTests: XCTestCase {
         source.addAttribute(.link, value: try XCTUnwrap(URL(string: "https://example.com/news")), range: plain.range(of: "News"))
         source.addAttribute(.link, value: try XCTUnwrap(URL(string: "conduit-mention://agent/monet")), range: plain.range(of: "@Monet"))
         let displayed = LAALinkDecoration.addingIndicators(to: source)
-        XCTAssertEqual(displayed.string, "Read Notes ›, then News › and @Monet.")
+        // No trailing chevron (rule 21): the link is underlined instead.
+        XCTAssertEqual(displayed.string, source.string)
         XCTAssertEqual(MarkdownProseRun.copyableText(displayed).string, source.string)
-        let arrowRange = (displayed.string as NSString).range(of: "›")
-        XCTAssertNotEqual(arrowRange.location, NSNotFound)
-        guard arrowRange.location != NSNotFound else { return }
-        XCTAssertEqual(displayed.attribute(.underlineStyle, at: arrowRange.location, effectiveRange: nil) as? Int, 0)
-        XCTAssertEqual(displayed.attribute(.link, at: arrowRange.location, effectiveRange: nil) as? URL,
-                       URL(string: "https://example.com/notes"))
+        let notes = (displayed.string as NSString).range(of: "Notes")
+        XCTAssertEqual(displayed.attribute(.underlineStyle, at: notes.location, effectiveRange: nil) as? Int,
+                       NSUnderlineStyle.single.rawValue)
+        let mention = (displayed.string as NSString).range(of: "@Monet")
+        XCTAssertNil(displayed.attribute(.underlineStyle, at: mention.location, effectiveRange: nil) as? Int)
 
         let rendered = try XCTUnwrap(MarkdownSelectionFormatter.attributedText(
             for: MarkdownParser.parse("Read [Notes](https://example.com/notes) now."),
             foregroundStyle: LAAColor.text, usesAccentSurface: false, newestCharacterOpacities: [],
             usesLAARichContentStyle: true
         ))
-        XCTAssertEqual(rendered.string, "Read Notes › now.")
+        XCTAssertEqual(rendered.string, "Read Notes now.")
         XCTAssertEqual(MarkdownProseRun.copyableText(rendered).string, "Read Notes now.")
     }
 

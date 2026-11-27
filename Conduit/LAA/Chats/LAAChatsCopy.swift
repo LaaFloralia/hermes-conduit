@@ -1,7 +1,7 @@
 #if LAA_BUILD
 extension LAACopy {
     static let chatsTitle = "Chat"
-    static let chatsSearch = "検索"
+    static let chatsSearch = "Search"
     static let chatsNew = "新しいグループ"
     static let chatsMonet = "Monet"
     static let chatsEmployees = "Employees"

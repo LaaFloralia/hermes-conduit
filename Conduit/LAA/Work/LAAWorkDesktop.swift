@@ -438,7 +438,7 @@ struct LAAWorkDesktopProjectsView: View {
                             .accessibilityLabel(Text(verbatim: "プロジェクトを再読込み"))
                             .macTooltip("Reload (⌘R)")
                     }
-                    LAASearchField(placeholder: "検索", text: $search,
+                    LAASearchField(placeholder: "Search", text: $search,
                                    identifier: "work.projects.desktop.search", focus: $searchFocused)
                     if let failure { Text(verbatim: failure).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
                     if loading && projects.isEmpty { LAALoadingDots() }
