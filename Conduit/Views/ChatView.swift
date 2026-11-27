@@ -428,6 +428,10 @@ struct ChatView: View {
             // controls row. Keep the transcript outside that region.
             bottomBar
                 .fixedSize(horizontal: false, vertical: true)
+#if targetEnvironment(macCatalyst)
+                // The Mac window's rounded bottom edge: + and Send keep clear of it.
+                .padding(.bottom, LAASpacing.x2)
+#endif
                 .layoutPriority(1)
 #else
             if !composerFloats {

@@ -196,6 +196,9 @@ struct LAAWorkSessionDetail: View {
                     followUp(session)
                 }
                     .padding(.horizontal, LAASpacing.horizontal).padding(.vertical, 8)
+                    // The Mac window's rounded bottom edge: the field's last
+                    // row keeps clear of it rather than resting on it.
+                    .padding(.bottom, laaDesktop ? LAASpacing.x2 : 0)
                     .frame(maxWidth: laaDesktop ? LAADesktopMetrics.readingWidth : 720)
                     .frame(maxWidth: .infinity)
                     .background(LAAColor.background)

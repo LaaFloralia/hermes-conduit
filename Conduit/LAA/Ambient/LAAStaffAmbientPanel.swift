@@ -34,6 +34,13 @@ extension View {
 private struct LAAStaffAmbientPanelModifier: ViewModifier {
     let inputs: LAAStaffAmbientInputs
     @AppStorage("laa.mac.staffPanel.open") private var open = true
+    /// The column's width; below `LAAStaffAmbientPanel.besideMinimum` the
+    /// panel no longer sits beside the chat (a 900 pt window left the
+    /// transcript about 110 pt wide).
+    @State private var columnWidth: CGFloat = .infinity
+    /// Opened by hand on a narrow column: it lies over the chat's trailing
+    /// side until closed, and the owner's choice for wide windows is kept.
+    @State private var openOver = false
 
     private var effective: LAAStaffAmbientInputs {
         #if DEBUG
@@ -42,21 +49,42 @@ private struct LAAStaffAmbientPanelModifier: ViewModifier {
         return inputs
     }
 
+    private var narrow: Bool { columnWidth < LAAStaffAmbientPanel.besideMinimum }
+
     func body(content: Content) -> some View {
         let inputs = effective
         if let profile = inputs.profile, LAAStaff(profile: profile) != nil {
             HStack(spacing: 0) {
                 content.frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .overlay(alignment: .trailing) {
+                        if narrow && openOver {
+                            HStack(spacing: 0) {
+                                Rectangle().fill(LAAColor.separator).frame(width: 1)
+                                LAAStaffAmbientPanel(inputs: inputs, profile: profile) { openOver = false }
+                                    .frame(width: LAAStaffAmbientPanel.width)
+                            }
+                            .ignoresSafeArea(edges: .bottom)
+                            .transition(.move(edge: .trailing))
+                        }
+                    }
                 Rectangle().fill(LAAColor.separator).frame(width: 1).ignoresSafeArea()
-                if open {
+                if open && !narrow {
                     LAAStaffAmbientPanel(inputs: inputs, profile: profile) { open = false }
                         .frame(width: LAAStaffAmbientPanel.width)
                         .transition(.move(edge: .trailing))
                 } else {
-                    LAAStaffAmbientCollapsed { open = true }
+                    LAAStaffAmbientCollapsed {
+                        if narrow { openOver = true } else { open = true }
+                    }
                 }
             }
+            .onGeometryChange(for: CGFloat.self, of: { $0.size.width }) { width in
+                columnWidth = width
+                if width >= LAAStaffAmbientPanel.besideMinimum { openOver = false }
+            }
             .animation(.easeOut(duration: 0.22), value: open)
+            .animation(.easeOut(duration: 0.22), value: narrow)
+            .animation(.easeOut(duration: 0.22), value: openOver)
         } else {
             content
         }
@@ -92,6 +120,11 @@ struct LAAStaffAmbientPanel: View {
     /// as the transcript does (LAAReadingStyle.platformScale).
     static let scale = LAAReadingStyle.platformScale
     static let width: CGFloat = 288 * scale
+    /// The narrowest column that keeps the panel beside the chat: the panel
+    /// and a phone-width (440 pt) transcript. A narrower one, about a
+    /// 1100 pt window with the sidebar and list shown, folds the panel to
+    /// its strip.
+    static let besideMinimum: CGFloat = width + 1 + 440
     private var s: CGFloat { Self.scale }
 
     let inputs: LAAStaffAmbientInputs

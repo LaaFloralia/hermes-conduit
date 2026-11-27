@@ -232,12 +232,12 @@ private extension View {
 
 /// iOS 26 blurs and tints the top of a scroll view under a navigation bar. A
 /// Mac column keeps that effect — hiding it let content run under the bar —
-/// but asks for the hard style, the line the Mac uses between a toolbar and
-/// the page beneath it.
+/// in its soft style: the hard style laid a pale band with a ruled edge over
+/// the top of every column (32–72 pt), a plane the design does not draw.
 struct LAAMacFlatTopEdge: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
-            content.scrollEdgeEffectStyle(.hard, for: .top)
+            content.scrollEdgeEffectStyle(.soft, for: .top)
         } else {
             content
         }

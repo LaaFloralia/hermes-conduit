@@ -163,8 +163,11 @@ struct LAAMacChatsSection: View {
                 // Escape returns to the list from anywhere in the column. The
                 // column takes focus as it appears, and the handler sits on it
                 // so the composer's keys reach it too; it is the only handler,
-                // so the key never fires twice.
+                // so the key never fires twice. The focus is for keys only:
+                // its system halo drew a filled, outlined panel over the
+                // transcript that read as a bubble around every reply.
                 .focusable()
+                .focusEffectDisabled()
                 .focused($conversationFocused)
                 .onAppear { conversationFocused = true }
                 .onKeyPress(.escape) {
