@@ -20,7 +20,7 @@ const state = (root) => join(root, 'state');
 const production = productionStateDir();
 const id = 'lane-test-a';
 const timeoutMs = 90_000;
-const seed = { title: 'Synthetic decision', summary: 'No delivery off this Mac', impact: '【必ず社長：選択】', options: [{ label: 'A' }, { label: 'B' }], requestId: 'seed' };
+const seed = { title: 'Synthetic decision', summary: 'No delivery off this Mac', impact: '【必ず社長：ブランドの好み】', options: [{ label: 'A' }, { label: 'B' }], requestId: 'seed' };
 
 function layout(t, beforeRemove = () => {}) {
   const root = mkdtempSync(join(tmpdir(), 'laa-lane-'));

@@ -73,7 +73,7 @@ function fixture(t) {
     record(assignee = staff) { refs.assign('task', ID, tasksById.get(ID).title, { linear: 'BUS-401' }); return service.accept({ task: tasksById.get(ID), deviceId: 'device-test', assignee, profile: assignee.kind === 'owner' ? null : 'opus-high' }); },
     complete(overrides = {}) { return service.complete({ id: ID, deviceId: 'device-test', key: 'complete-1', expected: '2026-11-09T10:00:00.000Z', ...overrides }); },
     child() { const root = store.get(ID).sessionId; sessionStore.create({ record: { id: CHILD, parentId: root, delegate: { sessionId: 'agent-child' }, name: '子｜確認', phase: 'awaiting_review', favorite: false, archivedAt: null, createdAt: stamp(), updatedAt: stamp() } }); return CHILD; },
-    decision(source = {}) { return decisionStore.add({ title: '選択', summary: '必要な判断', impact: '【必ず社長：選択】', options: [{ label: '進む' }, { label: '保留' }], requestId: `decision-${decisionStore.all().length}`, source }).decision; },
+    decision(source = {}) { return decisionStore.add({ title: '選択', summary: '必要な判断', impact: '【必ず社長：ブランドの好み】', options: [{ label: '進む' }, { label: '保留' }], requestId: `decision-${decisionStore.all().length}`, source }).decision; },
   });
 }
 

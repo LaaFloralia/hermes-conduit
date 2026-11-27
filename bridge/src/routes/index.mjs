@@ -128,7 +128,7 @@ export function businessRoutes({ store, now = () => Date.now(), options = {}, la
   // Keep J stable while an item is open, needs delivery, or has a Monet
   // answer the owner can still change.
   refs.registerSource('decision', () => decisionStore.all()
-    .filter(onDecisionBoard)
+    .filter((d) => onDecisionBoard(d, now()))
     .map((d) => ({ key: d.id, title: d.title, createdAt: d.createdAt, external: { sessionId: d.source?.sessionId ?? null } })));
 
   if (!sessionOptions.service && sessionOptions.live) {
