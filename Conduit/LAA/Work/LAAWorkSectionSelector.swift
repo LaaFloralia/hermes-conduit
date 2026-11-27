@@ -2,14 +2,12 @@
 import SwiftUI
 import LAAKit
 
-/// All five Work destinations in one row, never folded into an overflow menu (D-21 B, 2026-11-27: Routines
-/// moved to Console, so the five fit). Equal segments while they fit; when the text is too large for the width
-/// the same row scrolls sideways (the current one kept in view); at accessibility sizes two rows (3 + 2).
+/// Equal segments while they fit; otherwise scroll the current one into view.
+/// At accessibility sizes, use two rows.
 struct LAAWorkSectionSelector: View {
     typealias Section = LAAWorkHub.Section
     @Binding var selection: Section
     let decisions: Int
-    let campaigns: Int
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.laaDesktop) private var desktop
 
@@ -21,7 +19,7 @@ struct LAAWorkSectionSelector: View {
         Group {
             if typeSize.isAccessibilitySize {
                 VStack(spacing: 0) {
-                    row(Self.sections.prefix(3), equal: true)
+                    row(Self.sections.prefix(2), equal: true)
                     row(Self.sections.suffix(2), equal: true)
                 }
             } else {
@@ -92,11 +90,7 @@ struct LAAWorkSectionSelector: View {
     }
 
     private func count(_ section: Section) -> Int {
-        switch section {
-        case .decisions: decisions
-        case .campaigns: campaigns
-        default: 0
-        }
+        section == .decisions ? decisions : 0
     }
 
     private func label(_ section: Section) -> String {

@@ -56,7 +56,6 @@ enum LAACapacity {
         ("capacity.google-drive", "Google Drive"),
         ("capacity.macbook.memory", "MacBook Memory"),
         ("capacity.macbook.ssd", "MacBook SSD"),
-        ("capacity.icloud", "iCloud"),
     ]
 
     static func name(_ id: String) -> String { slots.first { $0.id == id }?.name ?? id }

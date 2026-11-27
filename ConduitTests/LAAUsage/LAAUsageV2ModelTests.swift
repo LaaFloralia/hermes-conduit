@@ -111,7 +111,7 @@ final class LAAUsageV2ModelTests: XCTestCase {
     func testTheWidgetHoldsSixFixedReadings() throws {
         let usage = LAAWidgetUsageBuilder.make(items: try F.items(), receivedAt: now)
         let rows = LAAWidgetUsageBuilder.widgetMeters(usage)
-        XCTAssertEqual(rows.map(\.label), ["Codex 7d", "Claude 5h", "Claude 7d", "Claude Fable", "Google 5h", "Google 7d"])
+        XCTAssertEqual(rows.map(\.label), ["Codex 7d", "Claude 5h", "Claude 7d", "Claude Mythos", "Google 5h", "Google 7d"])
         XCTAssertEqual(rows.map(\.amount), [66, 80, 49, 32, 83, 75])
         XCTAssertTrue(rows.allSatisfy { $0.available && $0.hasRecordedValue(at: self.now) })
         // Weekly readings come first in the snapshot for an older reader.
@@ -120,6 +120,20 @@ final class LAAUsageV2ModelTests: XCTestCase {
         // Fable resets on its own clock.
         XCTAssertEqual(rows[3].resetsAt, now.addingTimeInterval(4 * 86_400))
         XCTAssertEqual(usage.meters.count, 6)
+    }
+
+    func testVerifiedClaudeFeedStillShowsSameMythosReadingInWidget() throws {
+        var rows = F.rows()
+        var detail = try XCTUnwrap(rows[2]["detail"] as? [String: Any])
+        detail["sourceKind"] = "verified"
+        rows[2]["detail"] = detail
+        let items = try F.decode(rows)
+        let claude = LAAUsageCardModel.item("claude", in: items)
+        let app = LAAUsageCardModel.windows(provider: "claude", item: claude, now: now)
+        let snapshot = LAAWidgetUsageBuilder.make(items: items, receivedAt: now)
+        let widget = try XCTUnwrap(snapshot.meters.first { $0.id == "provider.claude.quota.fable" })
+        XCTAssertTrue(widget.hasRecordedValue(at: now))
+        XCTAssertEqual(widget.remainingPercent, app.first { $0.label == "Mythos" }?.remainingPercent)
     }
 
     func testOpenCodeAndTheBalancesLeftTheWidget() {
@@ -219,7 +233,7 @@ final class LAAUsageV2ModelTests: XCTestCase {
         let codex = LAAUsageCardModel.windows(provider: "codex", item: LAAUsageCardModel.item("codex", in: items), now: now)
         XCTAssertEqual(codex.map(\.label), ["7d"], "only the windows Codex reports")
         let claude = LAAUsageCardModel.windows(provider: "claude", item: LAAUsageCardModel.item("claude", in: items), now: now)
-        XCTAssertEqual(claude.map(\.label), ["5h", "7d", "Fable"])
+        XCTAssertEqual(claude.map(\.label), ["5h", "7d", "Mythos"])
         XCTAssertEqual(claude.map(\.remainingPercent), [80, 49, 32])
         let noFable = LAAUsageCardModel.windows(provider: "claude", item: LAAUsageCardModel.item("claude", in: try F.items(fable: nil)), now: now)
         XCTAssertEqual(noFable.map(\.remainingPercent), [80, 49, nil], "Fable keeps its place, unknown")
@@ -249,6 +263,8 @@ final class LAAUsageV2ModelTests: XCTestCase {
                        "Google's accounts stay Google's")
         let active = try XCTUnwrap(LAAWidgetUsageBuilder.activeAccount(muse))
         XCTAssertEqual(active.label, "Muse1")
+        XCTAssertEqual(LAAUsageCardModel.displayedAccount(muse, provider: "muse")?.label, "Muse1")
+        XCTAssertEqual(LAAUsageCardModel.displayedAccount(Array(muse.dropFirst()), provider: "muse")?.label, "Muse2")
         let shown = LAAUsageCardModel.windows(provider: "muse", item: active, now: now)
         XCTAssertEqual(shown.map(\.label), ["7d"])
         XCTAssertEqual(shown.map(\.remainingPercent), [94])

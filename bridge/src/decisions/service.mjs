@@ -12,6 +12,8 @@ export const WAIT_LIMITS = Object.freeze({ fastMs: 15_000, fastForMs: 600_000, s
 export const isWaiting = (r) => r.status === 'answered' && r.delivery?.state === 'pending' && r.delivery.waitingSince !== undefined;
 export const onDecisionBoard = (r) => r.status === 'open' || (r.status === 'answered' && r.delivery?.state === 'failed') || isWaiting(r)
   || (r.answer?.answeredBy === 'monet' && r.delivery?.state !== 'gone');
+export const ownerBadgeCount = (records) => records.filter((r) => r.category === 'owner' && r.status === 'open').length;
+
 export function mayDeliverDecisionNotice(kind, link, store) {
   if (kind === 'session.question' || kind === 'session.approval') return false;
   const id = /^laa-bridge:laa:\/\/work\/decisions\/(dec_[0-9a-f]{16})(?:#|$)/.exec(link)?.[1];
@@ -53,7 +55,9 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
       // Number new decisions before announcing them, so the notice carries J….
       await observeRefs?.();
       const due = new Set();
-      for (let r of store.all()) {
+      const records = store.all();
+      const badge = ownerBadgeCount(records);
+      for (let r of records) {
         // An interrupted Bridge must not leave an accepted answer pending forever.
         // A waiting answer is not interrupted: `deliverWaiting` owns it.
         if (r.delivery?.state === 'pending' && !r.delivery.waiting && now() - Date.parse(r.updatedAt) > 60_000) r = store.settle(r.id, r.delivery.messageId, 'failed', 'delivery_unconfirmed');
@@ -68,7 +72,7 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
           const result = await notify({ kind: failed ? 'decision.failed' : 'decision.new', title: `${failed ? '届いていません' : '判断'}${ref ? ` ${ref}` : ''}: ${r.title}`,
             body: failed ? '回答を保存しました。判断ボードから再送してください。' : recommended ? `推奨: ${recommended.label}` : r.summary.slice(0, 160),
             meta: failed ? { id: r.id } : { id: r.id, o: r.options.map((o) => o.label), ...(r.deadline ? { d: Math.floor(Date.parse(r.deadline) / 1000) } : {}) },
-            deepLink: `laa://work/decisions/${r.id}`, dedupeKey });
+            deepLink: `laa://work/decisions/${r.id}`, dedupeKey, ownerBadgeCount: badge });
           // The notifier owns delivery retries only once its outbox accepted the event.
           if (result?.reason === 'invalid_notification'
             || (result?.delivered === false && !result.queued && !['duplicate', 'muted'].includes(result.reason))) throw new Error('notification_not_accepted');
@@ -276,7 +280,8 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
     },
     async answer({ id, deviceId, body, retry = false }) {
       const result = store.reserve(id, deviceId, body, retry);
-      return { decision: view(result.replayed ? result.decision : await deliver(result.decision)) };
+      const decision = view(result.replayed ? result.decision : await deliver(result.decision));
+      return { decision, ownerBadgeCount: ownerBadgeCount(store.all()) };
     },
   };
 }

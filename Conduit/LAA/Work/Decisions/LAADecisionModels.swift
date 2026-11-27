@@ -176,6 +176,10 @@ struct LAADecision: Codable, Identifiable, Equatable {
     /// quietly among the answered rows and never counted (2026-11-26).
     /// Monet's queue (delegable, unmarked) is Monet's to answer, not the owner's.
     var needsOwner: Bool { !isGone && !isMonetQueue && (answer == nil || deliveryFailed) }
+    var countsTowardBadge: Bool {
+        kind == .board && category == "owner" && status == "open"
+    }
+
     /// Answered, and the Bridge delivers it by itself once the conversation is free.
     var deliveryWaiting: Bool { delivery?.state == "pending" && delivery?.waiting == true }
     /// The board's original option order is recommended-first; the answer's
@@ -200,7 +204,10 @@ struct LAADecisionPage: Codable {
 }
 
 /// The answer endpoint's envelope.
-struct LAADecisionAnswerResult: Codable { let decision: LAADecision }
+struct LAADecisionAnswerResult: Codable {
+    let decision: LAADecision
+    var ownerBadgeCount: Int? = nil
+}
 
 enum LAADecisionOrder {
     /// The Bridge's order, applied again so a merged or cached list reads the

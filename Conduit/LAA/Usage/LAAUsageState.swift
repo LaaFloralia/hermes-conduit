@@ -310,7 +310,7 @@ struct LAAUsageGroup: Identifiable {
     let label: String
     var items: [LAAUsageItem]
 
-    /// The same code-owned destinations used by Console; feed payloads never
+    /// Code-owned destinations; feed payloads never
     /// supply a URL that the app can open.
     var serviceURL: URL? {
         let links = [
@@ -360,7 +360,7 @@ struct LAAUsageGroup: Identifiable {
     /// Follow the ordered Usage slots: the Codex, Claude and Google cards,
     /// then the additional providers, ending with Venice and Refuseless.
     /// Retired providers (Jev, Google Cloud, Google Flow, and nanoGPT) are never listed.
-    static func consoleGroups(_ items: [LAAUsageItem]) -> [LAAUsageGroup] {
+    static func displayGroups(_ items: [LAAUsageItem]) -> [LAAUsageGroup] {
         LAAWidgetUsageBuilder.slots.compactMap { slot -> LAAUsageGroup? in
             if slot.reading == .accountGroup {
                 let accounts = items.filter { $0.group == slot.provider && $0.id.hasPrefix("provider.") && $0.source == "codexbar-usage-proxy" }

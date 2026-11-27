@@ -3,7 +3,7 @@ import Foundation
 import UIKit
 
 /// The iPhone side of the Watch's Monet widget (HO-06): the decision count
-/// the Work tab's badge last read (`laa.work.decisionCount`) and the time the
+/// behind the owner-decision icon badge (`laa.work.decisionCount`) and the time the
 /// notification extension recorded for Monet's last report
 /// (LAAMonetReportLedger). Sent in the existing application context by
 /// `AppState.shareWatchCallVoices`, which this asks to run again when either

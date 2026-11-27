@@ -92,7 +92,7 @@ final class LAAPerformanceUITests: XCTestCase {
     }
 
     private func move(_ source: Destination, _ target: Destination, _ app: XCUIApplication) {
-        if source == .usage { app.buttons["BackButton"].firstMatch.tap() }
+        if source == .usage { app.navigationBars.buttons.firstMatch.tap() }
         if let title = target.tabTitle {
             if source != .usage || target != .work { app.laaTab(title).tap() }
         } else {

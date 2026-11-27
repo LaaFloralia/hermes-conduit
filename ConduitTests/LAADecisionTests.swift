@@ -27,8 +27,39 @@ final class LAADecisionTests: XCTestCase {
         try JSONDecoder().decode(LAADecisionPage.self, from: Data(json.utf8))
     }
 
-    /// An answer on its way is not something the owner has to do: it is not
-    /// counted on the badge or the segment (2026-11-26).
+    func testIconBadgeCountsOnlyOpenOwnerQuestions() throws {
+        let rows: [[String: String]] = [
+            ["id": "owner", "category": "owner"],
+            ["id": "delegate", "category": "delegable"],
+            ["id": "unmarked", "category": "unmarked"], ["id": "legacy"],
+            ["id": "future", "category": "future-category"],
+            ["id": "gone", "category": "owner", "status": "withdrawn"],
+            ["id": "closed", "category": "owner", "status": "answered"],
+            ["kind": "session", "sessionId": "sess", "category": "owner"],
+        ]
+        let data = try JSONEncoder().encode(["items": rows.map { $0.merging(["title": "Question"], uniquingKeysWith: { old, _ in old }) }])
+        let decoded = try JSONDecoder().decode(LAADecisionPage.self, from: data)
+        let board = LAADecisionBoard()
+        board.restoreIfNeeded(decoded.items)
+        XCTAssertEqual(board.items.filter(\.countsTowardBadge).map(\.id), ["owner"])
+        board.noteClosed("owner")
+        XCTAssertEqual(board.badgeCount, 0)
+    }
+
+    func testOnlyDecisionPushCanCarryOwnerBadgeCount() throws {
+        let id = "dec_0123456789abcdef"
+        func badge(kind: String, count: Int) throws -> Int? {
+            let encoded = try JSONSerialization.data(withJSONObject: ["k": kind, "b": count])
+                .base64EncodedString().replacingOccurrences(of: "+", with: "-")
+                .replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
+            return LAANotificationMeta.parse("laa://work/decisions/\(id)#\(encoded)")?.ownerBadgeCount
+        }
+        XCTAssertEqual(try badge(kind: "decision.new", count: 0), 0)
+        XCTAssertNil(try badge(kind: "decision.new", count: -1))
+        XCTAssertNil(try badge(kind: "monet.report", count: 1))
+    }
+
+    /// A failed delivery is a board recovery action, not an unanswered question.
     func testOnlyOpenQuestionsAndFailedDeliveriesNeedTheOwner() throws {
         func item(_ id: String, answered: Bool, delivery: String?) -> String {
             """

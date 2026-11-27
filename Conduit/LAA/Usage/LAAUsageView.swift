@@ -37,11 +37,23 @@ struct LAARefreshGlyph: View {
 }
 
 /// A standalone screen: refreshing never replaces an observation with a loader.
+struct LAAUsageSheetClose: ViewModifier {
+    @Environment(\.dismiss) private var dismiss
+
+    func body(content: Content) -> some View {
+        content.toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Close") { dismiss() }
+                    .accessibilityIdentifier("laa.usage.close")
+            }
+        }
+    }
+}
+
 struct LAAUsageView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     @Environment(\.laaDesktop) private var laaDesktop
     @Environment(\.laaThemeID) private var themeID
-    @Environment(\.dismiss) private var dismiss
     private let locale = LAADateText.locale
     @Environment(\.scenePhase) private var scenePhase
     @ObservedObject private var state: LAAUsageState
@@ -52,13 +64,13 @@ struct LAAUsageView: View {
     @AppStorage("laa.usage.expandedGroups") private var expandedGroups = ""
     private let automaticallyRefresh: Bool
 
-    init(state: LAAUsageState, showsSettingsButton: Bool = true, onRequestSettings: @escaping () -> Void = {}) {
+    init(state: LAAUsageState) {
         automaticallyRefresh = true
         _state = ObservedObject(wrappedValue: state)
     }
 
     #if DEBUG
-    init(snapshotState: LAAUsageState, onRequestSettings: @escaping () -> Void = {}) {
+    init(snapshotState: LAAUsageState) {
         automaticallyRefresh = false
         _state = ObservedObject(wrappedValue: snapshotState)
     }
@@ -88,15 +100,6 @@ struct LAAUsageView: View {
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(laaDesktop ? .automatic : .hidden, for: .navigationBar)
-        .toolbar {
-            if !laaDesktop {
-                ToolbarItem(placement: .topBarLeading) {
-                    LAAToolbarIconButton(systemName: "chevron.left", label: "Back", identifier: "BackButton",
-                                         tint: LAAColor.text, action: { dismiss() })
-                }
-            }
-        }
-        .navigationBarBackButtonHidden(!laaDesktop)
         .refreshable { await refresh() }
         .sheet(isPresented: $showPairing) {
             LAAPairingView().environmentObject(bridge).laaSheetSize(.form)
@@ -177,7 +180,7 @@ struct LAAUsageView: View {
     }
 
     private var groups: [LAAUsageGroup] {
-        let reported = LAAUsageGroup.consoleGroups(state.usage.value ?? [])
+        let reported = LAAUsageGroup.displayGroups(state.usage.value ?? [])
         return LAAWidgetUsageBuilder.otherSlots.map { slot in
             reported.first(where: { $0.id == "provider.\(slot.provider)" })
                 ?? LAAUsageGroup(id: "provider.\(slot.provider)", label: slot.name, items: [])
@@ -217,18 +220,19 @@ struct LAAUsageView: View {
 
     /// Google and Muse: the account in use (the one the feed marks active),
     /// its windows with their resets. Accounts are never averaged and no
-    /// address is shown; opening the card lists every account's windows.
+    /// address is shown; only Google can expand to show its other accounts.
     @ViewBuilder private func accountCard(_ slot: LAAWidgetUsageBuilder.Slot, accounts: [LAAUsageItem]) -> some View {
         let id = "provider.\(slot.provider)"
-        let open = isOpen(id)
-        let active = LAAWidgetUsageBuilder.activeAccount(accounts)
+        let expandable = slot.provider == LAAWidgetUsageBuilder.googleGroup && !accounts.isEmpty
+        let open = expandable && isOpen(id)
+        let active = LAAUsageCardModel.displayedAccount(accounts, provider: slot.provider)
         let note = active.map { account in
             LAAUsageCardModel.accountName(account) + (age(account).map { " · " + $0 } ?? "")
         }
         LAAUsageProviderCard(provider: slot.provider, name: slot.name,
                              windows: LAAUsageCardModel.windows(provider: slot.provider, item: active, now: evaluatedAt),
                              note: note, now: evaluatedAt) {
-            if !accounts.isEmpty {
+            if expandable {
                 Button { toggle(id) } label: {
                     Image(systemName: "chevron.down")
                         .laaTextStyle(.note).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
@@ -268,8 +272,7 @@ struct LAAUsageView: View {
     }
 
     /// OpenCode, Magnific, the API balances, Liquid AI and Venice: folded
-    /// under one ruled header below the cards. A row that needs a look
-    /// marks the closed header with ▲.
+    /// under one ruled header below the cards.
     @ViewBuilder private var others: some View {
         let open = isOpen("others")
         let groups = self.groups
@@ -277,9 +280,6 @@ struct LAAUsageView: View {
             Button { toggle("others") } label: {
                 HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
                     Text(verbatim: LAACopy.Usage.others).laaTextStyle(.body).foregroundStyle(LAAColor.text)
-                    if !open, groups.contains(where: needsLook) {
-                        LAAUsageMeterMark(level: .caution).laaTextStyle(.note)
-                    }
                     Spacer(minLength: LAASpacing.x2)
                     Image(systemName: "chevron.down")
                         .laaTextStyle(.note).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
@@ -424,17 +424,16 @@ struct LAAUsageView: View {
     private func readingRow(name: String, result: String?, age: String?, fraction: Double?,
                             level: LAAMeterLevel? = nil, note: String?, nameLink: URL? = nil,
                             valueLabel: String? = nil) -> some View {
-        let status = level ?? LAAMeterLevel(remaining: fraction)
-        return VStack(alignment: .leading, spacing: LAASpace.s8) {
+        VStack(alignment: .leading, spacing: LAASpace.s8) {
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .firstTextBaseline, spacing: LAASpace.s8) {
                     readingName(name, link: nameLink).fixedSize(horizontal: true, vertical: false)
                     Spacer(minLength: LAASpace.s8)
-                    readingValue(result, label: valueLabel, age: age, level: status).fixedSize()
+                    readingValue(result, label: valueLabel, age: age).fixedSize()
                 }
                 VStack(alignment: .leading, spacing: LAASpace.s4) {
                     readingName(name, link: nameLink)
-                    readingValue(result, label: valueLabel, age: age, level: status)
+                    readingValue(result, label: valueLabel, age: age)
                 }
             }
             LAAUsageMeterTrack(fraction: fraction, level: level)
@@ -450,7 +449,7 @@ struct LAAUsageView: View {
     @ViewBuilder private func readingName(_ name: String, link: URL?) -> some View {
         if let link {
             Link(destination: link) {
-                Label { Text(verbatim: name).laaTextStyle(.body) } icon: { Image(systemName: "arrow.up.right").font(.caption2) }
+                Label { Text(verbatim: name).laaTextStyle(.body) } icon: { Image(systemName: "arrow.up.right").laaTextStyle(.note) }
                     .foregroundStyle(LAAColor.link)
                     .frame(minHeight: LAASpacing.minimumTouchTarget, alignment: .leading)
                     .contentShape(Rectangle())
@@ -462,16 +461,16 @@ struct LAAUsageView: View {
         }
     }
 
-    private func readingValue(_ result: String?, label: String?, age: String?, level: LAAMeterLevel) -> some View {
+    private func readingValue(_ result: String?, label: String?, age: String?) -> some View {
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .firstTextBaseline, spacing: LAASpace.s4) {
-                readingAmount(result, label: label, level: level)
+                readingAmount(result, label: label)
                 if result != nil, let age {
                     Text(verbatim: age).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 }
             }.fixedSize(horizontal: true, vertical: false)
             VStack(alignment: .leading, spacing: LAASpace.s4) {
-                readingAmount(result, label: label, level: level)
+                readingAmount(result, label: label)
                 if result != nil, let age {
                     Text(verbatim: age).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 }
@@ -479,9 +478,8 @@ struct LAAUsageView: View {
         }
     }
 
-    private func readingAmount(_ result: String?, label: String?, level: LAAMeterLevel) -> some View {
+    private func readingAmount(_ result: String?, label: String?) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: LAASpace.s4) {
-            if result == nil || level != .unknown { LAAUsageMeterMark(level: level).laaTextStyle(.note) }
             if let result {
                 if let label {
                     HStack(alignment: .firstTextBaseline, spacing: LAASpace.s4) {

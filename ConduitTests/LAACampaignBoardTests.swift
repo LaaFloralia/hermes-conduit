@@ -121,10 +121,10 @@ final class LAACampaignBoardTests: XCTestCase {
         XCTAssertNil(LAACampaignSchedule.day("通年"))
     }
 
-    func testCampaignsIsAWorkSectionWithItsCount() {
-        XCTAssertTrue(LAAWorkHub.Section.allCases.contains(.campaigns))
-        XCTAssertFalse(LAAWorkHub.Section.campaigns.searchable)
-        XCTAssertEqual(LAAWorkHub.Section.campaigns.title, "Campaigns")
+    func testCampaignsIsOnlyASectionWithinDecisions() {
+        XCTAssertEqual(LAAWorkHub.Section.allCases, [.projects, .sessions, .decisions, .tasks])
+        XCTAssertFalse(LAAWorkHub.Section.decisions.searchable)
+        XCTAssertEqual(LAAWorkHub.DecisionSection.allCases.map(\.title), ["Decisions", "Campaigns"])
     }
 
     func testCampaignListLightAndDark() throws {
@@ -145,8 +145,9 @@ final class LAACampaignBoardTests: XCTestCase {
         let screen = NavigationStack {
             VStack(alignment: .leading, spacing: LAASpacing.x4) {
                 LAAScreenHeader(title: "Work", identifier: "laa.work.title").padding(.horizontal, LAASpacing.horizontal)
-                LAASegmentedControl(values: LAAWorkHub.Section.allCases, selection: .constant(.campaigns),
-                                    title: { $0 == .campaigns ? "\($0.title) \(board.count)" : $0.title })
+                LAAWorkSectionSelector(selection: .constant(.decisions), decisions: 0)
+                    .padding(.horizontal, LAASpacing.horizontal)
+                LAAWorkHub.decisionPicker(selection: .constant(.campaigns))
                     .padding(.horizontal, LAASpacing.horizontal)
                 list.frame(maxWidth: .infinity, maxHeight: .infinity)
             }

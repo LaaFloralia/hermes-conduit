@@ -36,6 +36,17 @@ test('metadata: all kinds carry version and kind; labels shrink evenly within 51
   assert.equal(encodeNotificationSessionId('laa://work', 'task', { id: 'x'.repeat(1000) }), 'laa-bridge:laa://work');
 });
 
+test('decision badge crosses the fixed relay envelope, including zero', async (t) => {
+  const events = [];
+  const notify = createOwnerNotifier({ file: join(dirFor(t), 'owner-notifications.json'),
+    deliver: async (event) => { events.push(event); return { delivered: true }; } });
+  const message = { title: '題', body: '本文', deepLink: 'laa://work/decisions/dec_0123456789abcdef' };
+  await notify({ ...message, kind: 'decision.new', ownerBadgeCount: 3, dedupeKey: 'new' });
+  await notify({ ...message, kind: 'decision.failed', ownerBadgeCount: 0, dedupeKey: 'failed' });
+  await notify({ ...message, kind: 'task', ownerBadgeCount: 7, dedupeKey: 'task' });
+  assert.deepEqual(events.map((event) => decode(event.session_id).b), [3, 0, undefined]);
+});
+
 test('preferences: defaults, partial updates, 0600, validation, quiet and muted delivery, stable flush', async (t) => {
   const dir = dirFor(t), file = join(dir, 'notification-preferences.json');
   const preferences = createNotificationPreferences({ file, now: () => 1000 });

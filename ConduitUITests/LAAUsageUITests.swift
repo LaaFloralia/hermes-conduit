@@ -182,8 +182,11 @@ final class LAAUsageUITests: XCTestCase {
         app.launchInLab()
         openUsage(app)
         XCTAssertFalse(app.buttons["laa.bridge.openPairing"].exists)
-        // Nothing read: the cards draw empty tracks and ○, no words.
-        XCTAssertTrue(app.staticTexts["○"].firstMatch.waitForExistence(timeout: 30))
+        // Nothing read: keep the named row with no visible value or status glyph.
+        let mythos = app.descendants(matching: .any)["laa.usage.window.fable"].firstMatch
+        XCTAssertTrue(mythos.waitForExistence(timeout: 30))
+        XCTAssertEqual(mythos.value as? String, "Unknown")
+        for symbol in ["●", "▲", "○"] { XCTAssertFalse(app.staticTexts[symbol].exists) }
         screenshot("usage-ui-empty")
 
         _ = try helper("mode/slow")

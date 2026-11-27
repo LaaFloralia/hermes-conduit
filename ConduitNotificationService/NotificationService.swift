@@ -42,6 +42,10 @@ final class NotificationService: UNNotificationServiceExtension {
             return
         }
         let userInfo = content.userInfo
+        #if LAA_BUILD
+        // Only a badge count from the verified contents is authoritative.
+        content.badge = nil
+        #endif
         let type = (NotificationE2E.routingStub(userInfo)?["type"] as? String)
         // Prepared up front so a timeout can only ever deliver generic text.
         let prepared = Self.generic(content.mutableCopy() as? UNMutableNotificationContent ?? content, type: type)
@@ -98,6 +102,7 @@ final class NotificationService: UNNotificationServiceExtension {
     /// one (LAANotificationStaffArt); an untrusted push never reaches here.
     private func decorated(_ content: UNMutableNotificationContent, sessionID: String?, profile: String?, answers: Bool) {
         let meta = LAANotificationMeta.parse(sessionID)
+        if answers, let count = meta?.ownerBadgeCount { content.badge = NSNumber(value: count) }
         LAANotificationStaffArt.decorate(content, kind: meta?.kind, profile: profile, staffHint: meta?.staff)
         LAAMonetReportLedger.note(kind: meta?.kind)
         LAANotificationActions.decorate(content, sessionID: sessionID, answers: answers) { [weak self] in self?.deliver(content) }

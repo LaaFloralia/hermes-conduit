@@ -34,6 +34,7 @@ struct LAANotificationMeta: Equatable {
     /// `laa-cfo`): the asking employee on a decision. Nil when the Bridge
     /// did not say, which reads as Monet (LAANotificationStaffArt).
     var staff: String? = nil
+    var ownerBadgeCount: Int? = nil
 
     static func parse(_ sessionID: String?) -> LAANotificationMeta? {
         guard let sessionID, sessionID.hasPrefix(prefix),
@@ -71,8 +72,11 @@ struct LAANotificationMeta: Equatable {
         }
         let deadline = (object["d"] as? Double).flatMap { $0 > 0 ? Date(timeIntervalSince1970: $0) : nil }
         let staff = (object["st"] as? String).flatMap { LAANotificationMeta.isStaffProfile($0) ? $0 : nil }
+        let badge = (kind == "decision.new" || kind == "decision.failed") && url.host == "work"
+            && parts.count == 3 && parts[1] == "decisions" && isDecisionID(parts[2])
+            ? (object["b"] as? Int).flatMap { $0 >= 0 ? $0 : nil } : nil
         return LAANotificationMeta(kind: kind, quiet: (object["lv"] as? String) == "p", link: link,
-                                   deadline: deadline, quick: quick, staff: staff)
+                                   deadline: deadline, quick: quick, staff: staff, ownerBadgeCount: badge)
     }
 
     private static func base64URLDecoded(_ value: String) -> Data? {

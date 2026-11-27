@@ -189,7 +189,7 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
         try JSONDecoder().decode([LAAUsageItem].self, from: Data(liveItemsJSON.utf8))
     }
 
-    static let ownerRows = ["Codex 7d", "Claude 5h", "Claude 7d", "Claude Fable"]
+    static let ownerRows = ["Codex 7d", "Claude 5h", "Claude 7d", "Claude Mythos"]
     /// iPhone Pro Max and the smallest current iPhone, medium family.
     static let proMaxMedium = CGSize(width: 364, height: 170)
     static let compactMedium = CGSize(width: 329, height: 155)

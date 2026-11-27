@@ -1,6 +1,7 @@
 #if LAA_BUILD
 import Foundation
 import SwiftUI
+import UserNotifications
 
 /// The board's state, shared by the Work hub (pill count, default section)
 /// and the list. Reads and writes go through the existing Bridge session.
@@ -52,8 +53,10 @@ import SwiftUI
 
     /// The badge and segment number: only what still needs the owner.
     var count: Int { items.filter(\.needsOwner).count }
+    var badgeCount: Int { items.filter(\.countsTowardBadge).count }
 
     func reset() {
+        loadsStarted += 1 // Discard a read initiated for the previous pairing.
         items = []; monetAnswers = []; records = [:]; phase = .idle; loadedAt = nil; answeredHere = []
     }
 
@@ -85,7 +88,7 @@ import SwiftUI
         let start = loadsStarted
         do {
             let page: LAADecisionPage = try await bridge.read("/v1/decisions")
-            guard start == loadsStarted else { return }
+            guard !Task.isCancelled, start == loadsStarted else { return }
             // Monet's stage-3 answers stay listed apart until their delivery is gone.
             monetAnswers = page.items.filter(\.answeredByMonet)
             let fresh = Self.visible(page.items.filter { !$0.answeredByMonet }, answeredHere: answeredHere)
@@ -96,9 +99,11 @@ import SwiftUI
             if start > lastLoadStart { lastLoadStart = start }
         } catch is CancellationError {
         } catch let error as LAABridgeError {
+            guard start == loadsStarted, !Task.isCancelled else { return }
             if case .other(status: 404, code: _) = error { items = []; phase = .unsupported }
             else { phase = .failed(error.japaneseText) }
         } catch {
+            guard start == loadsStarted, !Task.isCancelled else { return }
             phase = .failed(LAABridgeError.invalidResponse.japaneseText)
         }
     }
@@ -124,6 +129,11 @@ import SwiftUI
 
     func remove(_ id: String) {
         items.removeAll { $0.id == id }
+    }
+
+    func noteClosed(_ id: String) {
+        answeredHere.insert(id)
+        remove(id)
     }
 
     /// The board's rows from one read, without the open copies of decisions
@@ -268,6 +278,85 @@ import SwiftUI
         case "delivered": return .done(stored: false)
         default: return .failed("送信の結果を確認できません。読み直してください。")
         }
+    }
+}
+
+@MainActor enum LAADecisionIconBadge {
+    static let recordClosed = Notification.Name("laa.work.decision.closed")
+    private static var pending: Task<Void, Never>?
+
+    static func apply(_ count: Int) async {
+        guard count >= 0 else { return }
+        #if DEBUG
+        guard !LAALabCaptureFixture.enabled,
+              !ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_ISOLATED_BRIDGE") else { return }
+        #endif
+        UserDefaults.standard.set(count, forKey: LAAWatchAmbientSource.decisionCountKey)
+        // Finish the previous OS write first, even if the emitting view task was cancelled.
+        let previous = pending
+        let next = Task {
+            await previous?.value
+            #if targetEnvironment(macCatalyst)
+            if let type = NSClassFromString("NSApplication") as? NSObject.Type,
+               let app = type.perform(NSSelectorFromString("sharedApplication"))?.takeUnretainedValue() as? NSObject,
+               let dock = app.perform(NSSelectorFromString("dockTile"))?.takeUnretainedValue() as? NSObject {
+                dock.setValue(count == 0 ? nil : String(count), forKey: "badgeLabel")
+                return
+            }
+            #endif
+            try? await UNUserNotificationCenter.current().setBadgeCount(count)
+        }
+        pending = next
+        await next.value
+    }
+}
+
+/// Shell-owned so the badge and board share one read and the same local writes,
+/// including when the Work tab is not visible.
+struct LAADecisionBadgeSync: ViewModifier {
+    @ObservedObject var bridge: LAABridgeSession
+    let active: Bool
+    @StateObject private var board = LAADecisionBoard()
+    @StateObject private var drafts = LAAWorkDrafts.makeStore()
+    @State private var device: String?
+
+    private var currentCount: Int? {
+        guard active else { return nil }
+        if bridge.status != .paired { return bridge.status == .keychainError ? nil : 0 }
+        guard device == bridge.deviceID else { return nil }
+        switch board.phase {
+        case .loaded, .unsupported: return board.badgeCount
+        case .idle, .failed: return board.items.isEmpty ? nil : board.badgeCount
+        }
+    }
+
+    func body(content: Content) -> some View {
+        content.environmentObject(board)
+            .task(id: "\(bridge.revision)|\(active)") {
+                if device != bridge.deviceID {
+                    device = bridge.deviceID
+                    board.reset()
+                    if let cached = LAAWorkSessionCache.read([LAADecision].self, store: drafts,
+                                                              device: device, target: "decisions") {
+                        board.restoreIfNeeded(cached)
+                    }
+                }
+                guard active, bridge.status == .paired else { return }
+                while !Task.isCancelled {
+                    await board.load(bridge)
+                    do { try await Task.sleep(for: .seconds(15)) } catch { return }
+                }
+            }
+            .onChange(of: board.items) { _, items in
+                guard board.phase == .loaded, device == bridge.deviceID else { return }
+                LAAWorkSessionCache.save(items, store: drafts, device: device, target: "decisions")
+            }
+            .onChange(of: currentCount, initial: true) { _, count in
+                if let count { Task { await LAADecisionIconBadge.apply(count) } }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: LAADecisionIconBadge.recordClosed)) { notification in
+                if let id = notification.object as? String { board.noteClosed(id) }
+            }
     }
 }
 #endif

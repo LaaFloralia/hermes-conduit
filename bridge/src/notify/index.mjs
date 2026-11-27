@@ -75,7 +75,7 @@ export function createOwnerNotifier({ deliver = deliverWithPlugin, file = join(r
     inflight.set(key, pending);
     return pending;
   }
-  const notify = async ({ kind, title, body, deepLink, dedupeKey, meta, author } = {}) => {
+  const notify = async ({ kind, title, body, deepLink, dedupeKey, meta, author, ownerBadgeCount } = {}) => {
     if (typeof kind !== 'string' || typeof title !== 'string' || typeof body !== 'string'
       || typeof deepLink !== 'string' || !/^laa:\/\/(work|today|brain|assets)(\/|$)/.test(deepLink) || deepLink.length > 400
       || typeof dedupeKey !== 'string' || !dedupeKey) return { delivered: false, reason: 'invalid_notification' };
@@ -93,7 +93,11 @@ export function createOwnerNotifier({ deliver = deliverWithPlugin, file = join(r
     if (Object.hasOwn(seen.delivered, key) || (kind === REPORT && (Object.hasOwn(seen.reports ?? {}, key) || seen.pending?.[key]))) {
       return { delivered: false, reason: 'duplicate' };
     }
-    const sessionId = encodeNotificationSessionId(deepLink, kind, { ...meta, ...(level === 'quiet' ? { lv: 'p' } : {}) });
+    // The installed relay seals a fixed field set. Carry the count inside
+    // session_id so only a verified notification can change the app badge.
+    const badge = kind.startsWith('decision.') && Number.isSafeInteger(ownerBadgeCount) && ownerBadgeCount >= 0
+      ? { b: ownerBadgeCount } : {};
+    const sessionId = encodeNotificationSessionId(deepLink, kind, { ...meta, ...badge, ...(level === 'quiet' ? { lv: 'p' } : {}) });
     if (sessionId === null) return { delivered: false, reason: 'invalid_notification' };
     const event = { type: 'response.ready', event_id: `laa-bridge:${key}`, profile: 'laa-monet',
       session_id: sessionId, title: title.slice(0, 120), body: body.slice(0, 500) };

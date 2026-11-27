@@ -58,7 +58,7 @@ final class LAAWorkShotsUITests: XCTestCase {
         capture(app, "list-tasks-menu-\(theme)")
         app.buttons["work.tasks.quick.all"].tap()
 
-        XCTAssertTrue(app.buttons["work.section.campaigns"].isHittable)
+        XCTAssertFalse(app.buttons["work.section.campaigns"].exists)
         XCTAssertFalse(app.buttons["work.section.routines"].exists)
         capture(app, "work-sections-\(theme)")
         LAAWorkSectionUI.open("campaigns", in: app)
