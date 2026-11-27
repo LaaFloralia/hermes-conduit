@@ -52,7 +52,7 @@ final class LAAChatWorkingTests: XCTestCase {
             .init(id: "4", title: "Failed", state: .failed),
         ]
         XCTAssertEqual(rows.map(\.shape), ["●", "▲", "○", "▲"])
-        XCTAssertEqual(rows.map(\.word), ["実行中", "判断待ち", "待機中", "失敗"])
+        XCTAssertEqual(rows.map(\.word), ["Running", "Decision", "Waiting", "Failed"])
         XCTAssertEqual(LAAWorkingChild(id: "5", title: "Work", state: .waiting, label: "確認待ち").word, "確認待ち")
     }
 
@@ -109,16 +109,21 @@ final class LAAChatWorkingTests: XCTestCase {
             LAAWorkingChild(id: "b", title: "Check the build", state: .attention, meta: "GPT 6.2 Sol · High"),
             LAAWorkingChild(id: "c", title: "Write the notes", state: .waiting),
         ]
+        let five = three + [
+            LAAWorkingChild(id: "d", title: "子｜Render the page", state: .failed, meta: "Opus 5.5 · High"),
+            LAAWorkingChild(id: "e", title: "Sort the tokens", state: .done, meta: "DeepSeek V4.1 Flash"),
+        ]
         let states: [(String, LAAWorkingStatus?, Bool)] = [
             ("idle", nil, false),
             ("running", LAAWorkingStatus(word: "Thinking", startedAt: Date().addingTimeInterval(-42)), false),
             ("one-child", LAAWorkingStatus(word: "作業中", startedAt: Date().addingTimeInterval(-42), orb: .tool, children: one), false),
             ("three-children", LAAWorkingStatus(word: "作業中", startedAt: Date().addingTimeInterval(-42), orb: .tool, children: three), false),
+            ("five-children", LAAWorkingStatus(word: "作業中", startedAt: Date().addingTimeInterval(-42), orb: .tool, children: five), true),
             ("scrolled-up", LAAWorkingStatus(word: "Thinking", startedAt: Date().addingTimeInterval(-42)), true),
         ]
         for style in [UIUserInterfaceStyle.light, .dark] {
             for (name, status, jump) in states {
-                let image = try render(style: style, height: 180) {
+                let image = try render(style: style, height: 300) {
                     VStack(spacing: 0) {
                         Spacer(minLength: 0)
                         LAAWorkingCluster(status: status, showsJump: jump, jump: {}, openChildren: {}) {
@@ -128,7 +133,7 @@ final class LAAChatWorkingTests: XCTestCase {
                         .padding(.bottom, 12)
                     }
                 }
-                let ink = differs(image, fromRowsAbove: 112, paper: color(LAAColor.background, style))
+                let ink = differs(image, fromRowsAbove: 232, paper: color(LAAColor.background, style))
                 XCTAssertEqual(ink, status != nil || jump, "\(name): the floating row draws only while it has something to say")
                 attach(image, name: "working-\(name)-\(style == .dark ? "dark" : "light")")
             }

@@ -29,6 +29,10 @@ struct ChatView: View {
     /// call's bar.
     @State private var composerTyping = false
     @Environment(\.accessibilityReduceMotion) private var composerReduceMotion
+#if LAA_BUILD
+    /// The working capsule's height follows the text size (laaBottomRoom).
+    @Environment(\.dynamicTypeSize) private var laaTypeSize
+#endif
     /// V2: the composer floats over the transcript, which scrolls on under
     /// it and fades, instead of ending at a hard edge above it.
     @Environment(\.v2ComposerRests) private var composerFloats
@@ -311,7 +315,10 @@ struct ChatView: View {
     /// free while a turn runs, so the pill never covers the latest line.
     private var laaBottomRoom: CGFloat {
 #if LAA_BUILD
-        appState.isBusy ? LAAWorkingControlMetrics.coverage : 1
+        appState.isBusy
+            ? LAAWorkingControlMetrics.coverage(children: LAAChatWorking.children(appState.delegateAgents, since: turnStartedAt).count,
+                                                typeSize: laaTypeSize)
+            : 1
 #else
         1
 #endif
