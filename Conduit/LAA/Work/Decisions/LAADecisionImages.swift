@@ -246,9 +246,14 @@ struct LAADecisionImageView: View {
     }
 
     private func placeholder(_ text: String, identifier: String) -> some View {
-        // Words only: the Mac's 72 pt thumbnail has no room for a glyph too.
-        VStack {
-            Text(verbatim: text).multilineTextAlignment(.center).lineLimit(3).minimumScaleFactor(0.8)
+        VStack(spacing: LAASpacing.x1) {
+            #if targetEnvironment(macCatalyst)
+            // The Mac's larger type leaves a 72 pt thumbnail room for the words only.
+            Text(verbatim: text).multilineTextAlignment(.center).lineLimit(4).minimumScaleFactor(0.7)
+            #else
+            Image(systemName: "photo").imageScale(.small).accessibilityHidden(true)
+            Text(verbatim: text).multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.8)
+            #endif
         }
         .laaTextStyle(.secondary)
         .foregroundStyle(LAAColor.secondaryText)
