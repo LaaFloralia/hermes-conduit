@@ -23,7 +23,7 @@
 | 役 | モデル・経路 | 担当 |
 |---|---|---|
 | 親 | 社長が選んだモデル（その時点の指定を維持する） | 担当端末の指摘の登録、分担、統合、検証、署名・配信（秘密を扱うため各担当の親だけ） |
-| 実装・試験・調査 | 公式DSHのDeepSeek V4.1 Flash（High／Max） | 担当ごとに `git worktree` を分け、アプリ・Bridge・スクリプトの実装から単体・UI試験、CLI検証まで持つ。シミュレーターを使う作業も含む |
+| 実装・試験・調査 | 公式DSHのDeepSeek V4.1 Flash（High／Max） | 担当ごとに `git worktree` を分け、アプリ・Bridge・スクリプトの実装から単体・UI試験、CLI検証まで持つ（シミュレーターは2026-11-27に廃止） |
 | デザイン | design-worker（Opus High） | 外観・Studioの視覚案 |
 
 通常の分担は公式DSHのDeepSeekを第一候補にする（2026-11-02 社長指示）。社長が指定したモデル・提供元・推論は変えない。Terraは単純で結果を直接照合できる代替だけに使う。Claudeのサブエージェントはdesign-workerだけ。独立レビューは原則行わない（2026-11-02 社長指示）。記録の上書き・削除、認証・秘密、お金に関わる部分だけ、親が必要と判断した時に親・実装者と別系統で行う。
@@ -46,19 +46,17 @@ paseo run --background --json --provider dsh --model '["opencode-go","deepseek-v
 2. 親は同じ画面の指摘を束ね、所有ファイルが重ならない単位で担当へ並行に渡す。指示は下の「worker共通指示」に、課題ID・対象・所有ファイル・完了条件を足す。
 3. 候補は1件ずつ下のゲートを通してmasterへ入れる。親は統合のたびにTestFlightへ出し（まとめて待たない。社長の指摘 2026-11-01）、社長が実機で確かめてから課題を閉じる。
 
-## シミュレーターとMacの負荷
+## ビルドとMacの負荷
 
-- このプロジェクトの端末は同時に1台だけ起動する。他の作業（音声入力など）の端末には触れない。workerは起動前に親へ使用枠を求め、終わったら停止を報告する。親は `scripts/laa/sim-turn.sh <id> "<枠を渡す文>"` で端末の停止を待ってから渡す。
-- 検証用の端末は `LAA 16 Pro Max`（iOS 27.0、`DFFD3966-F54E-4C7A-A161-59201C7EA105`、社長の端末と同じ画面）の1台だけ（iPhone Duoは社長の指示で使わない）。作業用に端末を増やしたら、終了時に削除する。
-- xcodebuildは共有の `build-slot.sh` 経由で同時1本・`-jobs 4`（2026-11-02、Mac miniのメモリ24GBを共有しているため max=1）。1GB超を生成する前に `laa-storage-guard status --quick` と必要量・並行作業を確認し、取得・展開・同時作業・ビルド中のピークを含め80 GiB以上を保つ（`hq/tools/STORAGE.md`）。ほかの担当の未完了の清掃を空きとして見込まない。必要な余裕がなければ新しい生成を始めず、自分の不要物整理・Driveへの退避後に再確認する。他者の参照中データや削除審査で拒否された物には触れない。作業後はDerivedData・xcresult・一時端末を消し、80 GiB以上へ戻す。親はゲートが終わるたびに `LAA 16 Pro Max` を `simctl erase` で初期化し、起動して `defaults write -g AppleLanguages -array en-US` と `AppleLocale en_US` を書いて読み戻してから停止する（試験のたびに端末のデータが増え、2時間で約2 GB増えた）。
+- シミュレーター試験・撮影・計測は2026-11-27に廃止した（社長決定）。端末・実行環境を作らず、`suite.py run`・`capture.py --platform iphone`・`perf.py run`・`watch.py`・`sim-turn.sh` は終了コード64で止まる。完了の判定は `laa-app-gate pre hortensia --src <作業ツリー>`、配信後は `post hortensia`（実機の画面は `laa-phone`）。
+- xcodebuildは共有の `build-slot.sh` 経由で同時1本・`-jobs 4`（2026-11-02、Mac miniのメモリ24GBを共有しているため max=1）。1GB超を生成する前に `laa-storage-guard status --quick` と必要量・並行作業を確認し、取得・展開・同時作業・ビルド中のピークを含め80 GiB以上を保つ（`hq/tools/STORAGE.md`）。ほかの担当の未完了の清掃を空きとして見込まない。必要な余裕がなければ新しい生成を始めず、自分の不要物整理・Driveへの退避後に再確認する。他者の参照中データや削除審査で拒否された物には触れない。作業後はDerivedData・xcresult・一時端末を消し、80 GiB以上へ戻す。
 
 ## マージとTestFlight
 
 - GitHub CIはmasterへのpushで動いていない（BUS-323）。直るまでは次の代替ゲートを使う。
   1. 候補へ最新のorigin/masterを通常mergeしてpushする。
-  2. 合否は試験ID単位の台帳で判定する（BUS-504、`docs/laa/LAB.md`「Suites」「Ratchet」）。「masterと同じ失敗件数」は根拠にしない。既定のConduit版（`project.yml`）は別のworktreeで `python3 scripts/laa/lab/suite.py run smoke --out <結果>` の後 `suite.py check smoke <結果>` が0。LAA版は、変更したクラスと影響を受けるクラスを `suite.py run integration --only <Target>/<Class> … --out <結果>` で流し `check integration <結果> --partial` が0。TestFlight・Mac版を出す版と、試験の共通部品・ランナー・fixtureを変えた時は、絞らずに `integration` と `upstream` の両方を流して `check` が0（2026-11-24の全件は約2時間）。ランナーが共有ビルド枠の中で端末を消去し、言語と地域を英語（米国）に設定して読み戻す。
-  3. `xcodegen generate --spec project-personal.yml` の後、`xcodebuild build -quiet -project Conduit.xcodeproj -scheme Conduit -configuration Release -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO` が成功すること。生成したprojectはcommitしない。
-  4. masterをfast-forwardしてpushし、branchを消し、local/remoteのSHA一致を確かめる。
+  2. `laa-app-gate pre hortensia --src <候補の作業ツリー>` が `pass`（iOS・Mac CatalystのRelease実機向けビルド、同梱物、`check-weak-date-ops.sh`、シミュレーターを使わない検査を1回で判定。定義は `hq/harness/app-gate.json`）。既存の結果を読むだけなら `suite.py check`（`docs/laa/LAB.md`「Ratchet」）。「masterと同じ失敗件数」は根拠にしない。
+  3. masterをfast-forwardしてpushし、branchを消し、local/remoteのSHA一致を確かめる。
 - 既知の失敗は `scripts/laa/lab/known-failures.json` だけに置く（試験ID・結果・指紋・分類・理由）。2026-11-24時点で失敗の行は「上流の文言を前提にした単体40件（LAA版では対象外、`upstream` で合格を確認）」だけで、残りは理由つきのスキップ。直したら同じ変更で行を消す。長く続いた `ConnectionSetupUITests` 5件（Login screen did not appear）の原因は、ほかの試験がシミュレーターのKeychainに残した保存済み接続で、試験側で空の登録簿を注入して解消した。`check` が `PASSED ONLY ON RERUN` を出した試験は統合の報告に書き、繰り返すなら直す。
 - Mac版の署名と公証は親だけが `scripts/laa/mac-release.sh` で行う。Developer ID証明書（G2、期限2027-11-30）は1PasswordのAgents「LAA Developer ID Application」、テンプレートは `~/.config/laa/mac-release.env.tpl`。Monet（Dots）は2026-11-26にアプリから外れ、テンプレートの `LAA_DOTS_CALL_URL` が残っていてもアプリへ入らない。できたら親が `/Applications` へ入れて起動を確かめ、Mac miniのDockへ追加する（重複させず、既存の項目は動かさない）。更新時は通常終了後のプロセス消滅を待ってから入れ替える。画面の再取得はアプリを起動することがあるため、終了の判定には使わない。
 - Bridgeは `/Users/laa/dev/hermes-conduit/bridge` から直接動く。`bridge/` を変えた候補をmasterへ入れたら、親が `launchctl kickstart -k gui/$(id -u)/com.laa.bridge` で再起動し、`/v1/health` の起動時間で反映を確かめる。
@@ -103,8 +101,7 @@ paseo run --background --json --provider dsh --model '["opencode-go","deepseek-v
 
 ## 環境の注意
 
-- `xcode-select` はCommandLineToolsを指している。xcrun・simctl・xcodebuildには `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` を付ける。
-- Claude Codeのサンドボックス内ではsimctlが止まる。サンドボックスの外で実行する。
+- `xcode-select` はCommandLineToolsを指している。xcrun・xcodebuildには `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` を付ける。
 - App Storeの自動更新でXcodeが変わることがある。27.2では `xcodebuild -runFirstLaunch`（`laa-admin` 経由）とMetal Toolchainの追加が必要だった。
 - push relay（launchd `com.laa.conduit-relay-laa`）は本体チェックアウトの `scripts/laa/relay-run.sh` から動く。worktreeから入れない。
 - Bridgeの `brain:write`（既存ノートの上書き）は無効を維持する。iPhoneのSyncTrainとLAAは「このiPhone内/LAA」のBrain・HQへ結び付け済み（HQ台帳96101d7）。オフライン編集・移動・.trash・競合検出・保存履歴はこの端末内の経路で、Bridgeの上書きとは区別する。[BRAIN-WRITE §10](BRAIN-WRITE.md#10-iphoneローカルのノート管理と下書き2026-11-02) を参照する。
@@ -120,9 +117,8 @@ plan_id=<受付時のD1計画ID>
 Repo: LaaFloralia/hermes-conduit（master = LAA版）。最初に /Users/laa/AGENTS.md、/Users/laa/dev/PROJECT-RULES.md、repoの PROJECT-RULES.md と docs/laa/SESSION-HANDOFF.md を読んで従う。iOS作業は自分で行い、再委譲しない。
 仕様: docs/laa/ROADMAP.md（担当タスクの行）、docs/laa/DESIGN.md（v2。Liquid Glass、ナビゲーションと操作ラベルはLAACopyの英語、本文は日本語可）、docs/laa/BRIDGE.md（§9「親の決定」を優先）、bridge/README.md、CONTRIBUTING.md（FEATURE_MAP）。
 コード: LAA版だけを変える。Conduit/LAA/<担当領域>/ に置き、LAA_BUILD で囲む。色・余白・角丸・文字は LAATokens から取る。既存のBridgeクライアント、ペアリングとKeychain、エラー対応を再利用し、2つ目のクライアントを作らない。共有ファイル（タブ、project、Localizable）は登録に要る最小行だけ変える。サーバーにない機能は作らず、理由付きで無効表示にする。
-ビルド: `xcodegen generate --spec project-laa.yml`。xcrun・xcodebuild・simctl には DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer を付ける。シミュレーター用はad-hoc署名（CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=）。SwiftPMがログインKeychainで止まる時は -packageAuthorizationProvider netrc と GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/usr/bin/false を使う。Keychainのダイアログには答えず、回避もしない。
-検証: 新しいロジックのunit test、主な流れのUI test（LAA 16 Pro Max）、新しい画面ごとに440×956のライト・ダークのsnapshot（PNGは指示されたフォルダへ）。必要な時は実Bridgeで確かめる（laa-bridge pair で試験端末を作り、終了時に失効させる）。通常・空・エラー・オフライン・未ペアリングを含める。docs/FEATURE_MAP.md を更新し、社長が実機で確かめる項目を挙げる。
-シミュレーター: 起動前に親へ使用枠を求め、使い終えたらすぐ停止して報告する。
+ビルド: `xcodegen generate --spec project-laa.yml`。xcrun・xcodebuild には DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer を付ける。署名なしのビルドは `laa-app-gate pre hortensia` に任せる。SwiftPMがログインKeychainで止まる時は -packageAuthorizationProvider netrc と GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/usr/bin/false を使う。Keychainのダイアログには答えず、回避もしない。
+検証: 新しいロジックのunit test（ソース）と `laa-app-gate pre hortensia --src <作業ツリー>`。Macの画面は `capture.py --platform mac`。シミュレーターは使わない（2026-11-27廃止）。必要な時は実Bridgeで確かめる（laa-bridge pair で試験端末を作り、終了時に失効させる）。通常・空・エラー・オフライン・未ペアリングを含める。docs/FEATURE_MAP.md を更新し、社長が実機で確かめる項目を挙げる。
 マージ: origin/masterから分岐する。親が順番を渡したら最新のorigin/masterを通常mergeし、SESSION-HANDOFFのゲートを通す。fast-forward後にbranchを消し、local/remoteのSHA一致を確かめる。
-衛生: プロセス一覧は pgrep -x <name> か ps -o pid,ppid,comm だけ。Brainを読まない。laa-console integrity は走らせない。秘密を出力しない。自分のビルドキャッシュと一時端末は終了時に消す。親への返答は短い日本語で、結果・SHA・検証・実機確認項目・未解決点。
+衛生: プロセス一覧は pgrep -x <name> か ps -o pid,ppid,comm だけ。Brainを読まない。laa-console integrity は走らせない。秘密を出力しない。自分のビルドキャッシュは終了時に消す。親への返答は短い日本語で、結果・SHA・検証・実機確認項目・未解決点。
 ```
