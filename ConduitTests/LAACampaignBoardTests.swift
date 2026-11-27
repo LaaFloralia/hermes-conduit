@@ -124,7 +124,7 @@ final class LAACampaignBoardTests: XCTestCase {
     func testCampaignsIsOnlyASectionWithinDecisions() {
         XCTAssertEqual(LAAWorkHub.Section.allCases, [.projects, .sessions, .decisions, .tasks])
         XCTAssertFalse(LAAWorkHub.Section.decisions.searchable)
-        XCTAssertEqual(LAAWorkHub.DecisionSection.allCases.map(\.title), ["Decisions", "Campaigns"])
+        XCTAssertEqual(LAAWorkHub.DecisionSection.allCases.map(\.title), ["Decisions", "Findings", "Campaigns"])
     }
 
     func testCampaignListLightAndDark() throws {

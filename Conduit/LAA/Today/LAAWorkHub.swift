@@ -12,6 +12,7 @@ struct LAAWorkHub: View {
     @EnvironmentObject private var usageState: LAAUsageState
     @EnvironmentObject private var decisions: LAADecisionBoard
     @State private var decisionSection: DecisionSection = .decisions
+    @StateObject private var findings = LAAFindingBoard()
     @StateObject private var campaigns = LAACampaignBoard()
     @State private var section: Section = .projects
     @State private var showPairing = false
@@ -44,8 +45,14 @@ struct LAAWorkHub: View {
     }
 
     enum DecisionSection: String, CaseIterable {
-        case decisions, campaigns
-        var title: String { self == .decisions ? Section.decisions.title : LAACampaignCopy.section }
+        case decisions, findings, campaigns
+        var title: String {
+            switch self {
+            case .decisions: Section.decisions.title
+            case .findings: LAABoardKind.findings.title
+            case .campaigns: LAACampaignCopy.section
+            }
+        }
     }
 
     private func select(_ value: Section) {
@@ -147,11 +154,12 @@ struct LAAWorkHub: View {
                 select(linkRequest.sessionTarget == nil ? .tasks : .sessions)
             }
         }
-        .onChange(of: bridge.revision) { _, _ in campaigns.reset() }
-        .task(id: "campaigns|\(bridge.revision)|\(scenePhase == .active)|\(section)|\(decisionSection)") {
-            guard scenePhase == .active, section == .decisions, decisionSection == .campaigns else { return }
+        .onChange(of: bridge.revision) { _, _ in campaigns.reset(); findings.reset() }
+        .task(id: "board|\(bridge.revision)|\(scenePhase == .active)|\(section)|\(decisionSection)") {
+            guard scenePhase == .active, section == .decisions, decisionSection != .decisions else { return }
             while !Task.isCancelled {
-                await campaigns.refreshIfStale(bridge)
+                if decisionSection == .campaigns { await campaigns.refreshIfStale(bridge) }
+                else { await findings.refreshIfStale(bridge) }
                 do { try await Task.sleep(for: .seconds(15)) } catch { return }
             }
         }
@@ -189,6 +197,7 @@ struct LAAWorkHub: View {
         case .decisions:
             switch decisionSection {
             case .decisions: LAADecisionBoardView(board: decisions, drafts: drafts)
+            case .findings: LAAFindingBoardView(board: findings)
             case .campaigns: LAACampaignBoardView(board: campaigns)
             }
         case .tasks: LAALinearTasksView(drafts: drafts, query: search, createID: createID, onCreateConsumed: { createID = 0 })
