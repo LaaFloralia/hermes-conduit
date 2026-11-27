@@ -140,6 +140,12 @@ Syncthing（sendreceive）、Git同期、Obsidian、iPhone側の未確認writer�
   - 新側は確認なし（bypass）で起動するため、提供元の切替は元の会話が `mode: bypass` の時だけ受ける。確認ありの会話（`default`、記録なしを含む）は409 `model_unsupported` で断り、`capabilities.providerSwitch` もfalseにする。切替で権限を広げない（2026-11-14）。
   - 新側の実モデル・effortと最初の応答を読み戻した後だけ旧側を単独で保管する。失敗時は旧側へ戻す。途中再起動で残った準備状態も同期時に戻し、新側の保管が未確認なら状態を残して追加送信を断る。実行中は409 `model_switch_busy`、子孫の実行・判断待ちは `model_switch_children_busy`、準備・後始末待ちは `model_switch_pending`、作業先不明は `model_switch_workspace`、確認失敗は `model_switch_failed`、選択肢外は400 `model_choice_invalid`。判断ボードに未回答がある場合も切替を断る。
   - `requested` は開始時のまま、`ownerChanged:{provider,model,effort}` と `modelLog` のowner印に「社長の切替」を記録する。旧アプリは同じ提供元の従来PATCHを使える。
+### 気づき（Findings）
+
+`laa-bridge finding add` で範囲外の発見を `findings.json` に登録する。会話を止めず、通知を送らない。同じ `--request-id` は未着手の内容を更新する。完了報告の提案には登録された `F` 番号だけを書く。社長本人の対応が必要なら、社長担当のLinear Taskにする。
+
+`GET /v1/findings` と詳細・画像は `sessions:read`、`POST /v1/findings/<id>/delegate|dismiss` は `sessions:write`。任せた件は統括が引き取り、検証後に結果を記録する。見送りはすぐ一覧から消え、完了は7日間表示する。未着手のまま30日間更新がなければ自動で見送り、`finding stats` の `staleDismissed` に数える。見送り・完了から7日後に画像ごと消す。
+
 ### Projects and requirements
 
 Project reads use `sessions:read`; writes use `sessions:write` and `Idempotency-Key`. The list adds `progressNote` (string or null) and `requirementSummary: {completed,total,rate}` (`rate` is 0–1 or `null` if total is zero). Create and patch accept `progressNote` (2 KiB; null clears it). `GET /v1/projects/{id}` also returns `instructions`, `files`, `requirements` and the first page of `sessions`. The JSON `etag` versions the project document for `If-Match` on writes. Detail responses also send a weak HTTP `ETag` covering the actual detail, including the displayed Session observations. Repeat the same query with that header value in `If-None-Match`: an unchanged detail returns 304 with the tag and no body. The GET tag is also accepted by writes using its document version.
