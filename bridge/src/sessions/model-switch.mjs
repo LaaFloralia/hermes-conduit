@@ -7,6 +7,7 @@ import { foldModelLog, markOwnerChange } from './model-log.mjs';
 
 const HIGH = new Set(['high', 'xhigh', 'max', 'ultra', 'ultracode']);
 const TAG = '<work_model_handoff>';
+export const actsFreely = (record) => record?.permissionLevel === 2 || (record?.permissionLevel == null && record?.mode === 'bypass');
 export const isHandoff = (item) => item.role === 'user' && item.text?.startsWith(TAG);
 
 // Quote the conversation rather than asking a third model to invent a summary.
@@ -106,9 +107,12 @@ export function createModelSwitcher({ store, daemon, history, choices, now, slee
       if ((record.outbox ?? []).some((item) => item.status === 'queued')) throw fail('model_switch_busy', 'send the queued messages before changing provider');
       // The continuation starts without approval prompts, so only a session the owner already runs that way may move:
       // switching must never widen what a session is allowed to do unasked.
-      if (record.mode !== 'bypass') throw conflict('model_unsupported', 'a session that asks before acting cannot continue on another provider');
+      if (!actsFreely(record)) throw conflict('model_unsupported', 'a session that asks before acting cannot continue on another provider');
       // This reads the daemon, including descendants, rather than trusting a cached phase.
       const source = await daemon.continuationSource(record.delegate.sessionId, { relatedIds: (record.delegateHistory ?? []).map((entry) => entry.sessionId) });
+      if (source.permissionLevel != null ? source.permissionLevel !== 2 : !actsFreely(record)) {
+        throw conflict('model_unsupported', 'a session that asks before acting cannot continue on another provider');
+      }
       const page = await joinedHistory(record, history, store.file);
       const nextId = randomUUID();
       const transcriptPath = handoffFile(store.file, id, nextId);

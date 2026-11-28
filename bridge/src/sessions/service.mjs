@@ -43,7 +43,7 @@ import { attributeReplies, foldModelLog, lastModelChange, markOwnerChange } from
 import { quickReply } from './quick-reply.mjs';
 import { notifyOwner } from '../notify/index.mjs';
 import { assertOwnerSurface, isOwnerSurface } from '../owner-surface.mjs';
-import { createModelSwitcher, joinedHistory } from './model-switch.mjs';
+import { createModelSwitcher, joinedHistory, actsFreely } from './model-switch.mjs';
 import { sessionOptionsReader } from './options.mjs';
 
 // Kept exported from here for callers and tests that read a feature list
@@ -1507,7 +1507,7 @@ export function createSessionService({
         // A continuation starts without approval prompts; a session that asks first is not offered one.
         providerSwitch: daemon !== null && typeof record.delegate?.sessionId === 'string'
           && typeof daemon.startContinuation === 'function'
-          && (record.permissionLevel === 2 || (record.permissionLevel == null && record.mode === 'bypass')),
+          && actsFreely(record),
       },
       modelSwitch: record.modelSwitch ? { phase: record.modelSwitch.phase, target: record.modelSwitch.target } : null,
       phase: record.phase,
