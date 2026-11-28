@@ -84,6 +84,11 @@ test('strict impact prefix, legacy categories and owner-only pushes', async (t) 
   writeFileSync(f.store.file, JSON.stringify(disk));
   const { items } = await f.service.list();
   assert.equal(items.find((item) => item.id === legacy.id).category, 'unmarked');
+  // A category stored under an older owner-only list is re-derived, not a broken store.
+  const stale = JSON.parse(readFileSync(f.store.file, 'utf8'));
+  stale.records.find((r) => r.id === owner.id).category = 'delegable';
+  writeFileSync(f.store.file, JSON.stringify(stale));
+  assert.equal(f.store.get(owner.id).category, 'owner');
   assert.deepEqual(f.notifications.map((n) => n.meta.id), [owner.id]);
   await assert.rejects(f.service.answerAsMonet({ id: owner.id, body: { optionIndex: 0 }, reason: '推奨' }), { code: 'decision_owner_only', status: 409 });
   await assert.rejects(f.service.answerAsMonet({ id: delegable.id, body: { optionIndex: 0 }, reason: '三\n行\nの理由' }), code('decision_invalid'));

@@ -29,8 +29,6 @@ export function decisionCategory(impact) {
   if (kind) return { category: ownerOnlyKind(kind) ? 'owner' : 'delegable', ownerKind: kind };
   return { category: typeof impact === 'string' && impact.startsWith('【任せられる】') ? 'delegable' : 'unmarked', ownerKind: null };
 }
-// Records written before 2026-11-28 stored every 【必ず社長：…】 kind as owner.
-const legacyCategory = (impact) => { const c = decisionCategory(impact); return c.ownerKind ? { ...c, category: 'owner' } : c; };
 
 const withCategory = (r) => Object.assign(r, decisionCategory(r.impact));
 // Monet's reason: one line, or two for a design choice (D-47: 「理由を2行で残す」).
@@ -97,7 +95,10 @@ export function createDecisionStore({ dir, now = () => Date.now() }) {
       if (r.images !== undefined && !validDecisionImages(r.images, r.options.length)) return false;
       const { category, ownerKind } = decisionCategory(r.impact);
       if ((r.category !== undefined || r.ownerKind !== undefined) && r.ownerKind !== ownerKind) return false;
-      if (r.category !== undefined && r.category !== category && r.category !== legacyCategory(r.impact).category) return false;
+      // The stored category is re-derived on every read (withCategory). A value written under an older
+      // owner-only list (e.g. 売買 filed as delegable before 45c34720c) is stale, not corruption: rejecting it
+      // made the whole board answer decisions_store_unavailable (2026-11-28, dec_18266697192f64e8).
+      if (r.category !== undefined && !['owner', 'delegable', 'unmarked'].includes(r.category)) return false;
       if (r.status !== 'answered') return r.answer === null && r.delivery === null && r.monetAnswer === undefined && r.overturned === undefined;
       const a = r.answer, d = r.delivery;
       if (r.overturned !== undefined && (r.overturned !== true || !validAnswer(r, r.monetAnswer) || r.monetAnswer.answeredBy !== 'monet' || a?.answeredBy !== 'owner')) return false;
