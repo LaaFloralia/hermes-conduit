@@ -59,7 +59,11 @@ struct LAAStudioReviewView: View {
                         }
                     }
                 } else {
-                    if state.pending != nil {
+                    if state.pending != nil, sending {
+                        // BUS-340: the round trip is not an unknown result yet.
+                        Text(verbatim: "保存しています…")
+                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    } else if state.pending != nil {
                         Text(verbatim: canEditAgain ? "今回の送信は受け付けられませんでした。内容を保持しています。" : "送信結果を確認できていません。同じ講評を照合または再送できます。")
                             .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
                     }
@@ -82,7 +86,7 @@ struct LAAStudioReviewView: View {
                             Text(verbatim: "Save Review")
                         }.laaGlassButton(prominent: true).disabled(!canSubmit)
                             .accessibilityIdentifier("laa.studio.review.send")
-                    } else {
+                    } else if !sending {
                         Button { Task { await check() } } label: {
                             Text(verbatim: "保存状態を確認").frame(minHeight: LAASpacing.minimumTouchTarget)
                         }.disabled(sending || storageError)
