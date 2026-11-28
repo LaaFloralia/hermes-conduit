@@ -111,7 +111,7 @@ final class LAAUsageV2ModelTests: XCTestCase {
     func testTheWidgetHoldsFiveFixedReadings() throws {
         let usage = LAAWidgetUsageBuilder.make(items: try F.items(), receivedAt: now)
         let rows = LAAWidgetUsageBuilder.widgetMeters(usage)
-        XCTAssertEqual(rows.map(\.label), ["Claude 5h", "Claude 7d", "Claude Mythos", "Gemini 5h", "Gemini 7d"])
+        XCTAssertEqual(rows.map(\.label), ["Claude Ultra 5h", "Claude Ultra 7d", "Claude Ultra Mythos", "Gemini (laalabx) 5h", "Gemini (laalabx) 7d"])
         XCTAssertEqual(rows.map(\.amount), [80, 49, 32, 83, 75])
         XCTAssertTrue(rows.allSatisfy { $0.available && $0.hasRecordedValue(at: self.now) })
         // Weekly readings come first in the snapshot for an older reader.
@@ -139,7 +139,7 @@ final class LAAUsageV2ModelTests: XCTestCase {
     func testOpenCodeAndTheBalancesLeftTheWidget() {
         XCTAssertEqual(LAAWidgetUsageBuilder.widgetSlots.map(\.provider), ["claude", "google-ai-pro"])
         XCTAssertFalse(LAAWidgetUsageBuilder.slots.first { $0.provider == "opencode-go" }!.showsInWidget)
-        XCTAssertEqual(LAAWidgetUsageBuilder.cardSlots.map(\.name), ["Claude", "Gemini", "Muse"])
+        XCTAssertEqual(LAAWidgetUsageBuilder.cardSlots.map(\.name), ["Claude Ultra", "Gemini (laalabx)", "Muse"])
         XCTAssertEqual(LAAWidgetUsageBuilder.otherSlots.map(\.provider),
                        ["opencode-go", "magnific", "claude-api", "liquid", "venice", "deepseek", "refuseless"])
         XCTAssertEqual(LAAWidgetUsageBuilder.widgetRows.count, 5)

@@ -514,6 +514,12 @@ struct LAAWidgetUsageColumn: View {
             }
             // The mark's centre on the line's x-height.
             .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + labelSize * 0.36 }
+            if marked {
+                // The provider's name on its first row only (2026-11-28).
+                Text(verbatim: row.name)
+                    .font(.system(size: labelSize, weight: .medium)).foregroundStyle(LAAColor.text)
+                    .lineLimit(1).truncationMode(.tail)
+            }
             Text(verbatim: row.period.abbreviation)
                 .font(.system(size: labelSize)).foregroundStyle(LAAColor.secondaryText)
                 .lineLimit(1).fixedSize(horizontal: true, vertical: false)
@@ -530,7 +536,7 @@ struct LAAWidgetUsageColumn: View {
     }
 
     /// The value, right-aligned in a column as wide as "100%"; an unknown
-    /// reading keeps the column empty (the bar's bare track says it).
+    /// reading says 「未取得」 over the bare track, never 0%.
     private func reading(_ value: WidgetUsageMeter?) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 1) {
             if let value {
@@ -548,6 +554,10 @@ struct LAAWidgetUsageColumn: View {
                 Text(verbatim: "%")
                     .font(.system(size: labelSize, weight: .medium))
                     .foregroundStyle(LAAColor.text)
+            } else {
+                Text(verbatim: LAAWidgetUsageBuilder.notFetched)
+                    .font(.system(size: labelSize))
+                    .foregroundStyle(LAAColor.secondaryText)
             }
         }
         .lineLimit(1)

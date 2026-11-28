@@ -151,7 +151,7 @@ struct LAAUsageWindowGrid: View {
 
 /// One window: label 12 muted and the value 13/500 in tabular digits on a
 /// line, the 4pt square bar, and the reset 12 muted below. Unknown draws
-/// the empty track only.
+/// the empty track and 「未取得」, never 0%.
 struct LAAUsageWindowCell: View {
     let window: LAAUsageCardWindow
     let now: Date
@@ -165,6 +165,9 @@ struct LAAUsageWindowCell: View {
                 if let remaining = window.remainingPercent {
                     Text(verbatim: LAAEmployeeUsageText.percent(remaining))
                         .laaFont(tokens.windowValue, weight: .medium).monospacedDigit().foregroundStyle(LAAColor.text)
+                } else {
+                    Text(verbatim: LAAWidgetUsageBuilder.notFetched)
+                        .laaFont(tokens.windowLabel).foregroundStyle(LAAColor.secondaryText)
                 }
             }
             LAAUsageMeterTrack(fraction: window.remainingPercent.map { $0 / 100 })
@@ -181,7 +184,7 @@ struct LAAUsageWindowCell: View {
     }
 
     private var accessibilityValue: String {
-        guard let value = window.remainingPercent else { return "Unknown" }
+        guard let value = window.remainingPercent else { return LAAWidgetUsageBuilder.notFetched }
         let text = LAAEmployeeUsageText.percent(value)
         return window.resetsAt.map { text + ", Reset " + LAAUsageResetText.full($0, now: now) } ?? text
     }

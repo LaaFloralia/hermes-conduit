@@ -24,10 +24,10 @@ enum LAAWidgetUsageBuilder {
     }
 
     static let slots: [Slot] = [
-        Slot(provider: "claude", name: "Claude", reading: .weeklyQuota, showsInWidget: true),
-        // Sub2・Sub3・Sub4 (2026-11-23): the card shows the account in use.
-        // Named Gemini with the Antigravity mark (owner, 2026-11-28).
-        Slot(provider: "google-ai-pro", name: "Gemini", reading: .accountGroup, showsInWidget: true),
+        Slot(provider: "claude", name: claudeName, reading: .weeklyQuota, showsInWidget: true),
+        // The pinned Google AI Ultra account (2026-11-28): the card shows the
+        // account in use, with the Antigravity mark.
+        Slot(provider: "google-ai-pro", name: geminiName, reading: .accountGroup, showsInWidget: true),
         // Muse1・Muse2・Muse3 (2026-11-26): the Free accounts LAA's harness
         // switches between for TTS and video, each one's weekly allowance.
         // App only: the widget's rows stay as they are.
@@ -43,6 +43,14 @@ enum LAAWidgetUsageBuilder {
         // Refuseless does not change the widget's quota rows.
         Slot(provider: "refuseless", name: "Refuseless", reading: .balance, showsInWidget: false),
     ]
+
+    /// The two subscription meters' names (2026-11-28): Claude's plan and the
+    /// pinned Google AI Ultra account, as the owner names them.
+    static let claudeName = "Claude Ultra"
+    static let geminiName = "Gemini (laalabx)"
+    /// What a reading with no usable value says, on the cards and the
+    /// widget: never a 0% (2026-11-28).
+    static let notFetched = "未取得"
 
     static var widgetSlots: [Slot] { slots.filter(\.showsInWidget) }
     static var cardSlots: [Slot] { slots.filter(\.isCard) }
@@ -83,11 +91,11 @@ enum LAAWidgetUsageBuilder {
     /// Mythos, Gemini 5h / 7d. Codex 7d left on 2026-11-28 (D-42); only
     /// Claude and Gemini remain, each marked on its first row only.
     static let widgetRows: [Row] = [
-        Row(provider: "claude", name: "Claude", period: .fiveHour),
-        Row(provider: "claude", name: "Claude", period: .weekly),
-        Row(provider: "claude", name: "Claude", period: .fable),
-        Row(provider: googleGroup, name: "Gemini", period: .fiveHour),
-        Row(provider: googleGroup, name: "Gemini", period: .weekly),
+        Row(provider: "claude", name: claudeName, period: .fiveHour),
+        Row(provider: "claude", name: claudeName, period: .weekly),
+        Row(provider: "claude", name: claudeName, period: .fable),
+        Row(provider: googleGroup, name: geminiName, period: .fiveHour),
+        Row(provider: googleGroup, name: geminiName, period: .weekly),
     ]
 
     /// Which rows give way first when larger text leaves no room for all:

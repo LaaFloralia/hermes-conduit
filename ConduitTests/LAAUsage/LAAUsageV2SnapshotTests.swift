@@ -26,7 +26,7 @@ final class LAAUsageV2SnapshotTests: XCTestCase {
 
     func testMediumWidgetDrawsAllFiveRows() throws {
         let live = entry(try F.items())
-        XCTAssertEqual(live.usage?.meters.map(\.label), ["Claude 5h", "Claude 7d", "Claude Mythos", "Gemini 5h", "Gemini 7d"])
+        XCTAssertEqual(live.usage?.meters.map(\.label), ["Claude Ultra 5h", "Claude Ultra 7d", "Claude Ultra Mythos", "Gemini (laalabx) 5h", "Gemini (laalabx) 7d"])
         for (size, tag) in [(Self.proMaxMedium, "364x170"), (Self.compactMedium, "329x155")] {
             for style in [UIUserInterfaceStyle.light, .dark] {
                 let name = "v2-widget-\(tag)-\(style == .dark ? "dark" : "light")"
@@ -65,7 +65,7 @@ final class LAAUsageV2SnapshotTests: XCTestCase {
             }
             XCTAssertEqual(try render(live, size: size, style: .light, dynamicTypeSize: .large, name: "v2-type-\(tag)-default").rows, 5)
         }
-        XCTAssertEqual(LAAWidgetUsageColumn.rows(dropping: 2).map(\.label), ["Claude 7d", "Claude Mythos", "Gemini 7d"])
+        XCTAssertEqual(LAAWidgetUsageColumn.rows(dropping: 2).map(\.label), ["Claude Ultra 7d", "Claude Ultra Mythos", "Gemini (laalabx) 7d"])
         // The provider's mark stands on its first row only (owner, 2026-11-28).
         let rows = LAAWidgetUsageBuilder.widgetRows
         XCTAssertEqual(rows.indices.map { LAAWidgetUsageColumn.opensProvider(rows, at: $0) }, [true, false, false, true, false])

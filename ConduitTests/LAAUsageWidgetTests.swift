@@ -52,7 +52,7 @@ final class LAAUsageWidgetTests: XCTestCase {
     func testWeeklyWindowIsChosenOverALowerFiveHourWindow() throws {
         let items = try [item("claude", windows: [weekly(5, minutes: 300, label: "Session"), weekly(80)])]
         let meter = try XCTUnwrap(LAAWidgetUsageBuilder.make(items: items, receivedAt: now).meters.first)
-        XCTAssertEqual(meter.label, "Claude 7d")
+        XCTAssertEqual(meter.label, "Claude Ultra 7d")
         XCTAssertEqual(meter.amount, 80)
     }
 
@@ -66,7 +66,7 @@ final class LAAUsageWidgetTests: XCTestCase {
         ]
         // Only Claude's rows: its weekly reading, then 5h and Fable unknown.
         XCTAssertEqual(LAAWidgetUsageBuilder.make(items: items, receivedAt: now).meters.map(\.label),
-                       ["Claude 7d", "Claude 5h", "Claude Mythos"])
+                       ["Claude Ultra 7d", "Claude Ultra 5h", "Claude Ultra Mythos"])
         // nanoGPT was cancelled (2026-11-11): neither the feed nor a saved row brings it back.
         let saved = WidgetUsageSnapshot(meters: [
             WidgetUsageMeter(id: "provider.nanogpt.quota.weekly", label: "nanoGPT", unit: .percent, amount: 80,
@@ -236,7 +236,7 @@ final class LAAUsageWidgetTests: XCTestCase {
         XCTAssertEqual(LAAUsageGroup.displayGroups([liquid]).map(\.label), ["Liquid AI"])
         XCTAssertEqual(LAAUsageGroup.displayGroups([try item("opencode-go", label: "OpenCode Go")]).map(\.label), ["OpenCode"])
         let widget = LAAWidgetUsageBuilder.make(items: items, receivedAt: now)
-        XCTAssertEqual(widget.meters.map(\.label), ["Claude 7d", "Claude 5h", "Claude Mythos"])
+        XCTAssertEqual(widget.meters.map(\.label), ["Claude Ultra 7d", "Claude Ultra 5h", "Claude Ultra Mythos"])
         XCTAssertTrue(widget.meters.allSatisfy { !$0.available })
         XCTAssertEqual(LAAWidgetUsageBuilder.widgetMeters(widget).count, widget.meters.count)
         let retired = ["jev", "google-cloud", "google-flow", "fal", "antigravity", "codex"]
