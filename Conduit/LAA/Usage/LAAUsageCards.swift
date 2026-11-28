@@ -29,7 +29,7 @@ enum LAAUsageCardModel {
         LAAWidgetUsageBuilder.activeAccount(accounts) ?? (provider == "muse" ? accounts.first : nil)
     }
 
-    /// "Sub2" from "Google Sub2": the card already says Google.
+    /// "Sub2" from "Google Sub2": the card already names the provider (Gemini).
     static func accountName(_ item: LAAUsageItem) -> String {
         let label = item.label.hasPrefix("Google ") ? String(item.label.dropFirst("Google ".count)) : item.label
         return label.isEmpty ? item.id : label

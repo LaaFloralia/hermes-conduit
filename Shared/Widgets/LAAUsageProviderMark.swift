@@ -4,13 +4,16 @@ import LAAKit
 import WidgetKit
 
 /// Usage measures the named provider, not whichever model or harness consumes its quota.
+/// Gemini (the Google AI subscription's accounts) carries the Antigravity mark, the same
+/// issued artwork as the model picker's Antigravity harness (owner, 2026-11-28: not the "G").
 struct LAAUsageProviderMark: View {
     let provider: String
+    var size: CGFloat = LAAComponentToken.ProviderCard.headerIcon
 
     static func asset(for provider: String) -> String? {
         switch provider {
-        case "codex", "openai-api": "LAAOpenAIMark"
         case "claude", "claude-api": "LAAClaudeMark"
+        case LAAWidgetUsageBuilder.googleGroup: "LAAAntigravityMark"
         case "deepseek": "LAADeepSeekMark"
         default: nil
         }
@@ -18,14 +21,12 @@ struct LAAUsageProviderMark: View {
 
     private var neutralSymbol: String? {
         switch provider {
-        case "google-ai-pro": "g.circle"
         case "muse": "waveform"
         default: nil
         }
     }
 
     var body: some View {
-        let size = LAAComponentToken.ProviderCard.headerIcon
         Group {
             if let asset = Self.asset(for: provider) {
                 if provider == "deepseek" {

@@ -392,20 +392,29 @@ struct LAAEmployeeWidgetView: View {
     }
 }
 
-/// The medium widget's Usage column: five single-line readings in the owner's
-/// order (Claude 5h / 7d / Mythos, Google 5h / 7d), each a mark, a label,
-/// a value in tabular digits, a reset time on the weekly rows and a 4pt bar.
-/// Room runs short in this order: the reset time shortens, then goes, and
-/// only then does larger text give up rows (five-hour readings first).
+/// The medium widget's Usage column: five readings in the owner's order
+/// (Claude 5h / 7d / Mythos, Gemini 5h / 7d). Each provider's mark stands
+/// once, in a gutter beside its first row; the rows below align under it
+/// without one. A row is the period (12, muted) and, right-aligned in two
+/// columns, the reset time (12, muted, tabular) and the value (13/500,
+/// tabular, the % one step smaller), over the 4pt square bar from the
+/// period's edge to the value's. Under 25% the value carries ▲ in the
+/// meter's colour, never colour alone. Room runs short in this order: the
+/// reset time shortens, then goes, and only then does larger text give up
+/// rows (five-hour readings first).
 struct LAAWidgetUsageColumn: View {
     let entry: LAAEmployeeWidgetEntry
     let renderedAt: Date
     var renderingMode: WidgetRenderingMode = .fullColor
     @Environment(\.laaThemeID) private var themeID
-    @ScaledMetric(relativeTo: .caption) private var labelSize = LAACanvas.iphone.label
-    @ScaledMetric(relativeTo: .footnote) private var readingSize = LAACanvas.iphone.small
-    @ScaledMetric(relativeTo: .caption) private var providerWidth: CGFloat = 46
-    @ScaledMetric(relativeTo: .caption) private var rowPitch: CGFloat = 22
+    @ScaledMetric(relativeTo: .caption) private var labelSize = LAAComponentToken.ProviderCard.windowLabel
+    @ScaledMetric(relativeTo: .footnote) private var readingSize = LAAComponentToken.ProviderCard.windowValue
+    /// The mark's gutter: the inline icon size, so the mark sits at the
+    /// height of the 12–13 pt line beside it.
+    @ScaledMetric(relativeTo: .caption) private var markSize: CGFloat = LAAIconSize.inline
+    /// "100%" at the value size, so every reset time ends on one line.
+    @ScaledMetric(relativeTo: .footnote) private var valueWidth: CGFloat = 36
+    @ScaledMetric(relativeTo: .caption) private var rowPitch: CGFloat = 26
 
     private typealias Row = LAAWidgetUsageBuilder.Row
 
@@ -433,14 +442,22 @@ struct LAAWidgetUsageColumn: View {
         return LAAWidgetUsageBuilder.widgetRows.filter { !gone.contains($0.id) }
     }
 
+    /// Whether the row at `index` opens its provider's group: it alone
+    /// carries the mark.
+    static func opensProvider(_ rows: [LAAWidgetUsageBuilder.Row], at index: Int) -> Bool {
+        index == 0 || rows[index - 1].provider != rows[index].provider
+    }
+
     private func usageList(rows: [Row], reset form: ResetForm) -> some View {
         let hidden = LAAWidgetUsageBuilder.widgetRows.count - rows.count
         return VStack(alignment: .leading, spacing: 0) {
             Spacer(minLength: 0)
             ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                // The provider is named once, on its first row.
-                let named = index == 0 || rows[index - 1].provider != row.provider
-                usageRow(row, named: named, reset: form).frame(maxHeight: rowPitch)
+                let opens = Self.opensProvider(rows, at: index)
+                usageRow(row, marked: opens, reset: form)
+                    .frame(maxHeight: rowPitch)
+                    // Providers part by one step more than their rows.
+                    .padding(.top, opens && index > 0 ? LAASpacing.x2 : 0)
             }
             if hidden > 0 {
                 Text(verbatim: "+\(hidden)")
@@ -464,7 +481,7 @@ struct LAAWidgetUsageColumn: View {
         return meter
     }
 
-    private func usageRow(_ row: Row, named: Bool, reset form: ResetForm) -> some View {
+    private func usageRow(_ row: Row, marked: Bool, reset form: ResetForm) -> some View {
         let meter = entry.usage?.meters.first { $0.id == row.id }
         let value = Self.shown(meter, at: renderedAt)
         let reset = row.showsReset ? value?.resetsAt : nil
@@ -475,13 +492,10 @@ struct LAAWidgetUsageColumn: View {
             case .hidden: nil
             }
         }
-        return HStack(spacing: LAASpacing.x1) {
-            LAAUsageProviderMark(provider: row.provider)
-            VStack(alignment: .leading, spacing: 2) {
-                readingLine(row, named: named, value: value, reset: resetText)
-                LAAUsageMeterTrack(fraction: value.map { $0.amount / 100 }, animates: false, renderingMode: renderingMode)
-                    .padding(.leading, providerWidth + LAASpacing.x1)
-            }
+        return VStack(alignment: .leading, spacing: LAASpacing.x1) {
+            readingLine(row, marked: marked, value: value, reset: resetText)
+            LAAUsageMeterTrack(fraction: value.map { $0.amount / 100 }, animates: false, renderingMode: renderingMode)
+                .padding(.leading, markSize + LAASpacing.x2)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(verbatim: row.label))
@@ -489,35 +503,56 @@ struct LAAWidgetUsageColumn: View {
         .accessibilityIdentifier("laa.widget.usage.\(row.id)")
     }
 
-    private func readingLine(_ row: Row, named: Bool, value: WidgetUsageMeter?, reset: String?) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x1) {
-            Text(verbatim: named ? row.name : "")
-                .font(.system(size: labelSize, weight: .medium)).foregroundStyle(LAAColor.text)
-                .lineLimit(1).frame(width: providerWidth, alignment: .leading)
+    private func readingLine(_ row: Row, marked: Bool, value: WidgetUsageMeter?, reset: String?) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x2) {
+            Group {
+                if marked {
+                    LAAUsageProviderMark(provider: row.provider, size: markSize)
+                } else {
+                    Color.clear.frame(width: markSize, height: markSize)
+                }
+            }
+            // The mark's centre on the line's x-height.
+            .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + labelSize * 0.36 }
             Text(verbatim: row.period.abbreviation)
                 .font(.system(size: labelSize)).foregroundStyle(LAAColor.secondaryText)
                 .lineLimit(1).fixedSize(horizontal: true, vertical: false)
-            Spacer(minLength: 2)
-            reading(value, reset: reset)
+            Spacer(minLength: LAASpacing.x1)
+            if let reset {
+                Text(verbatim: reset).font(.system(size: labelSize)).monospacedDigit()
+                    .foregroundStyle(LAAColor.secondaryText)
+                    .lineLimit(1).fixedSize()
+            }
+            reading(value)
         }
         // Keep the row's intrinsic text height for ViewThatFits.
         .fixedSize(horizontal: false, vertical: true)
     }
 
-    private func reading(_ value: WidgetUsageMeter?, reset: String?) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x1) {
-            if let reset {
-                Text(verbatim: reset).font(.system(size: labelSize)).monospacedDigit()
-                    .foregroundStyle(LAAColor.secondaryText)
-            }
+    /// The value, right-aligned in a column as wide as "100%"; an unknown
+    /// reading keeps the column empty (the bar's bare track says it).
+    private func reading(_ value: WidgetUsageMeter?) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 1) {
             if let value {
-                Text(verbatim: LAAEmployeeWidgetView.percentageText(value.amount))
-                    .font(.system(size: readingSize, weight: .semibold)).monospacedDigit()
+                let level = LAAMeterLevel(remaining: value.amount / 100)
+                if level == .caution || level == .critical {
+                    Text(verbatim: LAAShape.attention + " ")
+                        .font(.system(size: labelSize))
+                        .foregroundStyle(renderingMode != .fullColor ? LAAColor.text
+                                         : level == .critical ? LAAColor.critical : LAAColor.caution)
+                }
+                let text = LAAEmployeeWidgetView.percentageText(value.amount)
+                Text(verbatim: String(text.dropLast()))
+                    .font(.system(size: readingSize, weight: .medium)).monospacedDigit()
+                    .foregroundStyle(LAAColor.text)
+                Text(verbatim: "%")
+                    .font(.system(size: labelSize, weight: .medium))
                     .foregroundStyle(LAAColor.text)
             }
         }
         .lineLimit(1)
         .fixedSize()
+        .frame(minWidth: valueWidth, alignment: .trailing)
     }
 
     private func accessibilityValue(_ value: WidgetUsageMeter?, reset: Date?) -> String {
