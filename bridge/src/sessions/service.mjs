@@ -83,6 +83,8 @@ export function createSessionService({
   daemon = null,
   notify = notifyOwner,
   decisions = null,
+  // Told of every phase change a sync sees, whatever started the session (Monet's inbox).
+  onTransition = null,
   history = readConversation,
   firstPrompt = readFirstPrompt,
   images = sessionImageStore(join(dirname(sessionStore.file), "session-images")),
@@ -497,6 +499,7 @@ export function createSessionService({
             body: { error: '実行中にエラーが発生しました。', finished: 'エージェントの手番が終了しました。' }[kind],
             deepLink: `laa://work/sessions/${current.id}`, dedupeKey: `${current.id}:${kind}:${current.attentionTimestamp}:${current.pending?.hash ?? ''}` }).catch(() => {});
         }
+        try { onTransition?.({ previous, current, child: Boolean(current.parentId) || children.has(current.id), labels: agents.find((a) => a.id === current.delegate?.sessionId)?.labels ?? null }); } catch { /* The inbox must never stop a sync. */ }
       }
       await tidyWorkspaces();
     })().finally(() => { syncInFlight = null; });

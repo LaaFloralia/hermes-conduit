@@ -8,15 +8,20 @@ import { parseObjectBody } from './state-file.mjs';
 const MONET = Object.freeze({ kind: 'monet' });
 export const resolveMonetTrigger = (caller) => caller === MONET ? MONET : null;
 
-export function monetRoutes({ reporter, tokenHash }) {
+// The one check every Monet-only route uses (the completion report, the inbox, the requirement flow).
+export function monetAuthorizer(tokenHash) {
   const expected = typeof tokenHash === 'string' && /^[a-f0-9]{64}$/i.test(tokenHash) ? Buffer.from(tokenHash, 'hex') : null;
-  const authorize = (req) => {
+  return (req) => {
     const token = parseBearer(req.headers.authorization);
     if (!expected || !token || !timingSafeEqual(expected, createHash('sha256').update(token).digest())) {
       throw new BridgeError(403, 'monet_caller_required', 'Monet の確認済み経路から実行してください。');
     }
     return MONET;
   };
+}
+
+export function monetRoutes({ reporter, tokenHash }) {
+  const authorize = monetAuthorizer(tokenHash);
   return [
     { method: 'POST', path: '/v1/monet/completion-report', auth: false, bodyLimit: 4096, handler: async ({ req, rawBody }) => {
       const caller = authorize(req);
