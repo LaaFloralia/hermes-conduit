@@ -206,15 +206,39 @@ export function createBridge({
     throw new BridgeError(403, 'origin_rejected', 'request origin is not allowed');
   }
 
-  function noteEnrollFailure() {
+  function recentEnrollFailures() {
     const t = now();
-    enrollFailures.push(t);
     while (enrollFailures.length > 0 && enrollFailures[0] < t - ENROLL_FAILURE_WINDOW_MS) {
       enrollFailures.shift();
     }
-    if (enrollFailures.length >= ENROLL_FAILURE_LIMIT) {
+    return enrollFailures.length;
+  }
+
+  function noteEnrollFailure() {
+    enrollFailures.push(now());
+    if (recentEnrollFailures() >= ENROLL_FAILURE_LIMIT) {
       throw new BridgeError(429, 'rate_limited', 'too many failed pairing attempts', { retryable: true });
     }
+  }
+
+  // Last use per device, written at most once an hour per device (the store
+  // parses the whole file on each call). Shown by `laa-bridge devices` so a
+  // stale or leaked token can be spotted; never returned to clients.
+  const LAST_USE_INTERVAL_MS = 3600 * 1000;
+  const lastUseNoted = new Map();
+  function noteDeviceUse(device) {
+    const t = now();
+    const stored = device.lastUsedAt ? Date.parse(device.lastUsedAt) : 0;
+    if (t - (Number.isFinite(stored) ? stored : 0) <= LAST_USE_INTERVAL_MS) return;
+    if (t - (lastUseNoted.get(device.id) ?? 0) <= LAST_USE_INTERVAL_MS) return;
+    lastUseNoted.set(device.id, t);
+    setImmediate(() => {
+      try {
+        store.mutate((state) => { if (state.devices[device.id]) state.devices[device.id].lastUsedAt = new Date(t).toISOString(); });
+      } catch (err) {
+        log?.({ level: 'warn', event: 'device_last_use_failed', ...errorForLog(err) });
+      }
+    });
   }
 
   // --- handlers: return {status, data}; the pipeline owns the envelope -------
@@ -229,9 +253,17 @@ export function createBridge({
   }
 
   function enroll({ rawBody }) {
+    // The window is checked before any code is evaluated: once it is full, a
+    // correct code is refused too, so guessing gains nothing (BUS-567 F1).
+    if (recentEnrollFailures() >= ENROLL_FAILURE_LIMIT) {
+      throw new BridgeError(429, 'rate_limited', 'too many failed pairing attempts', { retryable: true });
+    }
     const payload = requireObject(parseJsonBody(rawBody));
     const code = normalizePairingCode(payload.code);
-    if (!code) throw badRequest('payload_invalid', 'code must be an 8-character pairing code');
+    if (!code) {
+      noteEnrollFailure();
+      throw badRequest('payload_invalid', 'code must be an 8-character pairing code');
+    }
     const name = typeof payload.name === 'string' ? payload.name.trim() : '';
     if (name.length === 0 || name.length > 64) {
       throw badRequest('payload_invalid', 'name must be 1-64 characters');
@@ -375,6 +407,7 @@ export function createBridge({
         if (auth.reason === 'token_revoked') throw new BridgeError(401, 'token_revoked', 'device has been revoked');
         device = auth.device;
         deviceId = device.id;
+        noteDeviceUse(device);
         for (const scope of [route.scope, ...(route.additionalScopes ?? [])].filter(Boolean)) {
           if (!hasScope(device, scope)) throw new BridgeError(403, 'insufficient_scope', `device is missing scope ${scope}`);
         }

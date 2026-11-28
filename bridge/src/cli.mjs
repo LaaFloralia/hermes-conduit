@@ -160,6 +160,7 @@ function commandDevices(flags) {
       scopes: d.scopes,
       platform: d.platform,
       createdAt: d.createdAt,
+      lastUsedAt: d.lastUsedAt ?? null,
       status: d.revokedAt ? 'revoked' : 'active',
       revokedAt: d.revokedAt,
       studioGrant: d.studioGrant ?? null,
@@ -175,7 +176,7 @@ function commandDevices(flags) {
   for (const device of devices) {
     process.stdout.write([
       `${device.id}  ${device.revokedAt ? 'revoked' : 'active '}  ${device.name}`,
-      `  created ${device.createdAt}${device.revokedAt ? `  revoked ${device.revokedAt}` : ''}`,
+      `  created ${device.createdAt}  last used ${device.lastUsedAt ?? 'never'}${device.revokedAt ? `  revoked ${device.revokedAt}` : ''}`,
       `  scopes  ${device.scopes.join(', ')}`,
       ...(device.studioGrant ? [`  studio grant ${device.studioGrant.grantedAt} uid=${device.studioGrant.operatorUid} reason=${device.studioGrant.reason}`] : []),
       ...(device.instructionsGrant ? [`  instructions grant ${device.instructionsGrant.grantedAt} uid=${device.instructionsGrant.operatorUid} reason=${device.instructionsGrant.reason}`] : []),
