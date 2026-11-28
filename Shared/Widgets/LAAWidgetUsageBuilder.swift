@@ -6,7 +6,7 @@ import WidgetKit
 
 enum LAAWidgetUsageBuilder {
     /// One ordered list for the app's AI Usage screen. The first three are the
-    /// provider cards (Claude, Google, Muse); the rest are the ruled rows
+    /// provider cards (Claude, Gemini, Muse); the rest are the ruled rows
     /// below them. Muse is the one card the widget does not show. Codex and
     /// GPT API left on 2026-11-28 (GPT cancelled, D-42).
     struct Slot {
@@ -26,7 +26,8 @@ enum LAAWidgetUsageBuilder {
     static let slots: [Slot] = [
         Slot(provider: "claude", name: "Claude", reading: .weeklyQuota, showsInWidget: true),
         // Sub2・Sub3・Sub4 (2026-11-23): the card shows the account in use.
-        Slot(provider: "google-ai-pro", name: "Google", reading: .accountGroup, showsInWidget: true),
+        // Named Gemini with the Antigravity mark (owner, 2026-11-28).
+        Slot(provider: "google-ai-pro", name: "Gemini", reading: .accountGroup, showsInWidget: true),
         // Muse1・Muse2・Muse3 (2026-11-26): the Free accounts LAA's harness
         // switches between for TTS and video, each one's weekly allowance.
         // App only: the widget's rows stay as they are.
@@ -79,17 +80,18 @@ enum LAAWidgetUsageBuilder {
     static let googleGroup = "google-ai-pro"
 
     /// The widget's rows in the owner's order (2026-11-25): Claude 5h / 7d /
-    /// Mythos, Google 5h / 7d. Codex 7d left on 2026-11-28 (D-42).
+    /// Mythos, Gemini 5h / 7d. Codex 7d left on 2026-11-28 (D-42); only
+    /// Claude and Gemini remain, each marked on its first row only.
     static let widgetRows: [Row] = [
         Row(provider: "claude", name: "Claude", period: .fiveHour),
         Row(provider: "claude", name: "Claude", period: .weekly),
         Row(provider: "claude", name: "Claude", period: .fable),
-        Row(provider: googleGroup, name: "Google", period: .fiveHour),
-        Row(provider: googleGroup, name: "Google", period: .weekly),
+        Row(provider: googleGroup, name: "Gemini", period: .fiveHour),
+        Row(provider: googleGroup, name: "Gemini", period: .weekly),
     ]
 
     /// Which rows give way first when larger text leaves no room for all:
-    /// the five-hour readings, then Google's week, then Mythos.
+    /// the five-hour readings, then Gemini's week, then Mythos.
     static let dropOrder: [String] = [
         widgetRows[3].id, widgetRows[0].id, widgetRows[4].id, widgetRows[2].id, widgetRows[1].id,
     ]
