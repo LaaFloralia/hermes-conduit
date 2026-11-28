@@ -542,6 +542,29 @@ LAA_BRIDGE_URL=http://127.0.0.1:9137 LAA_BRIDGE_TOKEN=… \
 
 `verify-sessions.mjs` は実 DSH（`deepseek-flash-high`）で create → cursor からの再接続 → 同一 requestId の重複作成 → 追加入力 → 停止 → artifacts を1回で回す。2026-10-29 に実測: create 201（`requested` = dsh / `["opencode-go","deepseek-v4.1-flash"]` / high、`observed` は `sources.model=runtime`）、重複 200 で同一 `ses_`、send 202、stop 200（`daemonStatus=idle`）、artifacts に log 2,035 bytes と結果 "second"、cursor から `session.stopped` を受信。
 
+## 要件フロー（`/v1/flows`）とMonetの受信箱（`/v1/monet/inbox`）
+
+社長の要件1件を、受付 → 社員の検討 → 設計の助言 → 受入基準つきの要件と実装の依頼書 → Session → Monetの照合 → 報告1回、の順にBridgeのコードが進める。状態は `requirement-flows.json`、戻りと判断は `monet-inbox.json`（どちらも0600）。契約は `docs/laa/BRIDGE.md`「Requirement flow and Monet's inbox」。
+
+```sh
+# 開始・取下げ・照合はMonetの実行経路だけ（LAA_BRIDGE_MONET_TOKEN）。本文はファイルかstdinで渡す
+echo '{"projectId":"prj_…","requestId":"r-1","title":"一覧に件数を出す","size":"M","risk":[],"repo":"/Users/laa/dev/hermes-conduit"}' | laa-bridge flow start
+laa-bridge flow status flw_…            # 手順・社員・依頼書・判断（読取）
+laa-bridge flow list --open             # 進行中の一覧（読取）
+laa-bridge flow withdraw flw_… [--with-requirements]
+laa-bridge monet inbox                  # 照合待ちの件数と一覧（読取）
+laa-bridge monet inbox --claim --limit 3   # 証拠つきで取り出す
+laa-bridge monet ack evt_… --verdict-file verdict.json   # 判定（verified / rework / needs_owner / noted / not_mine）
+laa-bridge monet digest                 # 社長との会話に添える600字以内の要約
+laa-bridge monet replay ses_…           # 指定Sessionの戻りをもう一度照合に出す
+```
+
+設定は `src/flow/requirement-flow.json`（`~/hq/harness/requirement-flow.json` か `LAA_BRIDGE_FLOW_CONFIG` で項目ごとに上書き）。助言役は `advisorProfiles` の順で、`neon-high` は契約待ちのため無効。社員の検討は `hermes -p laa-<役割> -z` の1回の呼出しで、`dryStaff: true` なら省く。
+
+```sh
+node --test test/flow-parse.test.mjs test/monet-inbox.test.mjs test/flow-pipeline.test.mjs test/flow-runners.test.mjs test/cli-flow.test.mjs test/requirement-acceptance.test.mjs
+```
+
 ## Brain（`/v1/brain`）
 
 本人UIの `audience=owner` は、認証済み端末にoperatorがopt-in付与した `brain:owner` が必須。値だけを指定した通常トークンは403で拒否する。本人一覧は全領域の非隠しMarkdownと競合コピーを含み、`.trash`・`.obsidian`・隠し項目・symlinkを除く。検索はモデルを使わない字句検索。通常要求の領域制限は以下のとおり維持する。
