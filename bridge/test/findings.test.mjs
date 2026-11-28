@@ -61,7 +61,7 @@ test('owner-only rule counts remaining meaningful characters and checks both phy
   const { store, dir } = fixture(t);
   for (const plan of ['課金。', '支払いをする', '購入・契約・解約', '売買、注文', '削除・消去・公開・投稿', '署名、振込、送信', 'Please pay.', 'DELETE the file!', 'pay 1234567', 'Publish 🗂️', 'Sign. Post. Send.']) {
     assert.equal(findingNeedsOwner('test', plan), true, plan);
-    assert.throws(() => store.add({ ...input, plan }), { code: 'finding_needs_owner', message: /社長担当のLinear Task/ });
+    assert.throws(() => store.add({ ...input, plan }), { code: 'finding_needs_owner', message: /社長担当のタスク/ });
   }
   for (const text of ['本人のログイン', '社長が操作', '社長が確認', '社長がログイン']) {
     assert(findingNeedsOwner(text, 'Review the flow and document it.'));

@@ -139,7 +139,7 @@ export function createFindingStore({ dir, now = () => Date.now() }) {
     add(body, imageInputs = []) {
       const requestId = requestKey(body.requestId), next = fields(body), source = sourceFields(body.source);
       if (findingNeedsOwner(next.found, next.plan)) {
-        throw badRequest('finding_needs_owner', '社長の対応が必要です。気づきではなく、社長担当のLinear Taskを作成してください。');
+        throw badRequest('finding_needs_owner', '社長の対応が必要です。気づきではなく、社長担当のタスクを作成してください。');
       }
       const prior = all().find((row) => row.requestId === requestId);
       if (prior && prior.status !== 'open') return prior;
