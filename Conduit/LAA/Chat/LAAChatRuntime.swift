@@ -250,9 +250,9 @@ enum LAAChatModelCatalog {
         return ["muse", "dots"].contains(model) || ["custom:laa-muse", "custom:laa-dots", "laa-muse", "laa-dots"].contains { provider.matches($0) }
     }
 
-    /// Hermes' providers for Google AI Pro's Gemini (Sub2→Sub3→Sub4) and the
-    /// two paid APIs, as LAA names them (2026-11-23).
-    static let routeNames = ["laa-agy": "Gemini", "gpt-api": "GPT API", "claude-api": "Claude API"]
+    /// Hermes' providers for Gemini and the Claude API, as LAA names them
+    /// (2026-11-23; GPT API left with GPT on 2026-11-28, D-42).
+    static let routeNames = ["laa-agy": "Gemini", "claude-api": "Claude API"]
 
     /// The menu heading for a provider: LAA's name for those routes,
     /// Hermes' own name otherwise.
@@ -333,12 +333,6 @@ enum LAAChatModelCatalog {
                         table: LAAChatModelAllowList? = nil) -> [String] {
         // The model table's range when the Bridge gave one (D-21 E6).
         if let listed = table?.efforts(for: model) { return listed }
-        // Hermes agent/reasoning_effort.py CODEX_ASTRA_EFFORTS and the
-        // OpenAI Astra model contract: none/minimal are rejected.
-        if ["openai-codex", "codex", "openai"].contains(provider ?? ""),
-           LAAChatModelAllowList.key(model ?? "").hasPrefix("gpt-6"), (model ?? "").lowercased().contains("astra") {
-            return ["low", "medium", "high", "xhigh", "max"]
-        }
         // Gemini 4 through Antigravity: Low to XHigh (agy's thinking levels).
         if (model ?? "").lowercased().contains("gemini") {
             let gemini = ["low", "medium", "high", "xhigh"]
