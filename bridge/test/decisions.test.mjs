@@ -197,8 +197,7 @@ test('Monet delivery, idempotent replay, owner HTTP overturn, and answer-time st
   assert.deepEqual(f.service.stats(), { answeredByMonet: 1, overturnedByOwner: 1, ownerOnlyOpen: 1, monetOpen: 0, ownerAnswered: 1 });
   const since = new Date(f.now()).toISOString();
   assert.deepEqual(f.service.stats(since), { answeredByMonet: 0, overturnedByOwner: 1, ownerOnlyOpen: 1, monetOpen: 0, ownerAnswered: 1 });
-  assert.deepEqual(f.service.monetLog(), [{ id: r.id, subject: r.title, chosenOption: '来週', reason: '確認時間を確保', time: proxy.decision.answer.answeredAt,
-    overturned: true, ownerOption: '明日', ownerAnsweredAt: f.store.get(r.id).answer.answeredAt }]);
+  assert.deepEqual(f.service.monetLog(), [{ subject: r.title, chosenOption: '来週', reason: '確認時間を確保', time: proxy.decision.answer.answeredAt }]);
   assert.deepEqual(f.service.monetLog(since), []);
   assert.throws(() => f.service.stats('2026-02-30T00:00:00Z'), code('decision_invalid'));
 });
@@ -895,11 +894,12 @@ test('D-47: only the owner\'s own physical operation and authentication stay own
     assert.equal((await f.service.answerAsMonet({ id: r.id, body: { optionIndex: 1 }, reason: '推奨案' })).decision.answer.answeredBy, 'monet');
     assert.equal(JSON.parse(readFileSync(f.store.file, 'utf8')).records.find((x) => x.id === r.id).category, 'delegable');
   }
-  // The owner overturning Monet's design choice is listed for Monet's memory candidate.
+  // The owner overturning Monet's design choice: the board row keeps both answers for the
+  // supervisor's memory candidate (orchestrate overturned_decision_candidates).
   await f.service.answer({ id: brand.id, deviceId: 'phone', body: { optionIndex: 0, requestId: 'overturn' } });
-  const row = f.service.monetLog().find((r) => r.id === brand.id);
-  assert.equal(row.overturned, true); assert.equal(row.chosenOption, brand.options[1].label); assert.equal(row.ownerOption, brand.options[0].label);
-  assert.equal(f.service.monetLog().find((r) => r.id === money.id).overturned, undefined);
+  const row = (await f.service.list()).items.find((r) => r.id === brand.id);
+  assert.equal(row.overturned, true); assert.equal(row.monetAnswer.label, brand.options[1].label); assert.equal(row.answer.label, brand.options[0].label);
+  assert.equal(row.monetAnswer.reason, '紙色と細い罫の基準に合う。\n案Aは色数が多く本文が埋もれる。');
 });
 
 test('2026-11-28: the same conversation re-asking the same title replaces its open item', (t) => {

@@ -273,9 +273,7 @@ export function createDecisionService({ store, sessionStore = null, sessions = n
       const cutoff = sinceTime(since);
       return store.all().flatMap((r) => {
         const a = proxyAnswer(r);
-        // An overturned answer carries the owner's choice: Monet's memory candidate (D-47).
-        return a && Date.parse(a.answeredAt) >= cutoff ? [{ id: r.id, subject: r.title, chosenOption: a.label, reason: a.reason, time: a.answeredAt,
-          ...(r.overturned ? { overturned: true, ownerOption: r.answer.label, ownerAnsweredAt: r.answer.answeredAt } : {}) }] : [];
+        return a && Date.parse(a.answeredAt) >= cutoff ? [{ subject: r.title, chosenOption: a.label, reason: a.reason, time: a.answeredAt }] : [];
       }).sort((a, b) => b.time.localeCompare(a.time));
     },
     async answerAsMonet({ id, body, reason }) {
