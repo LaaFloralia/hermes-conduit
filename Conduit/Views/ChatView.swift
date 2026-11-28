@@ -2948,7 +2948,10 @@ struct AssistantBubble: View {
                 // A hold on the text selects it, as in Safari (owner,
                 // 2026-11-16); copy, reply, reactions, good and read aloud
                 // are the row below. Good is the 👍 reaction Hermes keeps.
-                reply.accessibilityIdentifier("chat.message.assistant")
+                // The container keeps its children's own identifiers
+                // (code-block Copy stays chat.code.copy, BUS-411).
+                reply.accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("chat.message.assistant")
                     // A Drive file a reply names opens in the app's Drive viewer.
                     .modifier(LAADriveLinkOpener())
                 if message.role == .assistant {
