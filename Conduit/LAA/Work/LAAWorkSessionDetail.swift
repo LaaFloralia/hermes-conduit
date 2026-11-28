@@ -1,6 +1,7 @@
 #if LAA_BUILD
 import SwiftUI
 import LAAKit
+import os
 
 private struct LAAWorkScrollHeightReader: ViewModifier {
     let onChange: (CGFloat) -> Void
@@ -148,14 +149,27 @@ struct LAAWorkSessionDetail: View {
     /// The last message the owner asked to quote into the follow-up field.
     @State private var quote: LAAWorkQuoteRequest?
     @AppStorage(ChatTypography.preferenceKey) private var responseSize = ChatTypography.defaultSize.rawValue
+    /// A held or failed follow-up is being re-sent or withdrawn.
+    @State private var heldBusy = false
+    @State private var heldNotice: String?
+    /// A withdrawn follow-up that could not go back into a non-empty draft.
+    @State private var withdrawnText: String?
+    /// A withdrawn follow-up put back into the (empty) field.
+    @State private var restoreRequest: LAAWorkQuoteRequest?
+    @State private var openSignpost: OSSignpostIntervalState?
+    private static let signposter = OSSignposter(subsystem: "com.laa.hortensia", category: "Work")
+    /// The list row the page was opened from, shown until the first read
+    /// (BUS-575). Never cached: the first read replaces it.
+    let seed: LAAWorkSession?
 
     /// Told each time the session's own record changes, so a Mac pane's
     /// heading shows the live phase and model rather than the list's copy.
     var onSession: ((LAAWorkSession) -> Void)?
 
     init(id: String, projects: [LAAWorkProject], workspaces: [LAAWorkWorkspace], drafts: ComposerDraftStore,
-         onSession: ((LAAWorkSession) -> Void)? = nil) {
+         seed: LAAWorkSession? = nil, onSession: ((LAAWorkSession) -> Void)? = nil) {
         self.id = id; self.projects = projects; self.workspaces = workspaces; self.drafts = drafts
+        self.seed = seed?.id == id ? seed : nil
         self.onSession = onSession
     }
 
@@ -273,6 +287,9 @@ struct LAAWorkSessionDetail: View {
         .onChange(of: openingReady) { _, ready in
             if ready { place(measuredContent, measuredViewport) }
         }
+        .onChange(of: historyReady) { _, ready in
+            if ready { endOpenSignpost() }
+        }
         .onChange(of: messages.count) { _, _ in followNewArrival() }
         .onChange(of: sentEchoes.count) { _, _ in followNewArrival() }
         .onChange(of: messages.last?.text) { _, _ in followNewArrival() }
@@ -307,7 +324,15 @@ struct LAAWorkSessionDetail: View {
                     if conversationUnavailable {
                         Text(verbatim: "履歴の応答がありません。接続を確認し、もう一度お試しください。")
                             .foregroundStyle(LAAColor.attention)
-                    } else if messages.isEmpty && sentEchoes.isEmpty && !canStop(session) && !session.needsDecision {
+                    } else if !historyReady {
+                        // Header and field are usable at once; only the
+                        // history is still on its way (BUS-575).
+                        HStack(spacing: LAASpacing.x2) {
+                            LAALoadingDots()
+                            Text(verbatim: "履歴を読み込み中").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                        }
+                        .accessibilityElement(children: .combine)
+                    } else if messages.isEmpty && heldItems.isEmpty && sentEchoes.isEmpty && !canStop(session) && !session.needsDecision {
                         // Only a quiet, idle session is empty: while it thinks
                         // or waits on a decision the line would contradict it.
                         Text(verbatim: "会話はまだありません。").foregroundStyle(LAAColor.secondaryText)
@@ -338,8 +363,25 @@ struct LAAWorkSessionDetail: View {
                             subagentGroup(placement)
                         }
                     }
-                    ForEach(sentEchoes) { echo in
+                    // A follow-up the Bridge holds is drawn from its queue
+                    // below; its echo would draw it twice.
+                    let heldTexts = Set(heldItems.compactMap(\.text))
+                    ForEach(sentEchoes.filter { !heldTexts.contains($0.text) }) { echo in
                         LAAWorkSentEchoRow(echo: echo, queued: (session.queue?.count ?? 0) > 0)
+                    }
+                    ForEach(heldItems) { item in
+                        LAAWorkHeldMessageRow(item: item, busy: heldBusy,
+                                              resend: { resendHeld(item) }, withdraw: { withdrawHeld(item) })
+                    }
+                    if let heldNotice {
+                        Text(verbatim: heldNotice).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
+                    }
+                    if let withdrawnText {
+                        VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                            Text(verbatim: LAACopy.WorkTab.heldWithdrawnCopy).laaTextStyle(.note).foregroundStyle(LAAColor.secondaryText)
+                            Text(verbatim: withdrawnText).textSelection(.enabled)
+                            Button(LAACopy.WorkTab.cancel) { self.withdrawnText = nil }.foregroundStyle(LAAColor.link)
+                        }.workCard()
                     }
                     // One line while the turn runs, in place of the tool
                     // traffic the transcript no longer lists (owner, 2026-11-12).
@@ -445,6 +487,7 @@ struct LAAWorkSessionDetail: View {
             interrupt: canStop(session) ? AnyView(stopButton) : nil,
             actionNotice: effortNotice,
             quote: quote,
+            restore: restoreRequest,
             onCheckState: { Task { await refreshSnapshot() } },
             onDecision: { parkedOnDecision = true; scrollRequest.move(to: .decision) },
             onSent: { text, attachments in
@@ -606,11 +649,15 @@ struct LAAWorkSessionDetail: View {
         snapshotInFlight = true
         defer { snapshotInFlight = false }
         do {
+            // Detail and history are read together; the children list (a
+            // full engine directory read) waits until the history is shown
+            // (BUS-575).
+            let bridge = self.bridge, sessionID = id
+            async let historyRead = Self.latestHistory(bridge, sessionID)
             let response: LAABridgeResponse<LAAWorkSession> = try await bridge.request(
                 method: "GET", path: "/v1/sessions/\(id)")
             try Task.checkCancellation()
             let detail = response.data
-            await refreshChildren()
             let detailData = try? snapshotData(detail)
             if detailData != lastDetailData {
                 session = detail; lastDetailData = detailData
@@ -621,12 +668,13 @@ struct LAAWorkSessionDetail: View {
             else if poll.isStopped { poll = LAAWorkTranscriptPoll() }
             // Opening or explicitly refreshing an archived conversation is a
             // one-shot read, not an automated transcript poll.
-            if retired && trigger != .user { failure = nil; return true }
+            if retired && trigger != .user {
+                await refreshChildren()
+                failure = nil; return true
+            }
             do {
-                let response: LAABridgeResponse<LAAWorkConversationPage> = try await bridge.request(
-                    method: "GET", path: LAAWorkTranscriptPages.latestPath(id))
+                let history = try await historyRead.get()
                 try Task.checkCancellation()
-                let history = response.data
                 if !retired { poll.complete(.success) }
                 compacting = history.compacting == true
                 // An older Bridge still sends tool rows; they are not part of
@@ -655,13 +703,14 @@ struct LAAWorkSessionDetail: View {
                 if !retired { poll.complete(Self.pollOutcome(for: error)) }
                 conversationUnavailable = true
             }
+            await refreshChildren()
             failure = nil
             if detail.phase == "stopped", !stopping, let pendingStop,
                !drafts.finishSubmission(pendingStop.id, restoring: false) {
                 failure = "確認した停止状態を端末に保存できませんでした。"
             }
             if detail.observation?.available == false {
-                notice = "委譲先の状態を観測できていません。表示は最後に確認できた記録です。"
+                notice = Self.observationNotice(detail.observation?.code)
             }
             return true
         } catch is CancellationError {
@@ -673,6 +722,99 @@ struct LAAWorkSessionDetail: View {
             failure = (error as? LAABridgeHTTPError).map(LAAWorkHTTP.message) ?? "セッションを読み取れませんでした。"
         }
         return false
+    }
+
+    /// What an unavailable observation means, by the Bridge's code.
+    static func observationNotice(_ code: String?) -> String {
+        switch code {
+        case "paseo_unavailable", "delegation_failed": return LAACopy.WorkTab.engineDownDetail
+        case "model_switch_pending": return LAACopy.WorkTab.modelSwitchChecking
+        default: return "委譲先の状態を観測できていません。表示は最後に確認できた記録です。"
+        }
+    }
+
+    @MainActor private static func latestHistory(_ bridge: LAABridgeSession, _ id: String) async
+        -> Result<LAAWorkConversationPage, Error> {
+        do {
+            let response: LAABridgeResponse<LAAWorkConversationPage> = try await bridge.request(
+                method: "GET", path: LAAWorkTranscriptPages.latestPath(id))
+            return .success(response.data)
+        } catch {
+            return .failure(error)
+        }
+    }
+
+    // MARK: - Held follow-ups
+
+    /// Queued and failed follow-ups the Bridge holds for this session.
+    private var heldItems: [LAAWorkSession.Queue.Item] {
+        (session?.queue?.items ?? []).filter { $0.status == nil || $0.status == "queued" || $0.status == "failed" }
+    }
+
+    /// A failed row goes back into the Mac's queue under its own id, so it
+    /// cannot reach the session twice.
+    private func resendHeld(_ item: LAAWorkSession.Queue.Item) {
+        struct Body: Encodable { let message: String; let messageId: String; let delivery: String }
+        guard !heldBusy, let text = item.text,
+              let body = try? JSONEncoder().encode(Body(message: text, messageId: item.id, delivery: "queue")) else { return }
+        heldBusy = true
+        Task { @MainActor in
+            defer { heldBusy = false }
+            do {
+                let _: LAAWorkSession = try await LAAWorkHTTP.write(
+                    bridge, path: "/v1/sessions/\(id)/messages", body: body, key: LAABridgeIdempotencyKey())
+                heldNotice = nil
+            } catch let error as LAABridgeHTTPError {
+                heldNotice = LAAWorkHTTP.message(error)
+            } catch let error as LAABridgeError {
+                heldNotice = error.japaneseText
+            } catch {
+                heldNotice = "再送の結果を確認できませんでした。状態を読み直してください。"
+            }
+            await refreshSnapshot()
+        }
+    }
+
+    /// Takes a held or failed row off the Mac and gives its text back: into
+    /// the field when it is empty, otherwise as a line the owner can copy.
+    private func withdrawHeld(_ item: LAAWorkSession.Queue.Item) {
+        struct Withdrawn: Decodable { let session: LAAWorkSession?; let text: String? }
+        guard !heldBusy else { return }
+        heldBusy = true
+        Task { @MainActor in
+            defer { heldBusy = false }
+            do {
+                let response: LAABridgeResponse<Withdrawn> = try await bridge.request(
+                    method: "DELETE", path: "/v1/sessions/\(id)/queue/\(item.id)",
+                    idempotencyKey: LAABridgeIdempotencyKey(), timeout: 30)
+                heldNotice = nil
+                if let moved = response.data.session { session = moved }
+                if let text = response.data.text ?? item.text, !text.isEmpty { giveBack(text) }
+            } catch let error as LAABridgeHTTPError {
+                heldNotice = LAAWorkHTTP.message(error)
+            } catch let error as LAABridgeError {
+                heldNotice = error.japaneseText
+            } catch {
+                heldNotice = "取り消しの結果を確認できませんでした。状態を読み直してください。"
+            }
+            await refreshSnapshot()
+        }
+    }
+
+    private func giveBack(_ text: String) {
+        let key = bridge.deviceID.map { LAAWorkDrafts.key(deviceID: $0, target: "message:\(id)") }
+        let draftEmpty = key.map { drafts.draft(for: $0).text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? false
+        if draftEmpty {
+            restoreRequest = LAAWorkQuoteRequest(text: text, token: (restoreRequest?.token ?? 0) &+ 1)
+        } else {
+            withdrawnText = text
+        }
+    }
+
+    private func endOpenSignpost() {
+        guard let state = openSignpost else { return }
+        Self.signposter.endInterval("work.session.open", state)
+        openSignpost = nil
     }
 
     private static func pollOutcome(for error: Error) -> LAAWorkTranscriptPoll.Outcome {
@@ -726,8 +868,13 @@ struct LAAWorkSessionDetail: View {
         let opening = cacheIdentity != identity
         if opening {
             cacheIdentity = identity
+            endOpenSignpost()
+            openSignpost = Self.signposter.beginInterval("work.session.open", id: Self.signposter.makeSignpostID())
             poll = LAAWorkTranscriptPoll()
             restoreTranscriptCache()
+            // The list row stands in until the first read (not cached).
+            if session == nil { session = seed }
+            if historyReady { endOpenSignpost() }
         }
         let retry = observationEpoch != appliedObservationEpoch
         appliedObservationEpoch = observationEpoch

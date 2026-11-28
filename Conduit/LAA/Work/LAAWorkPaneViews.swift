@@ -248,7 +248,7 @@ private struct LAAWorkPaneView: View {
     @ViewBuilder private var content: some View {
         if let id = pane.sessionID {
             NavigationStack {
-                LAAWorkSessionDetail(id: id, projects: projects, workspaces: [], drafts: drafts) { live = $0 }
+                LAAWorkSessionDetail(id: id, projects: projects, workspaces: [], drafts: drafts, seed: listed) { live = $0 }
                     // The pane's heading names the session; the bar would
                     // repeat it in every pane.
                     .toolbar(.hidden, for: .navigationBar)

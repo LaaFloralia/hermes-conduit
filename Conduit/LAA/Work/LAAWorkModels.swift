@@ -426,6 +426,25 @@ struct LAAWorkSession: Codable, Identifiable, Hashable {
     }
     struct Queue: Codable, Hashable {
         let count: Int
+        /// Rows whose delivery the Bridge gave up on; an older Bridge omits it.
+        var failed: Int? = nil
+        /// The held and failed follow-ups themselves; an older Bridge sends
+        /// counts only.
+        var items: [Item]? = nil
+
+        struct Item: Codable, Hashable, Identifiable {
+            let id: String
+            var status: String? = nil
+            /// `engine_unreachable` while the Work engine does not answer.
+            var reason: String? = nil
+            var text: String? = nil
+            var chars: Int? = nil
+            var queuedAt: String? = nil
+            var attempts: Int? = nil
+            var error: String? = nil
+
+            var isFailed: Bool { status == "failed" }
+        }
     }
 
     var isFavorite: Bool { favorite == true }

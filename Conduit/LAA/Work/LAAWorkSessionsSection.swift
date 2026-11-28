@@ -115,7 +115,7 @@ struct LAAWorkSessionsSection: View {
         .accessibilityIdentifier("work.sessions")
         .laaWorkArchivePrompt($archivePrompt)
         .navigationDestination(item: $opened) { session in
-            LAAWorkSessionDetail(id: session.id, projects: projects, workspaces: [], drafts: drafts)
+            LAAWorkSessionDetail(id: session.id, projects: projects, workspaces: [], drafts: drafts, seed: session)
         }
         .navigationDestination(item: $linkedSessionID) { id in
             LAAWorkSessionDetail(id: id, projects: projects, workspaces: [], drafts: drafts)

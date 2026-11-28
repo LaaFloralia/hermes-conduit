@@ -143,6 +143,54 @@ struct LAAWorkSentEchoRow: View {
     }
 }
 
+/// A follow-up the Bridge holds on the Mac (queued) or gave up on (failed).
+/// Drawn from the session's own queue, so it survives reopening the page.
+struct LAAWorkHeldMessageRow: View {
+    let item: LAAWorkSession.Queue.Item
+    let busy: Bool
+    let resend: () -> Void
+    let withdraw: () -> Void
+
+    private var caption: String {
+        if item.isFailed {
+            let reason = item.error.map { "（\($0)）" } ?? ""
+            return LAACopy.WorkTab.heldFailed + reason
+        }
+        return item.reason == "engine_unreachable" ? LAACopy.WorkTab.heldEngineDown : LAACopy.WorkTab.heldQueued
+    }
+
+    var body: some View {
+        LAATranscriptOwnerTurn(continues: false) {
+            VStack(alignment: .trailing, spacing: 4) {
+                Text(verbatim: item.text ?? "\(item.chars ?? 0)文字の指示")
+                    .font(.laaReading())
+                    .foregroundStyle(LAAColor.text)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+                    .laaTranscriptOwnerBubble()
+                    .opacity(0.86)
+                Label { Text(verbatim: caption) }
+                    icon: { Image(systemName: item.isFailed ? "exclamationmark.triangle.fill" : "clock") }
+                    .laaTextStyle(.note)
+                    .foregroundStyle(item.isFailed ? LAAColor.attention : LAAColor.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("work.session.held")
+                HStack(spacing: LAASpacing.x3) {
+                    if item.isFailed, item.text != nil {
+                        Button(LAACopy.WorkTab.heldResend, action: resend)
+                            .accessibilityIdentifier("work.session.held.resend")
+                    }
+                    Button(LAACopy.WorkTab.heldWithdraw, action: withdraw)
+                        .accessibilityIdentifier("work.session.held.withdraw")
+                }
+                .laaTextStyle(.note)
+                .foregroundStyle(LAAColor.link)
+                .disabled(busy)
+            }
+        }
+    }
+}
+
 // MARK: - Pictures
 
 enum LAAWorkAttachmentImage {

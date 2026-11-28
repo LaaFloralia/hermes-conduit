@@ -75,6 +75,9 @@ enum LAAWorkHTTP {
         case "session_not_stopped": return "停止を確認できていないため再開できません。"
         case "stop_unconfirmed": return "停止要求は届きましたが、停止を確認できていません。"
         case "idempotency_key_in_flight": return "前の要求は処理中です。状態を確認してください。"
+        case "paseo_unavailable": return "Workエンジンが応答していません。少し待ってから同じIDで再送できます。"
+        case "queue_delivering": return "送信中のため取り消せません。"
+        case "message_sent": return "送信済みのため取り消せません。"
         case "task_operation_compacted":
             switch compactedResult(error) {
             case .succeeded: return "前の要求は反映済みです。タスクを確認してから、送信待ちで破棄してください。"

@@ -22,7 +22,12 @@ struct LAAWorkMessageForm: View {
     /// `delivery` is how a follow-up meets a running turn: "now" interrupts it
     /// and delivers at once (the default, owner 2026-11-15), "queue" waits for
     /// the turn to end and is chosen explicitly from Send's menu.
-    struct Payload: Codable { let message: String; let requestId: String?; var images: [LAAWorkImagePayload]? = nil; var delivery: String? = nil }
+    /// `messageId` is "msg_" + the request's idempotency key, so the app knows
+    /// which outbox row is its own; a resend with it never becomes a second turn.
+    struct Payload: Codable {
+        let message: String; let requestId: String?; var images: [LAAWorkImagePayload]? = nil; var delivery: String? = nil
+        var messageId: String? = nil
+    }
     static func delivery(mode: Mode, queue: Bool) -> String? { mode == .followUp ? (queue ? "queue" : "now") : nil }
 
     @EnvironmentObject private var bridge: LAABridgeSession
@@ -40,6 +45,8 @@ struct LAAWorkMessageForm: View {
     let actionNotice: String?
     /// A message to quote into the field, from the transcript's 引用.
     let quote: LAAWorkQuoteRequest?
+    /// A withdrawn follow-up to put back into the empty field.
+    let restore: LAAWorkQuoteRequest?
     /// Told the text and pictures of a follow-up the Bridge accepted, so the
     /// transcript can show it until Paseo's history does.
     let onSent: ((String, [Attachment]) -> Void)?
@@ -58,7 +65,7 @@ struct LAAWorkMessageForm: View {
 
     init(sessionID: String, readiness: Readiness, drafts: ComposerDraftStore,
          settingsRow: AnyView? = nil, interrupt: AnyView? = nil, actionNotice: String? = nil,
-         quote: LAAWorkQuoteRequest? = nil, onCheckState: @escaping () -> Void, onDecision: @escaping () -> Void,
+         quote: LAAWorkQuoteRequest? = nil, restore: LAAWorkQuoteRequest? = nil, onCheckState: @escaping () -> Void, onDecision: @escaping () -> Void,
          onSent: ((String, [Attachment]) -> Void)? = nil,
          onSuccess: @escaping (LAAWorkSession) -> Void) {
         self.sessionID = sessionID
@@ -70,6 +77,7 @@ struct LAAWorkMessageForm: View {
         self.interrupt = interrupt
         self.actionNotice = actionNotice
         self.quote = quote
+        self.restore = restore
         self.onSent = onSent
         self.onSuccess = onSuccess
     }
@@ -216,11 +224,18 @@ struct LAAWorkMessageForm: View {
             if let pending {
                 VStack(alignment: .leading, spacing: LAASpacing.x2) {
                     Label(LAAWorkPresentation.japanese("送信結果は未確認"), systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention)
-                    Text(verbatim: "状態を確認したうえで、同じ内容とIDで再照合できます。新しい送信は始めません。")
+                    let resume = pendingMode(pending) == .resume
+                    Text(verbatim: resume ? "状態を確認したうえで、同じ内容とIDで再照合できます。新しい送信は始めません。"
+                                          : LAACopy.WorkTab.unknownFollowUp)
                     Text(verbatim: pending.draft.text).laaTextStyle(.secondary).lineLimit(4)
-                    if pendingMode(pending) == .resume {
+                    if resume {
                         Button(LAACopy.WorkTab.checkSuccessor) { Task { await reconcile(pending) } }.disabled(sending)
                     } else {
+                        // The same body and key: the Bridge and the engine
+                        // accept one message id once (WP-W1).
+                        Button(LAACopy.WorkTab.resendSameID) { Task { await perform(pending) } }
+                            .disabled(sending || !LAAWorkDrafts.canRepeat(pending))
+                            .accessibilityIdentifier("work.composer.resendSameID")
                         Button(LAACopy.WorkTab.resolveSend) { showResolution = true }.disabled(sending)
                     }
                 }.workCard()
@@ -275,6 +290,15 @@ struct LAAWorkMessageForm: View {
             text = LAAWorkQuoteRequest.inserting(LAAWorkQuoteRequest.markdown(request.text), into: text)
             revision &+= 1
             saveDraft(text)
+            focusRequest &+= 1
+        }
+        .onChange(of: restore) { _, request in
+            guard let request, mode == .followUp, pending == nil, !sending,
+                  text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            text = request.text
+            revision &+= 1
+            saveDraft(text)
+            held = nil
             focusRequest &+= 1
         }
         .onChange(of: photo) { _, selected in
@@ -355,13 +379,15 @@ struct LAAWorkMessageForm: View {
             guard let value = attachment.uri.components(separatedBy: ",").last else { return nil }
             return LAAWorkImagePayload(data: value, mimeType: attachment.mimeType ?? "image/jpeg")
         }
+        let idempotency = LAABridgeIdempotencyKey()
         let payload = Payload(message: message, requestId: mode == .resume ? UUID().uuidString.lowercased() : nil, images: images.isEmpty ? nil : images,
-                              delivery: Self.delivery(mode: mode, queue: queue || readiness == .queue))
+                              delivery: Self.delivery(mode: mode, queue: queue || readiness == .queue),
+                              messageId: mode == .followUp ? "msg_" + idempotency.value : nil)
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
         guard let data = try? encoder.encode(payload),
               let item = LAAWorkDrafts.reserve(drafts, key: key, text: message, body: data,
-                                               idempotency: LAABridgeIdempotencyKey(), attachments: attachments) else {
+                                               idempotency: idempotency, attachments: attachments) else {
             error = "送信前に下書きと要求IDを保存できませんでした。"; return
         }
         revision &+= 1
@@ -385,7 +411,12 @@ struct LAAWorkMessageForm: View {
             error = nil
             refusedForDecision = false
             if requestMode == .followUp {
-                if result.queued == true { held = LAACopy.WorkTab.followUpQueued }
+                if result.queued == true {
+                    let sentID = (try? JSONDecoder().decode(Payload.self, from: body))?.messageId
+                    let row = result.queue?.items?.first { $0.id == sentID }
+                    held = row?.reason == "engine_unreachable" ? LAACopy.WorkTab.followUpHeldEngineDown
+                        : LAACopy.WorkTab.followUpQueued
+                }
                 onSent?(item.draft.text, item.draft.attachments)
             }
             onSuccess(result)

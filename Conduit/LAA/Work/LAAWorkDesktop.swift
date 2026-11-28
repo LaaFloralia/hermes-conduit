@@ -175,7 +175,7 @@ struct LAAWorkDesktopSessionsView: View {
             #else
             if let selected {
                 NavigationStack {
-                    LAAWorkSessionDetail(id: selected.id, projects: projects, workspaces: [], drafts: drafts)
+                    LAAWorkSessionDetail(id: selected.id, projects: projects, workspaces: [], drafts: drafts, seed: selected)
                         .id(selected.id)
                 }
             } else {
