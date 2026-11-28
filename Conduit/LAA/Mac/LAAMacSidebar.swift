@@ -135,6 +135,10 @@ struct LAAMacSidebar: View {
             // Settings window; ⌘, still does too).
             LAASidebarAppEntry(app: .owner(version: "")) {
                 LAAAppSettingsCard(openSettings: onRequestSettings, showsMac: false)
+                    // The popover is its own window: it does not inherit the
+                    // objects the sidebar holds, and the card's rows read both.
+                    .environmentObject(appState)
+                    .environmentObject(bridge)
             }
             .help(LAACopy.settings)
         }
