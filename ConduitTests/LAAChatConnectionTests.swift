@@ -30,7 +30,12 @@ final class LAAChatConnectionTests: XCTestCase {
             let start = ContinuousClock.now
             state.widgetLaunchPendingLinkChanged(link)
             let preview = state.laaEmployeeChatPreview
-            XCTAssertFalse(preview.canQueue("fixture turn", isComposing: false))
+            // Only the first run is a cold start: the runs after it begin with
+            // the store's in-memory copy already warm, so there is no attach
+            // wait left to gate on. The rule under test is the cold one.
+            if iteration == 1 {
+                XCTAssertFalse(preview.canQueue("fixture turn", isComposing: false))
+            }
             try await wait { preview.presentation?.displayedMessages.first?.id == "saved" }
             let firstCachedRow = start.duration(to: .now)
             XCTAssertTrue(preview.canQueue("fixture turn", isComposing: false))

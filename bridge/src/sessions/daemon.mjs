@@ -287,7 +287,8 @@ export function daemonAdapter({ connect = connectDaemon, now = () => Date.now(),
       if (isBusy(source)) throw conflict('model_switch_busy', 'wait for the current turn to finish');
       await assertChildrenIdle(c, [id, ...relatedIds]);
       return { id, workspaceId: source.workspaceId, cwd: source.cwd, title: source.title,
-        parentAgentId: source.labels?.[PARENT_LABEL] ?? null, relatedIds };
+        parentAgentId: source.labels?.[PARENT_LABEL] ?? null, relatedIds,
+        permissionLevel: snapshot(source, now()).permissionLevel };
     }),
     startContinuation: ({ source, id, target, prompt }) => call(async (c) => {
       const before = await agent(c, source.id);
@@ -472,6 +473,26 @@ export function runningModel(a) {
   const reported = raw.trim().replace(/\[1m\]$/i, '');
   return reported.startsWith(`${mapped}-`) && /^-\d{1,2}$/.test(reported.slice(mapped.length)) ? reported : mapped;
 }
+function fallbackPermissionLevel(a) {
+  const harness = typeof a.harness === 'string' ? a.harness
+    : typeof a.runtimeInfo?.extra?.harness === 'string' ? a.runtimeInfo.extra.harness : a.provider;
+  const mode = a.currentModeId ?? a.runtimeInfo?.modeId ?? null;
+  if (['claude', 'claude-api'].includes(harness)) return mode === 'plan' ? 0 : mode == null || mode === 'bypassPermissions' ? 2 : 1;
+  if (harness === 'codex') return mode === 'read-only' ? 0 : mode == null || mode === 'full-access' ? 2 : 1;
+  if (['pi', 'pi-openai-api'].includes(harness)) return mode === 'read-only' ? 0 : 2;
+  if (harness === 'devin') {
+    if (mode === 'plan') return 0;
+    if (['ask', 'accept-edits'].includes(mode)) return 1;
+    if (mode === 'bypass') return 2;
+  }
+  if (['dsh', 'dsh-refuseless', 'antigravity', 'hermes-claude-api', 'hermes-openai-api'].includes(harness)) {
+    const autoAccept = Array.isArray(a.features) ? a.features.find((f) => f?.id === 'auto_accept')?.value : undefined;
+    return autoAccept === false ? 1 : 2;
+  }
+  if (['dots', 'muse'].includes(harness)) return 2;
+  return null;
+}
+
 export function snapshot(a, now) {
   const pending = a.pendingPermissions ?? [];
   const effort = a.effectiveThinkingOptionId ?? a.thinkingOptionId ?? null;
@@ -483,6 +504,9 @@ export function snapshot(a, now) {
       : typeof a.runtimeInfo?.extra?.harness === 'string' ? a.runtimeInfo.extra.harness : null,
     phase: pending.length ? 'awaiting_decision' : a.status === 'idle' && !a.activeTurn ? 'awaiting_review' : a.status,
     pending,
+    // Prefer the engine's provider-neutral permission level (0 read-only, 1 asks, 2 acts freely);
+    // the fallback reads older engine snapshots without depending on a Bridge-created mode.
+    permissionLevel: typeof a.permissionLevel === 'number' ? a.permissionLevel : fallbackPermissionLevel(a),
     // The runtime reports model/mode in `runtimeInfo` and the applied thinking
     // option separately; checking `runtimeInfo.effort` alone could never verify.
     modelCheck: { observed, runtimeVerified: Boolean(a.runtimeInfo?.model && effort) },

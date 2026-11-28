@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { createSessionStore } from '../src/sessions/store.mjs';
 import { createModelSwitcher, joinedHistory, handoffSections } from '../src/sessions/model-switch.mjs';
 import { createSessionService } from '../src/sessions/service.mjs';
-import { daemonAdapter } from '../src/sessions/daemon.mjs';
+import { daemonAdapter, snapshot } from '../src/sessions/daemon.mjs';
 import { BridgeError } from '../src/errors.mjs';
 import { startBridge } from './helpers.mjs';
 
@@ -15,6 +15,8 @@ const profiles = [
   { id: 'codex-sol-high', provider: 'codex', model: 'sol', effort: 'high' },
   { id: 'dsh-high', provider: 'dsh', model: '["opencode-go","deepseek-v4.1-flash"]', effort: 'high' },
   { id: 'api-fable-high', provider: 'hermes-claude-api', model: 'fable', effort: 'high' },
+  { id: 'swe-max', provider: 'devin', model: 'swe-2-1-medium', effort: 'max' },
+  { id: 'mythos-high', provider: 'claude', model: 'claude-mythos-5-2', effort: 'high' },
 ];
 const choices = () => ({ profiles });
 const iso = '2026-11-14T00:00:00.000Z';
@@ -93,6 +95,21 @@ test('a session that asks before acting is never continued without prompts', asy
   }
 });
 
+test('a recorded bypass cannot override a lower runtime permission level', async (t) => {
+  const f = fixture(t);
+  f.store.update(f.record.id, (row) => { row.mode = 'bypass'; row.permissionLevel = 1; return []; });
+  await assert.rejects(f.switcher.switchProvider(f.record.id, profiles[1]), { code: 'model_unsupported' });
+  assert.equal(f.calls.length, 0);
+});
+
+test('a live asking runtime is refused even when the stored row still looks free', async (t) => {
+  const f = fixture(t);
+  f.daemon.continuationSource = async () => ({ id: 'old', workspaceId: 'same-workspace', cwd: '/workspace', parentAgentId: 'parent', permissionLevel: 1 });
+  await assert.rejects(f.switcher.switchProvider(f.record.id, profiles[1]), { code: 'model_unsupported' });
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.store.get(f.record.id).delegate.sessionId, 'old');
+});
+
 test('verified owner switch keeps the logical row, metadata, old message IDs and linked history', async (t) => {
   const f = fixture(t);
   const result = await f.switcher.switchProvider(f.record.id, profiles[1]);
@@ -131,6 +148,24 @@ test('the turns before a provider change stay in the conversation when the archi
   const after = (await service.conversation(f.record.id)).items;
   assert.deepEqual(after.map((item) => item.id),
     ['u1', 'a0', `${first.delegate.sessionId}:a1`, `${second.delegate.sessionId}:a1`]);
+});
+
+test('Claude, SWE-2.1 and DeepSeek continuations can switch forward and back on one logical session', async (t) => {
+  const f = fixture(t);
+  f.store.update(f.record.id, (row) => { row.mode = null; row.permissionLevel = 2; return []; });
+  let observed = profiles[1];
+  f.daemon.status = async () => ({ phase: 'awaiting_review', daemonStatus: 'idle', modelCheck: { observed, runtimeVerified: true } });
+  const route = [profiles.find((p) => p.id === 'swe-max'), profiles.find((p) => p.id === 'mythos-high'), profiles.find((p) => p.id === 'dsh-high')];
+  for (const target of route) {
+    observed = target;
+    const result = await f.switcher.switchProvider(f.record.id, target);
+    assert.equal(result.observed.provider, target.provider);
+    assert.equal(result.observed.model, target.model);
+    assert.equal(result.observed.effort, target.effort);
+  }
+  const row = f.store.get(f.record.id);
+  assert.equal(row.delegateHistory.length, 3);
+  assert.equal(row.observed.provider, 'dsh');
 });
 
 for (const reason of ['wrong model', 'unverified runtime', 'no first reply', 'startup failure']) {
@@ -182,8 +217,8 @@ test('off-catalog provider/model/effort and below-High continuation are rejected
   assert.equal(f.calls.length, 0);
 });
 
-function nativeFixture() {
-  const rows = [{ id: 'old', provider: 'claude', model: 'opus', workspaceId: 'w', cwd: '/workspace', title: 'same', status: 'idle', labels: { 'paseo.parent-agent-id': 'parent' } }];
+function nativeFixture(source = {}) {
+  const rows = [{ id: 'old', provider: 'claude', model: 'opus', workspaceId: 'w', cwd: '/workspace', title: 'same', status: 'idle', labels: { 'paseo.parent-agent-id': 'parent' }, ...source }];
   const calls = [];
   const client = {
     fetchAgent: async ({ agentId }) => ({ agent: rows.find((r) => r.id === agentId) }),
@@ -202,15 +237,59 @@ for (const target of profiles.slice(1)) {
     await f.daemon.startContinuation({ source, id: 'new', target, prompt: 'handoff only' });
     const call = f.calls[0];
     assert.equal(call.callerAgentId, 'parent'); assert.equal(call.workspaceId, 'w'); assert.equal(call.cwd, '/workspace');
-    assert.equal(call.thinkingOptionId, 'high');
+    assert.equal(call.thinkingOptionId, target.effort);
     assert.equal(call.provider, target.provider); assert.equal(call.model, target.model);
     assert.equal('auth' in call, false); assert.equal('env' in call, false);
-    assert.deepEqual(call.featureValues, target.provider === 'codex' ? { service_tier: 'default' } : { auto_accept: true });
+    assert.deepEqual(call.featureValues, target.provider === 'codex' ? { service_tier: 'default' }
+      : target.provider === 'claude' ? { fast_mode: false } : { auto_accept: true });
+    assert.equal(call.modeId, target.provider === 'claude' ? 'bypassPermissions'
+      : target.provider === 'codex' ? 'full-access'
+        : target.provider === 'hermes-claude-api' ? 'dont_ask' : undefined);
     f.rows.push({ id: 'idle-child', status: 'idle', labels: { 'paseo.parent-agent-id': 'old' } });
     await f.daemon.archiveDelegate('old');
     assert.equal(f.rows.find((r) => r.id === 'idle-child').archivedAt, undefined);
   });
 }
+test('native continuation source carries the live runtime permission level', async () => {
+  const f = nativeFixture({ provider: 'devin', currentModeId: 'ask' });
+  const source = await f.daemon.continuationSource('old');
+  assert.equal(source.permissionLevel, 1);
+});
+
+test('native SWE-2.1 continuation back to Claude uses Claude bypass without copying auth', async () => {
+  const f = nativeFixture({ provider: 'devin', model: 'swe-2-1-medium' });
+  const source = await f.daemon.continuationSource('old');
+  const target = profiles.find((p) => p.id === 'mythos-high');
+  await f.daemon.startContinuation({ source, id: 'new', target, prompt: 'handoff only' });
+  const call = f.calls[0];
+  assert.equal(call.provider, 'claude');
+  assert.equal(call.model, 'claude-mythos-5-2');
+  assert.equal(call.modeId, 'bypassPermissions');
+  assert.deepEqual(call.featureValues, { fast_mode: false });
+  assert.equal('auth' in call, false);
+  assert.equal('env' in call, false);
+});
+
+test('daemon snapshots derive permission levels when an older engine omits the neutral field', () => {
+  const base = { id: 'a', provider: 'claude', model: 'opus', status: 'idle', features: [] };
+  for (const [row, level] of [
+    [{ provider: 'claude', currentModeId: null }, 2],
+    [{ provider: 'claude', currentModeId: 'bypassPermissions' }, 2],
+    [{ provider: 'claude', currentModeId: 'auto' }, 1],
+    [{ provider: 'claude', currentModeId: 'plan' }, 0],
+    [{ provider: 'codex', currentModeId: 'full-access' }, 2],
+    [{ provider: 'codex', currentModeId: 'auto' }, 1],
+    [{ provider: 'pi-openai-api', currentModeId: 'read-only' }, 0],
+    [{ provider: 'devin', currentModeId: 'bypass' }, 2],
+    [{ provider: 'devin', currentModeId: 'ask' }, 1],
+    [{ provider: 'devin', currentModeId: 'plan' }, 0],
+    [{ provider: 'dsh', features: [{ id: 'auto_accept', value: false }] }, 1],
+    [{ provider: 'dsh', features: [{ id: 'auto_accept', value: true }] }, 2],
+    [{ provider: 'devin', currentModeId: 'bypass', permissionLevel: 1 }, 1],
+    [{ provider: 'future-provider', currentModeId: 'strict' }, null],
+  ]) assert.equal(snapshot({ ...base, ...row }, iso).permissionLevel, level, JSON.stringify(row));
+});
+
 for (const scenario of ['turn', 'decision', 'child', 'grandchild']) {
   test(`native rejects ${scenario} before creating another agent`, async () => {
     const f = nativeFixture();
@@ -270,6 +349,37 @@ test('directory sync joins retired aliases to the original row and preserves chi
   assert.equal(current.projectId, f.record.projectId);
   assert.equal(current.delegate.handoff, true);
   assert.equal(current.delegateHistory[0].sessionId, 'old');
+  assert.equal(current.permissionLevel, 2);
+  assert.equal(service.view(current).capabilities.providerSwitch, true);
+});
+
+test('directory sync of imported sessions derives provider switching from runtime modes, not stored creation mode', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'model-switch-imported-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const store = createSessionStore({ file: join(dir, 'sessions.json'), now: () => Date.parse(iso) });
+  const agents = [
+    { id: 'free-import', provider: 'devin', model: 'swe-2-1-medium', status: 'idle', workspaceId: 'w', cwd: '/workspace', title: 'imported',
+      labels: {}, currentModeId: 'bypass', thinkingOptionId: 'max', runtimeInfo: { model: 'swe-2-1-medium' }, createdAt: iso, updatedAt: iso },
+    { id: 'asking-import', provider: 'claude', model: 'claude-opus-5-5', status: 'idle', workspaceId: 'w', cwd: '/workspace', title: 'asking',
+      labels: {}, currentModeId: 'default', thinkingOptionId: 'high', runtimeInfo: { model: 'claude-opus-5-5' }, createdAt: iso, updatedAt: iso },
+  ];
+  const daemon = {
+    list: async () => agents,
+    workspacePins: async () => [{ id: 'w', title: 'imported workspace', pinnedAt: null }],
+    tidyWorkspaces: async () => {},
+    exists: async () => true,
+    startContinuation: async () => {},
+  };
+  const service = createSessionService({ sessionStore: store, adapter: {}, daemon, choices, notify: async () => {} });
+  t.after(() => service.close());
+  await service.syncDaemon();
+  const free = store.all().find((row) => row.delegate.sessionId === 'free-import');
+  const asking = store.all().find((row) => row.delegate.sessionId === 'asking-import');
+  assert.equal(free.mode ?? null, null);
+  assert.equal(free.permissionLevel, 2);
+  assert.equal(service.view(free).capabilities.providerSwitch, true);
+  assert.equal(asking.permissionLevel, 1);
+  assert.equal(service.view(asking).capabilities.providerSwitch, false);
 });
 
 test('project defaults persist with ETag, reject unlisted choices and feed new sessions while explicit choices win', async (t) => {
@@ -297,4 +407,21 @@ test('project defaults persist with ETag, reject unlisted choices and feed new s
   assert.equal((await make('default-explicit', { profile: profiles[0].id })).status, 201);
   assert.equal(creates.at(-1).profile, profiles[0].id);
   assert.equal((await patch({ defaultProfile: null }, '"2"', 'clear')).body.data.defaultProfile, null);
+});
+
+test('an imported session uses the engine permission level for provider switching', async (t) => {
+  const f = fixture(t);
+  f.store.update(f.record.id, (row) => { row.mode = null; row.permissionLevel = null; return []; });
+  const status = (permissionLevel) => ({ phase: 'awaiting_review', daemonStatus: 'idle', permissionLevel,
+    modelCheck: { observed: profiles[0], runtimeVerified: true }, features: [] });
+  f.daemon.status = async () => status(2);
+  f.daemon.capabilities = () => ({ effortUpdate: true, modelUpdate: true });
+  const service = createSessionService({ sessionStore: f.store, adapter: {}, daemon: f.daemon, history: f.history, choices, notify: async () => {} });
+  t.after(() => service.close());
+  await service.observe(f.record.id, { force: true });
+  assert.equal(f.store.get(f.record.id).permissionLevel, 2);
+  assert.equal(service.view(f.store.get(f.record.id)).capabilities.providerSwitch, true);
+  f.daemon.status = async () => status(1);
+  await service.observe(f.record.id, { force: true });
+  assert.equal(service.view(f.store.get(f.record.id)).capabilities.providerSwitch, false);
 });

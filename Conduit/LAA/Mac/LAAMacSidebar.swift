@@ -1,6 +1,7 @@
 #if LAA_BUILD && targetEnvironment(macCatalyst)
 import LAAKit
 import SwiftUI
+import UIKit
 
 /// The Mac window's sidebar: the LAA heading, one row per section, and the
 /// Mac's connection state with the app's icon beneath it (it opens the settings card).
@@ -51,14 +52,30 @@ struct LAAMacSidebar: View {
             .padding(.bottom, LAASpacing.x3)
     }
 
+    /// Chat wears Monet's silhouette, the same shape the iPhone bar draws (D-29
+    /// item 13): the bar's own artwork, not a speech-bubble symbol. The other
+    /// rows keep the app's line icons.
+    @ViewBuilder private func rowIcon(_ item: LAAMacSection) -> some View {
+        if item == .chats, let glyph = UIImage(named: "LAAMonetTabGlyph") {
+            Image(uiImage: glyph)
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: LAAIconSize.inline / LAAMacWindow.scale,
+                       height: LAAIconSize.inline / LAAMacWindow.scale)
+        } else {
+            LAAIconImage(item == .drive ? .folder : item.tab.icon,
+                         size: LAAIconSize.inline / LAAMacWindow.scale)
+        }
+    }
+
     private func row(_ item: LAAMacSection) -> some View {
         let selected = section == item
         return Button {
             section = item
         } label: {
             HStack(spacing: LAASpacing.x3) {
-                LAAIconImage(item == .drive ? .folder : item.tab.icon,
-                             size: LAAIconSize.inline / LAAMacWindow.scale)
+                rowIcon(item)
                     .frame(width: LAAIconSize.inline / LAAMacWindow.scale, alignment: .center)
                     .foregroundStyle(selected ? LAAColor.link : LAAColor.secondaryText)
                     .accessibilityHidden(true)
@@ -118,6 +135,10 @@ struct LAAMacSidebar: View {
             // Settings window; ⌘, still does too).
             LAASidebarAppEntry(app: .owner(version: "")) {
                 LAAAppSettingsCard(openSettings: onRequestSettings, showsMac: false)
+                    // The popover is its own window: it does not inherit the
+                    // objects the sidebar holds, and the card's rows read both.
+                    .environmentObject(appState)
+                    .environmentObject(bridge)
             }
             .help(LAACopy.settings)
         }
