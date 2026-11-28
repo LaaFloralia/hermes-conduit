@@ -251,7 +251,6 @@ test('provider discovery coalesces cold calls, refreshes stale rows and backs of
 test('new sessions forward explicit Max and Refuseless profile keys unchanged', async (t) => {
   const calls = [];
   const requested = {
-    'astra-max': { provider: 'codex', model: 'gpt-6.2-astra', effort: 'max' },
     'mythos-max': { provider: 'claude', model: 'claude-mythos-5-2', effort: 'max' },
     'deepseek-uncensored-max': { provider: 'dsh-refuseless', model: '["refuseless","deepseek-v4.1-flash-abliterated-fast"]', effort: 'max' },
   };

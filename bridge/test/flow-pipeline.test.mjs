@@ -383,7 +383,7 @@ test('needs_owner: an owner-only choice waits on the board; a delegable one is a
   h.returns(sessionId, SLIP);
   let [turn] = (await h.pipeline.claim({ caller: MONET })).events;
   const brand = await h.pipeline.applyVerdict(turn.id, { verdict: 'needs_owner', note: '見出しの色が決まらない',
-    decision: { title: '見出しの色', options: ['藤色', '白'], recommended: 0, impact: '【必ず社長：ブランドの好み】見出しの色' } }, { caller: MONET });
+    decision: { title: '見出しの色', options: ['藤色', '白'], recommended: 0, impact: '【必ず社長：本人の操作】見出しの色' } }, { caller: MONET });
   assert.equal(brand.answeredBy, undefined);
   assert.equal(h.decisionStore.get(brand.decisionId).category, 'owner');
   assert.equal(h.flows.get(flow.id).state, 'awaiting_decision');
@@ -463,7 +463,7 @@ test('sessions outside a flow: a requirement-linked return is verified, a Monet 
 
 test('a decision answered with nobody to deliver it to reaches Monet instead of being stored and forgotten', async (t) => {
   const h = harness(t);
-  const { decision } = h.decisionStore.add({ title: '保存先を選ぶ', summary: 'Monetの会話から登録', impact: '【必ず社長：ブランドの好み】名前', requestId: 'd1',
+  const { decision } = h.decisionStore.add({ title: '保存先を選ぶ', summary: 'Monetの会話から登録', impact: '【必ず社長：本人の操作】名前', requestId: 'd1',
     options: [{ label: '案A' }, { label: '案B' }], source: { paseoAgentId: null } });
   await h.settle();
   assert.deepEqual((await h.pipeline.claim({ caller: MONET })).events, []);
