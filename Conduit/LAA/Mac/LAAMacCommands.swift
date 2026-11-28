@@ -28,7 +28,9 @@ struct LAAMacCommands: Commands {
                 .keyboardShortcut("f", modifiers: .command)
                 .disabled(section?.canSearch != true)
         }
-        CommandGroup(before: .toolbar) {
+        // The app has no toolbar and no tabs of its own: replacing the group
+        // keeps Reload and Close Session without Show/Customize Toolbar.
+        CommandGroup(replacing: .toolbar) {
             Button(LAACopy.macReload) { section?.reload() }
                 .keyboardShortcut("r", modifiers: .command)
                 .disabled(section?.canReload != true)
@@ -49,6 +51,11 @@ struct LAAMacCommands: Commands {
                 .keyboardShortcut(section?.newShortcut ?? "n", modifiers: section?.newModifiers ?? .command)
                 .disabled(section?.canCreate != true)
         }
+        // No documents: Duplicate, Move, Rename… and Export As… have nothing
+        // to act on, so the File menu keeps only what this app can do.
+        CommandGroup(replacing: .saveItem) {}
+        // A private build has no Apple feedback channel to send to.
+        CommandGroup(replacing: .help) {}
         CommandGroup(replacing: .appSettings) {
             Button(LAACopy.macSettingsMenu) { model.openSettings += 1 }
                 .keyboardShortcut(",", modifiers: .command)
