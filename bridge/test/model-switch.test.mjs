@@ -273,7 +273,11 @@ test('native SWE-2.1 continuation back to Claude uses Claude bypass without copy
 test('daemon snapshots derive permission levels when an older engine omits the neutral field', () => {
   const base = { id: 'a', provider: 'claude', model: 'opus', status: 'idle', features: [] };
   for (const [row, level] of [
-    [{ provider: 'claude', currentModeId: null }, 2],
+    [{ provider: 'claude', currentModeId: null }, null],
+    [{ provider: 'codex', currentModeId: null }, null],
+    [{ provider: 'pi', currentModeId: null }, null],
+    [{ provider: 'dsh', features: [] }, null],
+    [{ provider: 'antigravity', features: [{ id: 'auto_accept', value: 'yes' }] }, null],
     [{ provider: 'claude', currentModeId: 'bypassPermissions' }, 2],
     [{ provider: 'claude', currentModeId: 'auto' }, 1],
     [{ provider: 'claude', currentModeId: 'plan' }, 0],
@@ -334,7 +338,7 @@ test('directory sync joins retired aliases to the original row and preserves chi
   const { delegate } = await f.switcher.switchProvider(f.record.id, profiles[1]);
   f.daemon.list = async () => [
     { id: 'old', provider: 'claude', model: 'opus', status: 'idle', archivedAt: iso, labels: {}, createdAt: iso, updatedAt: iso },
-    { id: delegate.sessionId, provider: 'codex', model: 'sol', status: 'idle', thinkingOptionId: 'high', labels: { 'laa.bridge.model-continuation': 'old' }, createdAt: iso, updatedAt: iso },
+    { id: delegate.sessionId, provider: 'codex', model: 'sol', status: 'idle', currentModeId: 'full-access', thinkingOptionId: 'high', labels: { 'laa.bridge.model-continuation': 'old' }, createdAt: iso, updatedAt: iso },
     { id: 'child-of-original', provider: 'codex', status: 'idle', labels: { 'paseo.parent-agent-id': 'old' }, createdAt: iso, updatedAt: iso },
   ];
   f.daemon.workspacePins = async () => [];

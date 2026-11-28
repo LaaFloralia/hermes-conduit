@@ -477,8 +477,11 @@ function fallbackPermissionLevel(a) {
   const harness = typeof a.harness === 'string' ? a.harness
     : typeof a.runtimeInfo?.extra?.harness === 'string' ? a.runtimeInfo.extra.harness : a.provider;
   const mode = a.currentModeId ?? a.runtimeInfo?.modeId ?? null;
-  if (['claude', 'claude-api'].includes(harness)) return mode === 'plan' ? 0 : mode == null || mode === 'bypassPermissions' ? 2 : 1;
-  if (harness === 'codex') return mode === 'read-only' ? 0 : mode == null || mode === 'full-access' ? 2 : 1;
+  // Missing data never reads as "acts freely": null falls back to the record's
+  // stored creation mode, so a switch cannot widen what a session may do unasked.
+  if (['claude', 'claude-api', 'codex', 'pi', 'pi-openai-api'].includes(harness) && mode == null) return null;
+  if (['claude', 'claude-api'].includes(harness)) return mode === 'plan' ? 0 : mode === 'bypassPermissions' ? 2 : 1;
+  if (harness === 'codex') return mode === 'read-only' ? 0 : mode === 'full-access' ? 2 : 1;
   if (['pi', 'pi-openai-api'].includes(harness)) return mode === 'read-only' ? 0 : 2;
   if (harness === 'devin') {
     if (mode === 'plan') return 0;
@@ -487,7 +490,7 @@ function fallbackPermissionLevel(a) {
   }
   if (['dsh', 'dsh-refuseless', 'antigravity', 'hermes-claude-api', 'hermes-openai-api'].includes(harness)) {
     const autoAccept = Array.isArray(a.features) ? a.features.find((f) => f?.id === 'auto_accept')?.value : undefined;
-    return autoAccept === false ? 1 : 2;
+    return autoAccept === true ? 2 : autoAccept === false ? 1 : null;
   }
   if (['dots', 'muse'].includes(harness)) return 2;
   return null;
