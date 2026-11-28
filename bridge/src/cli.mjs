@@ -27,6 +27,7 @@ import { FINDINGS_USAGE, findingsCommand } from './cli-findings.mjs';
 import { PHONE_USE_USAGE, phoneUseCommand } from './cli-phone-use.mjs';
 import { REFS_USAGE, refsCommand } from './refs/cli.mjs';
 import { PROJECTS_USAGE, projectsCommand } from './cli-projects.mjs';
+import { FLOW_USAGE, flowCommand, monetCommand } from './cli-flow.mjs';
 import { CALENDAR_USAGE, calendarCommand } from './cli-calendar.mjs';
 import { GROUPS_USAGE, groupsCommand } from './cli-groups.mjs';
 import { assertTestStateDir, laneEnabled, laneMissing, PRODUCTION_PORTS } from './lane/guard.mjs';
@@ -64,6 +65,7 @@ ${DECISIONS_USAGE}
 ${FINDINGS_USAGE}
 ${PHONE_USE_USAGE}
 ${PROJECTS_USAGE}
+${FLOW_USAGE}
 ${CALENDAR_USAGE}
 ${GROUPS_USAGE}
 State directory: ${resolveStateDir()} (override with LAA_BRIDGE_STATE_DIR)
@@ -81,7 +83,7 @@ function fail(message, code = 1) {
 // Flags that take no value, and flags that may repeat (each occurrence is
 // appended). Everything else takes exactly one value; a missing value is a usage
 // error rather than a silent `true`.
-const BOOLEAN_FLAGS = new Set(['json', 'dry-run', 'include-closed', 'clear-due', 'clear-minutes', 'clear-minimum', 'force', 'allow-live', 'help', 'no-other', 'pending', 'sync-linear', 'monet-log']);
+const BOOLEAN_FLAGS = new Set(['json', 'dry-run', 'include-closed', 'clear-due', 'clear-minutes', 'clear-minimum', 'force', 'allow-live', 'help', 'no-other', 'pending', 'sync-linear', 'monet-log', 'open', 'claim', 'with-requirements']);
 const REPEATED_FLAGS = new Set(['link', 'option', 'image']);
 
 function parseArgs(argv) {
@@ -340,6 +342,12 @@ if (flags.help) {
     break;
   case 'projects':
     process.exitCode = await projectsCommand(positional, flags);
+    break;
+  case 'flow':
+    process.exitCode = await flowCommand(positional, flags);
+    break;
+  case 'monet':
+    process.exitCode = await monetCommand(positional, flags);
     break;
   case 'refs':
     process.exitCode = refsCommand(['refs', ...positional], flags);
