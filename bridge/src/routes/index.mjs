@@ -55,6 +55,7 @@ import { createFindingService } from '../findings/service.mjs';
 import { createFindingRoutes } from './findings.mjs';
 import { monetRoutes, resolveMonetTrigger } from './monet.mjs';
 import { createCompletionReporter } from '../notify/completion-report.mjs';
+import { createMonetFlow } from '../flow/wire.mjs';
 import { createRefService } from '../refs/service.mjs';
 import { projectRefItem, sessionRefItem } from '../refs/items.mjs';
 import { refRoutes } from '../refs/routes.mjs';
@@ -95,6 +96,7 @@ export function businessRoutes({ store, now = () => Date.now(), options = {}, la
     requirePicker: sessionOptions.live === true,
     availability: sessionOptions.availability ?? (sessionOptions.live ? sharedProviderAvailability() : null) });
   let sessionService;
+  let monetFlow = null;
   const decisionsOptions = options.decisions ?? {};
   const decisionStore = decisionsOptions.store ?? createDecisionStore({ dir: store.dir, now });
   const badgePublisher = !sessionOptions.service && sessionOptions.live && !lane && process.env.NODE_TEST_CONTEXT === undefined
@@ -111,6 +113,7 @@ export function businessRoutes({ store, now = () => Date.now(), options = {}, la
     choices: sessionChoices,
     daemon,
     decisions,
+    onTransition: (transition) => monetFlow?.onTransition(transition),
     retentionMs: sessionOptions.eventRetentionMs,
     adapter: sessionOptions.adapter ?? personalAgentAdapter(),
     findWorkspace: sessionOptions.findWorkspace ?? ((id) => workspaceService.find(id)),
@@ -215,8 +218,16 @@ export function businessRoutes({ store, now = () => Date.now(), options = {}, la
     readProject: async (id) => { await sessionService.syncDaemon(); return projectStore.get(id); },
     readOpenDecisions: () => decisionStore.all(), readSessions: () => sessionStore.all(), resolveCaller: resolveMonetTrigger,
   });
+  const monetTokenHash = reportOptions.tokenHash ?? (liveReports ? process.env.LAA_BRIDGE_MONET_TOKEN_SHA256 : null);
+  // Monet's inbox and the requirement flow (owner requirement → staff → adviser → sessions → verdict → report).
+  if (!lane) {
+    monetFlow = createMonetFlow({ dir: store.dir, now, options: { live: liveReports, ...(options.flow ?? {}) }, projects: projectStore, sessionStore,
+      sessions: () => sessionService, decisionStore, decisions, findingStore, reporter: report, tokenHash: monetTokenHash, log: options.log ?? null });
+    if (liveReports && !sessionOptions.service) monetFlow.start(sessionOptions.registerCleanup);
+  }
   const routes = [
-    ...monetRoutes({ reporter: report, tokenHash: reportOptions.tokenHash ?? (liveReports ? process.env.LAA_BRIDGE_MONET_TOKEN_SHA256 : null) }),
+    ...monetRoutes({ reporter: report, tokenHash: monetTokenHash }),
+    ...(monetFlow?.routes ?? []),
     ...notificationRoutes({ file: `${store.dir}/notification-preferences.json`, now }),
     ...createDecisionRoutes({ service: decisions }),
     ...createFindingRoutes({ service: findings }),

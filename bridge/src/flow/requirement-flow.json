@@ -1,0 +1,36 @@
+{
+  "schema": "laa.requirement-flow.v1",
+  "comment": "Requirement flow routing. The Bridge ships this file as its defaults; hq/harness/requirement-flow.json (or LAA_BRIDGE_FLOW_CONFIG) overrides key by key. Changing the adviser or an implementation model is an edit here, not a code change. An entry with enabled:false is never used and must carry the reason.",
+  "advisorProfiles": [
+    { "profile": "mythos-high", "enabled": true, "note": "Design adviser (Claude Code, Mythos High)." },
+    { "profile": "neon-high", "enabled": false, "reason": "waiting for contract: Google AI Ultra 20x is not contracted yet (Gemini via Antigravity). Switch on only after the owner contracts it and the pool reports available." }
+  ],
+  "advisorWhen": { "minSize": "M", "risk": ["money", "auth", "delete", "external_send", "architecture", "trade"] },
+  "implementation": {
+    "defaultProfile": "opus-medium",
+    "allowedProfiles": ["opus-medium", "opus-high", "deepseek-flash-high", "deepseek-flash-max"],
+    "comment": "Session parents: Claude Code Opus Medium for ordinary work, DSH DeepSeek High (OpenCode Go) for procedure-defined work. GPT/Codex/Pi and Devin profiles are not routes of this flow; a design that names one falls back to defaultProfile."
+  },
+  "session": { "mode": "bypass" },
+  "staff": {
+    "max": 4,
+    "min": 2,
+    "timeoutMs": 180000,
+    "outputLimitBytes": 65536,
+    "hermesBin": "/Users/laa/.local/share/hermes-agent/.hermes/bin/hermes",
+    "toolsets": null,
+    "rosterFile": "/Users/laa/hq/roles/roster.yaml"
+  },
+  "maxRunningPackages": 3,
+  "maxRework": 2,
+  "tickMs": 15000,
+  "retryMs": 30000,
+  "inbox": {
+    "leaseMs": 600000,
+    "maxAttempts": 3,
+    "verifyOrigins": ["hermes-conduit"],
+    "offerOpenDecisions": true,
+    "comment": "Every root session's return lands in the inbox. A verification turn is spent on sessions linked to a requirement or flow, on errors of such sessions, and on origins listed in verifyOrigins; the rest is recorded for the digest."
+  },
+  "verifier": { "profile": "laa-monet", "route": "opus-medium", "fallbackRoute": "deepseek-flash-high" }
+}
