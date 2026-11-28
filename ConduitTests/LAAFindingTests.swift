@@ -73,14 +73,6 @@ final class LAAFindingTests: XCTestCase {
                        "気づき、F3、DMARCが未設定、S5 · treg · 試験 · 手間 小、\(LAADecisionCopy.imagesAttached)")
     }
 
-    func testMenuLabels() {
-        XCTAssertEqual(LAABoardKind.decisions.label(count: 2), "Decisions 2")
-        XCTAssertEqual(LAABoardKind.findings.label(count: 5), "Findings 5")
-        XCTAssertEqual(LAABoardKind.findings.label(count: nil), "Findings", "an unknown count is not shown as 0")
-        XCTAssertEqual(LAABoardKind(rawValue: "findings"), .findings)
-        XCTAssertEqual(LAABoardKind.storageKey, "laa.work.boardKind")
-    }
-
     func testCountIsOpenPlusDelegatedAndUnknownBeforeTheFirstRead() {
         let board = LAAFindingBoard()
         XCTAssertNil(board.count)

@@ -137,24 +137,6 @@ enum LAAFindingOrder {
     }
 }
 
-/// Which side of the board shows: the questions a session waits on, or the
-/// findings that never stop one. The last choice is kept on the device.
-enum LAABoardKind: String, CaseIterable, Identifiable {
-    case decisions, findings
-    var id: String { rawValue }
-    static let storageKey = "laa.work.boardKind"
-
-    var title: String {
-        switch self {
-        case .decisions: String("Decisions")
-        case .findings: String("Findings")
-        }
-    }
-
-    /// `Decisions 2`; the bare name while the count is unknown, never a guessed 0.
-    func label(count: Int?) -> String { count.map { "\(title) \($0)" } ?? title }
-}
-
 enum LAAFindingCopy {
     static let delegate = "Monetに任せる"
     static let dismiss = "見送る"
