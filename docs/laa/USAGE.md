@@ -12,6 +12,7 @@
 | Muse（Muse1・Muse2・Muse3） | Museの常駐が設定のUsage欄を読んだ記録 `~/.local/state/laa-muse/accounts.json` → usage-meters `muse_usage.py` → 同proxy（`source: muse-usage`）。Free枠の週の残り%（アプリを開かない） | アカウントごとに数値なし。サインイン切れは `auth_required` |
 | GPT API・Claude APIの残高 | 請求画面で確かめた残高（HQ `catalog.verifiedMoney`、確認日時付き）。usage-metersが `balance` として渡す。両社とも残高のAPIを公開していない（2026-11-11確認：AnthropicのAdmin API・OpenAIのCosts APIは使用額だけ、ダッシュボードの請求経路はブラウザのセッション専用） | `not_auto`・数値なし。使用額で代用しない |
 | nanoGPT | 表示しない（2026-11-11に社長が解約）。proxyが行を送ってもBridgeは読まない | — |
+| Codex・GPT API | 表示しない（2026-11-28、GPT解約 D-42）。Bridgeの `USAGE_PROVIDERS` から外し、proxyが行を送っても読まない。以下のGPT API・OpenAIの記述は解約前の経路の記録 | — |
 | Venice | 自動取得したUSD残高と補助残高 | 数値なし |
 | Liquid AIの記録済み使用 | ローカル台帳に記録された呼出しのトークン・費用 | 数値なし。全利用分とは限らない |
 | Claude API使用額 | Anthropic従来Cost API、今日・今月のUSD | Admin key未設定・認証失敗・取得失敗を区別 |

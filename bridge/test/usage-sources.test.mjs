@@ -125,9 +125,9 @@ test('expired and manually verified balances do not return numeric details', () 
 test('verified and ten-minute-old live readings are unavailable', () => {
   const items = projection([
     { id: 'refuseless', source: 'verified', available: true, updatedAt: '2026-10-29T04:58:00Z', currency: 'USD', amount: 1 },
-    { id: 'codex', available: true, updatedAt: '2026-10-29T04:50:00Z', windows: [{ label: 'Weekly', remaining: 48 }] },
+    { id: 'opencode-go', available: true, updatedAt: '2026-10-29T04:50:00Z', windows: [{ label: 'Weekly', remaining: 48 }] },
   ]);
-  for (const id of ['provider.refuseless.balance', 'provider.codex.quota']) {
+  for (const id of ['provider.refuseless.balance', 'provider.opencode-go.quota']) {
     const item = byId(items, id);
     assert.equal(item.availability, 'unavailable');
     assert.equal(item.value, null);
@@ -186,14 +186,14 @@ test('projection respects provider deadlines and separately ages quota extras', 
   for (const changes of [{ updatedAt: null }, { updatedAt: '2026-10-29T05:02:01Z' },
                          { source: 'unknown' }, { freshUntil: '2026-10-29T05:00:00Z' },
                          { freshUntil: 'bad' }, { available: undefined }]) {
-    const invalid = byId(projection([{ id: 'codex', source: 'live', available: true, updatedAt: '2026-10-29T04:59:00Z',
-      windows: [{ label: 'Weekly', remaining: 24, resetsAt: null }], ...changes }]), 'provider.codex.quota');
+    const invalid = byId(projection([{ id: 'opencode-go', source: 'live', available: true, updatedAt: '2026-10-29T04:59:00Z',
+      windows: [{ label: 'Weekly', remaining: 24, resetsAt: null }], ...changes }]), 'provider.opencode-go.quota');
     assert.equal(invalid.availability, 'unavailable');
     assert.equal(invalid.value, null);
     assert.equal(invalid.detail, undefined);
   }
-  const oldCredits = byId(projection([{ id: 'codex', source: 'live', available: true, updatedAt: '2026-10-29T04:59:00Z',
-    windows: [{ label: 'Weekly', remaining: 24 }], credits: { remaining: 8, updatedAt: '2026-10-29T04:50:00Z' } }]), 'provider.codex.quota');
+  const oldCredits = byId(projection([{ id: 'opencode-go', source: 'live', available: true, updatedAt: '2026-10-29T04:59:00Z',
+    windows: [{ label: 'Weekly', remaining: 24 }], credits: { remaining: 8, updatedAt: '2026-10-29T04:50:00Z' } }]), 'provider.opencode-go.quota');
   assert.equal(oldCredits.value, 24);
   assert.equal(oldCredits.detail.credits, undefined);
 });
@@ -252,9 +252,8 @@ test('future tolerance anchors expiration at receipt, and an older feed always e
 test('cost readings carry UTC periods and declared lag without inventing a watermark', () => {
   const base = { kind: 'cost', source: 'live', available: true, updatedAt: '2026-10-29T04:59:00Z',
     currency: 'USD', periodTimezone: 'UTC', todayAmount: 0, monthAmount: 1.25 };
-  const items = projection([{ ...base, id: 'claude-api', sourceLag: 'typical-5m' },
-    { ...base, id: 'openai-api', sourceLag: 'undisclosed' }]);
-  for (const id of ['claude-api', 'openai-api']) {
+  const items = projection([{ ...base, id: 'claude-api', sourceLag: 'typical-5m' }]);
+  for (const id of ['claude-api']) {
     const today = byId(items, `provider.${id}.cost-today`);
     const month = byId(items, `provider.${id}.cost-month`);
     assert.equal(today.value, 0);
@@ -272,9 +271,8 @@ test('cost readings carry UTC periods and declared lag without inventing a water
 test('a missing todayAmount keeps the month amount and hides only today', () => {
   const base = { kind: 'cost', source: 'live', available: true, updatedAt: '2026-10-29T04:59:00Z',
     currency: 'USD', periodTimezone: 'UTC', monthAmount: 1.25 };
-  const items = projection([{ ...base, id: 'openai-api', sourceLag: 'undisclosed' },
-    { ...base, id: 'claude-api', sourceLag: 'typical-5m' }]);
-  for (const id of ['openai-api', 'claude-api']) {
+  const items = projection([{ ...base, id: 'claude-api', sourceLag: 'typical-5m' }]);
+  for (const id of ['claude-api']) {
     const today = byId(items, `provider.${id}.cost-today`);
     const month = byId(items, `provider.${id}.cost-month`);
     assert.equal(today.value, null);
@@ -287,11 +285,11 @@ test('a missing todayAmount keeps the month amount and hides only today', () => 
 });
 
 test('an empty cost response is an unavailable provider, not a zero', () => {
-  const row = { id: 'openai-api', kind: 'cost', source: 'live', available: false,
+  const row = { id: 'claude-api', kind: 'cost', source: 'live', available: false,
     updatedAt: null, reason: 'freshness_unknown' };
   const items = projection([row]);
   for (const period of ['today', 'month']) {
-    const item = byId(items, `provider.openai-api.cost-${period}`);
+    const item = byId(items, `provider.claude-api.cost-${period}`);
     assert.equal(item.value, null);
     assert.equal(item.nullReason, 'freshness_unknown');
     assert.equal(item.detail, undefined);
@@ -301,9 +299,8 @@ test('an empty cost response is an unavailable provider, not a zero', () => {
 test('an API provider with no balance field reports no balance, never its spend', () => {
   const base = { kind: 'cost', source: 'live', available: true, updatedAt: '2026-10-29T04:59:00Z',
     currency: 'USD', periodTimezone: 'UTC', todayAmount: 0.96, monthAmount: 21.8 };
-  const items = projection([{ ...base, id: 'openai-api', sourceLag: 'undisclosed' },
-    { ...base, id: 'claude-api', sourceLag: 'typical-5m' }]);
-  for (const id of ['openai-api', 'claude-api']) {
+  const items = projection([{ ...base, id: 'claude-api', sourceLag: 'typical-5m' }]);
+  for (const id of ['claude-api']) {
     const balance = byId(items, `provider.${id}.balance`);
     assert.equal(balance.kind, 'balance');
     assert.equal(balance.availability, 'unavailable');
@@ -319,23 +316,23 @@ test('an API provider with no balance field reports no balance, never its spend'
 });
 
 test('a published API balance is shown beside the spend and not replaced by it', () => {
-  const row = { id: 'openai-api', kind: 'cost', source: 'live', available: true,
+  const row = { id: 'claude-api', kind: 'cost', source: 'live', available: true,
     updatedAt: '2026-10-29T04:59:00Z', currency: 'USD', amount: 21.8, periodTimezone: 'UTC',
     todayAmount: 0.96, monthAmount: 3.4, sourceLag: 'undisclosed' };
-  const balance = byId(projection([row]), 'provider.openai-api.balance');
+  const balance = byId(projection([row]), 'provider.claude-api.balance');
   assert.equal(balance.availability, 'available');
   assert.equal(balance.value, 21.8);
   assert.equal(balance.unit, 'usd');
   assert.equal(balance.detail.currency, 'USD');
   assert.equal(Date.parse(balance.detail.freshUntil), Date.parse('2026-10-29T05:09:00Z'));
   // Ten minutes on, the same row holds no number.
-  const aged = byId(projection([row], { now: NOW + 600_000 }), 'provider.openai-api.balance');
+  const aged = byId(projection([row], { now: NOW + 600_000 }), 'provider.claude-api.balance');
   assert.equal(aged.value, null);
   assert.equal(aged.nullReason, 'fetch_failed');
   assert.equal(aged.detail, undefined);
   // A balance field that is present but unreadable is a failed read, not an
   // automatic source that does not exist.
-  const broken = byId(projection([{ ...row, amount: 'n/a' }]), 'provider.openai-api.balance');
+  const broken = byId(projection([{ ...row, amount: 'n/a' }]), 'provider.claude-api.balance');
   assert.equal(broken.nullReason, 'fetch_failed');
 });
 
@@ -489,27 +486,31 @@ test('an API balance is the billing-page reading, below zero too, whether or not
   const items = usageItemsFromFeed({ version: 1, fetchedAt: '2026-10-29T05:00:00Z', stale: false, providers: [
     { id: 'claude-api', kind: 'cost', available: false, source: 'live', reason: 'fetch_failed',
       balance: { amount: -0.19, confirmedAt: '2026-10-20T14:24:00Z' } },
-    { id: 'openai-api', kind: 'cost', available: false, source: 'live', reason: 'fetch_failed', balance: null },
+  ] }, { now: Date.parse('2026-10-29T05:00:00Z') });
+  const none = usageItemsFromFeed({ version: 1, fetchedAt: '2026-10-29T05:00:00Z', stale: false, providers: [
+    { id: 'claude-api', kind: 'cost', available: false, source: 'live', reason: 'fetch_failed', balance: null },
   ] }, { now: Date.parse('2026-10-29T05:00:00Z') });
   const claude = byId(items, 'provider.claude-api.balance');
   assert.equal(claude.availability, 'available');
   assert.equal(claude.value, -0.19);
   assert.equal(claude.observedAt, '2026-10-20T14:24:00Z');
   assert.equal(claude.detail.sourceKind, 'verified');
-  assert.equal(byId(items, 'provider.openai-api.balance').availability, 'unavailable');
+  assert.equal(byId(none, 'provider.claude-api.balance').availability, 'unavailable');
 });
 
 test('a balance carries what it counts down from when the proxy names it, and nothing otherwise', () => {
   const items = usageItemsFromFeed({ version: 1, fetchedAt: '2026-10-29T05:00:00Z', stale: false, providers: [
     { id: 'claude-api', kind: 'cost', available: false, source: 'live', reason: 'fetch_failed',
       balance: { amount: 12.5, confirmedAt: '2026-10-20T14:24:00Z', grantedAmount: 50 } },
-    { id: 'openai-api', kind: 'cost', available: false, source: 'live', reason: 'fetch_failed',
-      balance: { amount: 0, confirmedAt: '2026-10-20T14:24:00Z', grantedAmount: 0 } },
     { id: 'venice', kind: 'balance', available: true, source: 'live',
       updatedAt: '2026-10-29T04:58:00Z', amount: 8.5, currency: 'USD', grantedAmount: 10.27 },
   ] }, { now: Date.parse('2026-10-29T05:00:00Z') });
   assert.equal(byId(items, 'provider.claude-api.balance').detail.grantedAmount, 50);
-  assert.equal('grantedAmount' in byId(items, 'provider.openai-api.balance').detail, false);
+  const zero = usageItemsFromFeed({ version: 1, fetchedAt: '2026-10-29T05:00:00Z', stale: false, providers: [
+    { id: 'claude-api', kind: 'cost', available: false, source: 'live', reason: 'fetch_failed',
+      balance: { amount: 0, confirmedAt: '2026-10-20T14:24:00Z', grantedAmount: 0 } },
+  ] }, { now: Date.parse('2026-10-29T05:00:00Z') });
+  assert.equal('grantedAmount' in byId(zero, 'provider.claude-api.balance').detail, false);
   assert.equal(byId(items, 'provider.venice.balance').detail.grantedAmount, 10.27);
 });
 
@@ -517,15 +518,16 @@ test('a confirmed balance carries the day its credit lapses, and is expired past
   const feed = { version: 1, fetchedAt: '2026-11-13T05:00:00Z', stale: false, providers: [
     { id: 'claude-api', kind: 'cost', available: false, source: 'live', reason: 'fetch_failed',
       balance: { amount: 160.24, confirmedAt: '2026-11-12T22:47:00Z', grantedAmount: 160.25, expiresOnUtc: '2026-12-13' } },
-    { id: 'openai-api', kind: 'cost', available: false, source: 'live', reason: 'fetch_failed',
-      balance: { amount: 5, confirmedAt: '2026-11-12T22:47:00Z', expiresOnUtc: 'soon' } },
   ] };
   const before = usageItemsFromFeed(feed, { now: Date.parse('2026-11-13T05:00:00Z') });
   const claude = byId(before, 'provider.claude-api.balance');
   assert.equal(claude.detail.expiresOnUtc, '2026-12-13');
   assert.equal(claude.detail.grantedAmount, 160.25);
   assert.equal(claude.expired, false);
-  assert.equal('expiresOnUtc' in byId(before, 'provider.openai-api.balance').detail, false);
+  const unreadable = usageItemsFromFeed({ ...feed, providers: [{ id: 'claude-api', kind: 'cost', available: false, source: 'live',
+    reason: 'fetch_failed', balance: { amount: 5, confirmedAt: '2026-11-12T22:47:00Z', expiresOnUtc: 'soon' } }] },
+  { now: Date.parse('2026-11-13T05:00:00Z') });
+  assert.equal('expiresOnUtc' in byId(unreadable, 'provider.claude-api.balance').detail, false);
   const after = usageItemsFromFeed({ ...feed, fetchedAt: '2026-12-20T05:00:00Z' }, { now: Date.parse('2026-12-20T05:00:00Z') });
   assert.equal(byId(after, 'provider.claude-api.balance').expired, true);
 });
@@ -542,9 +544,9 @@ test('Venice USD and Magnific credits keep their units and priority, without Ant
     { id: 'antigravity', available: true, updatedAt: '2026-10-29T04:58:00Z',
       windows: [{ label: 'Weekly', remaining: 90 }] },
   ]);
-  assert.deepEqual([...new Set(items.map(item => item.id.split('.')[1]))].slice(0, 14),
-    ['codex', 'opencode-go', 'claude', 'google-ai-pro-sub2', 'google-ai-pro-sub3', 'google-ai-pro-sub4',
-      'muse-Muse1', 'muse-Muse2', 'muse-Muse3', 'magnific', 'openai-api', 'claude-api', 'liquid', 'venice']);
+  assert.deepEqual([...new Set(items.map(item => item.id.split('.')[1]))].slice(0, 12),
+    ['opencode-go', 'claude', 'google-ai-pro-sub2', 'google-ai-pro-sub3', 'google-ai-pro-sub4',
+      'muse-Muse1', 'muse-Muse2', 'muse-Muse3', 'magnific', 'claude-api', 'liquid', 'venice']);
   assert.equal(items.some(item => item.id.startsWith('provider.antigravity.')), false);
   assert.equal(items.some(item => item.id.startsWith('provider.nanogpt.')), false);
   const venice = byId(items, 'provider.venice.balance');
@@ -649,7 +651,7 @@ test('A Muse reading taken around a job keeps its number for 24 hours while usag
   // Without the producer's freshUntil the ordinary 10-minute rule holds.
   assert.equal(item(feed(muse({ freshUntil: undefined }))).value, null);
   // Only Muse's source gets the longer reading: a CodexBar row of the same age has no number.
-  const codex = { id: 'codex', available: true, updatedAt: observed, freshUntil: '2026-11-26T18:07:38Z',
+  const quota = { id: 'opencode-go', available: true, updatedAt: observed, freshUntil: '2026-11-26T18:07:38Z',
     windows: [{ label: 'Weekly', remaining: 50, resetsAt: null, windowMinutes: 10080 }] };
-  assert.equal(byId(usageItemsFromFeed(feed(codex), { now, receivedAt: now }), 'provider.codex.quota').value, null);
+  assert.equal(byId(usageItemsFromFeed(feed(quota), { now, receivedAt: now }), 'provider.opencode-go.quota').value, null);
 });

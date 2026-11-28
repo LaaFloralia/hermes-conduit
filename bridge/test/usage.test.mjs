@@ -68,8 +68,8 @@ function feed(overrides = {}) {
         ],
       },
       {
-        id: 'codex',
-        name: 'Codex',
+        id: 'opencode-go',
+        name: 'OpenCode',
         kind: 'quota',
         available: true,
         updatedAt: '2026-10-29T04:49:12Z',
@@ -203,7 +203,7 @@ test('the HTTP response contains fresh readings only, with reasons for other sou
   const items = res.body.data.items;
   const byId = new Map(items.map(item => [item.id, item]));
   assert.equal(byId.get('provider.claude.quota').value, 62);
-  assert.equal(byId.get('provider.codex.quota').value, 48);
+  assert.equal(byId.get('provider.opencode-go.quota').value, 48);
   assert.equal(byId.get('provider.liquid.usage').value, 184000);
   for (const id of ['provider.refuseless.balance', 'provider.magnific.credits']) {
     assert.equal(byId.get(id).value, null);

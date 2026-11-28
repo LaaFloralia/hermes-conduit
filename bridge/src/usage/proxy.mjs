@@ -55,12 +55,12 @@ const DEFAULT_MAX_BYTES = 512 * 1024;
 // are retired: the proxy no longer reads them, and a cached row never brings
 // them back. nanoGPT left on 2026-11-11 (the owner cancelled the plan): a row
 // the proxy still sends is skipped like any other unknown provider.
+// Codex and GPT API left on 2026-11-28 (GPT cancelled, D-42), skipped the same way.
 //
-// The two API providers carry a balance item beside their cost items. Neither
-// publishes a balance, so the item is the billing-page reading the proxy passes
+// The API provider (Claude API) carries a balance item beside its cost items. It
+// publishes no balance, so the item is the billing-page reading the proxy passes
 // as `balance`, marked verified; the cost item stays an amount used.
 export const USAGE_PROVIDERS = Object.freeze([
-  { id: 'codex', label: 'Codex', kind: 'quota' },
   { id: 'opencode-go', label: 'OpenCode', kind: 'quota' },
   { id: 'claude', label: 'Claude', kind: 'quota' },
   // Google AI Pro (2026-11-23): one row per subscription account, in the order the
@@ -74,9 +74,6 @@ export const USAGE_PROVIDERS = Object.freeze([
   ...['Muse1', 'Muse2', 'Muse3'].map((account) => ({ id: `muse-${account}`, label: account,
     kind: 'quota', group: MUSE.id, groupName: MUSE.name })),
   { id: 'magnific', label: 'Magnific', kind: 'unitCredits' },
-  { id: 'openai-api', label: 'GPT API', kind: 'balance' },
-  { id: 'openai-api', label: 'GPT API', kind: 'cost', period: 'today' },
-  { id: 'openai-api', label: 'GPT API', kind: 'cost', period: 'month' },
   { id: 'claude-api', label: 'Claude API', kind: 'balance' },
   { id: 'claude-api', label: 'Claude API', kind: 'cost', period: 'today' },
   { id: 'claude-api', label: 'Claude API', kind: 'cost', period: 'month' },
