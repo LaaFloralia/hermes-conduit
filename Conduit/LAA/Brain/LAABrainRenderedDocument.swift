@@ -129,7 +129,7 @@ private struct LAABrainHighlight: View {
 
     private var prefix: (symbol: String?, text: String) {
         let trimmed = source.trimmingCharacters(in: .whitespaces)
-        for (marker, symbol) in [("- [ ] ", "☐"), ("- [x] ", "☑"), ("- [X] ", "☑"),
+        for (marker, symbol) in [("- [ ] ", "□"), ("- [x] ", "■"), ("- [X] ", "■"),
                                  ("- ", "•"), ("* ", "•"), ("+ ", "•"), ("> ", "▏")] {
             if trimmed.hasPrefix(marker) { return (symbol, String(trimmed.dropFirst(marker.count))) }
         }
@@ -161,7 +161,7 @@ private struct LAABrainHighlight: View {
             guard let whole = Range(match.range(at: 0), in: text), let inner = Range(match.range(at: 1), in: text) else { continue }
             output += fragment(String(text[position..<whole.lowerBound]))
             var marked = fragment(String(text[inner]))
-            marked.backgroundColor = Color.yellow.opacity(0.35)
+            marked.backgroundColor = LAAColor.selectionFill
             output += marked
             position = whole.upperBound
         }
