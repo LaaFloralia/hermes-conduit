@@ -24,7 +24,7 @@ import {
 } from './items.mjs';
 
 export const USAGE_FEED_VERSION = 1;
-const GOOGLE_AI_PRO = Object.freeze({ id: 'google-ai-pro', name: 'Google AI Ultra' });
+const GOOGLE_AI_PRO = Object.freeze({ id: 'google-ai-pro', name: 'Google AI' });
 const MUSE = Object.freeze({ id: 'muse', name: 'Muse' });
 const FABLE_ID = 'claude-weekly-scoped-fable';
 const WEEKLY_MINUTES = 10080;
@@ -63,9 +63,17 @@ const DEFAULT_MAX_BYTES = 512 * 1024;
 export const USAGE_PROVIDERS = Object.freeze([
   { id: 'opencode-go', label: 'OpenCode', kind: 'quota' },
   { id: 'claude', label: 'Claude', kind: 'quota' },
-  // Google AI Ultra (2026-11-28): the one pinned Antigravity account (laa-agy-pool `ultra`, no
-  // rotation). The group id stays `google-ai-pro` so the installed widget Slot still matches.
+  // Google AI Ultra + Pro Sub2-4 (2026-11-28 22:15 owner): Pro accounts are used first at Session
+  // start until each plan ends, then auto-dropped by laa-agy-pool (`optional: true` omits ended rows).
   { id: 'google-ai-pro-ultra', label: 'Google AI Ultra', kind: 'quota', group: GOOGLE_AI_PRO.id, groupName: GOOGLE_AI_PRO.name },
+  ...['sub2', 'sub3', 'sub4'].map((id) => ({
+    id: `google-ai-pro-${id}`,
+    label: `Google Sub${id.slice(3)}`,
+    kind: 'quota',
+    group: GOOGLE_AI_PRO.id,
+    groupName: GOOGLE_AI_PRO.name,
+    optional: true,
+  })),
   // Muse (2026-11-26, owner): the three Free accounts LAA's harness switches between for
   // TTS and video, one row each with its weekly Free allowance; `active` is the resident
   // the harness sends to. usage-meters reads the resident's snapshot (muse_usage.py).
@@ -124,7 +132,9 @@ function withActive(item, provider, row) {
 }
 
 export function unavailableUsageItems(reason = 'fetch_failed') {
-  return USAGE_PROVIDERS.map((provider) => unavailableItem({ ...baseOf(provider), reason }));
+  return USAGE_PROVIDERS
+    .filter((provider) => !provider.optional)
+    .map((provider) => unavailableItem({ ...baseOf(provider), reason }));
 }
 
 export async function readUsageFeed({
@@ -459,7 +469,9 @@ export function usageItemsFromFeed(raw, { now = Date.now(), receivedAt = now, ob
     byId.set(provider.id, entry);
   }
   const autoLimit = Math.min(autoStaleMs, 10 * 60 * 1000);
-  return USAGE_PROVIDERS.map((provider) => withActive(itemForProvider(provider), provider, byId.get(provider.id)));
+  return USAGE_PROVIDERS
+    .filter((provider) => !provider.optional || byId.has(provider.id))
+    .map((provider) => withActive(itemForProvider(provider), provider, byId.get(provider.id)));
 
   function itemForProvider(provider) {
     const row = byId.get(provider.id);

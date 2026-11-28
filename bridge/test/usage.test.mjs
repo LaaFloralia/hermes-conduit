@@ -290,13 +290,22 @@ test('fableWeekly cannot rescue an unavailable, stale or expired ordinary Claude
   }
 });
 
-test('Google AI Ultra keeps the exact active flag; fableWeekly is Claude only', () => {
+test('Google AI Ultra and active Pro Sub2-4 keep exact active flags; ended Pro accounts omit cleanly', () => {
   const payload = feed();
-  payload.providers.push({ ...payload.providers[0], id: 'google-ai-pro-ultra', active: true, fableWeekly: FABLE,
-    windows: [{ ...payload.providers[0].windows[0], remaining: 92 }] });
+  payload.providers.push(
+    { ...payload.providers[0], id: 'google-ai-pro-ultra', active: true, fableWeekly: FABLE,
+      windows: [{ ...payload.providers[0].windows[0], remaining: 92 }] },
+    { ...payload.providers[0], id: 'google-ai-pro-sub2', active: false,
+      windows: [{ ...payload.providers[0].windows[0], remaining: 0 }] },
+    { ...payload.providers[0], id: 'google-ai-pro-sub3', active: false,
+      windows: [{ ...payload.providers[0].windows[0], remaining: 40 }] },
+  );
+  // sub4 omitted (plan ended) -> must not appear as a dead fetch_failed row
   const google = usageItemsFromFeed(payload, { now: NOW }).filter((item) => item.group === 'google-ai-pro');
   assert.deepEqual(google.map((item) => [item.id, item.label, item.value, item.active, item.detail.fableWeekly]), [
     ['provider.google-ai-pro-ultra.quota', 'Google AI Ultra', 92, true, undefined],
+    ['provider.google-ai-pro-sub2.quota', 'Google Sub2', 0, false, undefined],
+    ['provider.google-ai-pro-sub3.quota', 'Google Sub3', 40, false, undefined],
   ]);
 });
 

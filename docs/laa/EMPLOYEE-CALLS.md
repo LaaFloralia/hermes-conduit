@@ -6,8 +6,8 @@ Monetを含む7社員の電話は、LAAの通話画面から始める。通話�
 
 | エンジン | 状態 | 動き |
 |---|---|---|
-| Local Live（`local_live`） | 稼働 | Macの音声サーバーが聞き取りと読み上げを行い、各発話はその社員のHermesチャットで処理する。社員のモデル・人格・道具をそのまま使う。外部の音声モデルへ送らないので同意は求めない |
-| Gemini Live（`gemini_live`） | OFF（Google AI Ultraの契約とGemini APIキーを待っている） | Gemini Live APIへWebSocketで接続する。キーはHermesホストに置き、ホストが接続ごとに使い切りのトークンを発行する。アプリにキーを入れない |
+| Local Live（`local_live`） | 稼働（予備） | Macの音声サーバーが聞き取りと読み上げを行い、各発話はその社員のHermesチャットで処理する。社員のモデル・人格・道具をそのまま使う。外部の音声モデルへ送らないので同意は求めない |
+| Gemini Live（`gemini_live`） | 稼働（優先、`gemini-3.8-live`） | Gemini Live APIへWebSocketで接続する。キーはHermesホストに置き、ホストが接続ごとに使い切りのトークンを発行する（`CONDUIT_GEMINI_LIVE_API_VERSION=v1beta`）。アプリにキーを入れない |
 
 アプリは通話の直前にBridgeの `GET /v1/calls/engine` を読み、`order` の順に、ONで接続できる最初のエンジンを使う（`LAAStaffCallEngine.swift`）。Bridgeに届かない時は最後に受け取った答えを使い、一度も受け取っていなければLocal Live。待ち時間は2秒まで。
 
