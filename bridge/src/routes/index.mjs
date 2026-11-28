@@ -41,6 +41,7 @@ import { createCalendarReminders } from '../calendar/reminders.mjs';
 import { calendarRoutes } from './calendar.mjs';
 import { routineRoutes } from './routines.mjs';
 import { staffRoutes } from './staff.mjs';
+import { callEngineRoutes } from './calls.mjs';
 import { instructionRoutes } from './instructions.mjs';
 import { voiceRoutes } from './voice.mjs';
 import { voiceLeaseRoutes } from './voice-lease.mjs';
@@ -226,6 +227,7 @@ export function businessRoutes({ store, now = () => Date.now(), options = {}, la
     ] : []),
     ...skillRoutes({ ...(options.skills ?? {}), refs }),
     ...staffRoutes({ ...options.staff, log: options.log, lane }),
+    ...callEngineRoutes({ ...options.calls, log: options.log, lane }),
     ...ownerTaskRoutes({ service: ownerTaskService }),
     ...habitRoutes({ dir: store.dir, now, ...options.habits }),
     ...(!lane ? brainRoutes({ store, now, options: options.brain ?? {} }) : []),
