@@ -640,6 +640,16 @@ struct LAADecisionBoardView: View {
     }
 }
 
+extension LAADecision {
+    /// A settled answer's chosen option's picture, for the Answered row's
+    /// thumbnail (D-47 B9). Nil for an open row, a free answer, or an
+    /// option without a picture.
+    var answeredOptionImage: Image? {
+        guard isSettled, let index = answer?.optionIndex else { return nil }
+        return image(forOption: index)
+    }
+}
+
 /// One board row: title, one quiet line and an optional chevron on the phone.
 /// No symbol tile; a plum rule and ▲ are all a row needs to say 要確認.
 private struct LAADecisionRow: View {
@@ -653,6 +663,10 @@ private struct LAADecisionRow: View {
     @State private var hovering = false
 
     private var attention: Bool { LAADecisionBoardView.needsAttention(item) }
+
+    /// An answered row's chosen option's picture (D-47 B9); nil otherwise.
+    private var chosenImage: LAADecision.Image? { item.answeredOptionImage }
+    static let chosenThumb: CGFloat = 44
 
     /// The plum rule's width and the gap after it. On the phone the row's
     /// list inset gives this much back, so titles stay aligned with the rows
@@ -682,7 +696,7 @@ private struct LAADecisionRow: View {
                             .foregroundStyle(selected ? LAAColor.link : LAAColor.text)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
-                        if !item.images.isEmpty {
+                        if !item.images.isEmpty && chosenImage == nil {
                             Image(systemName: "photo")
                                 .laaTextStyle(.secondary)
                                 .foregroundStyle(LAAColor.secondaryText)
@@ -700,6 +714,16 @@ private struct LAADecisionRow: View {
                 }
                 .padding(.vertical, desktop ? LAASpacing.x3 : LAASpacing.x2)
                 Spacer(minLength: 0)
+                if let chosenImage {
+                    // The chosen option's picture, small: what was decided, at a glance.
+                    LAADecisionImageView(decisionID: item.id, image: chosenImage, size: .thumb)
+                        .frame(width: Self.chosenThumb, height: Self.chosenThumb)
+                        .clipped()
+                        .padding(.vertical, desktop ? LAASpacing.x3 : LAASpacing.x2)
+                        .padding(.leading, LAASpacing.x3)
+                        .accessibilityHidden(true)
+                        .accessibilityIdentifier("work.decision.row.chosenImage")
+                }
             }
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, desktop ? LAASpacing.x3 : 0)

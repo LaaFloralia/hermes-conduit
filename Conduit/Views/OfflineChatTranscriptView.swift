@@ -108,7 +108,11 @@ private struct OfflineChatRows: View {
         _ = stepToggleRevision
         let preferences = appState.displayPreferences
         return rows.filter { row in
-            row.drawsRow(preferences: preferences, isBusy: appState.isBusy, disclosure: disclosure)
+#if LAA_BUILD
+            // Routine reports live in the chat's Routines (D-47).
+            if row.isCronReport { return false }
+#endif
+            return row.drawsRow(preferences: preferences, isBusy: appState.isBusy, disclosure: disclosure)
         }
     }
 
@@ -118,8 +122,7 @@ private struct OfflineChatRows: View {
                 message: row.message,
                 gatewayResolver: appState.gatewayMediaResolver,
                 step: row.step,
-                stepsAbove: row.stepsAbove,
-                notice: row.notice
+                stepsAbove: row.stepsAbove
             )
             .equatable()
         }

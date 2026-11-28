@@ -262,6 +262,20 @@ final class LAABackgroundFixture: ObservableObject {
                             timestamp: String(now - Double(1200 - index)), rowId: index)
             }
         }
+        if chatFixture == "routines" {
+            // D-47: a conversation with five routine reports among its rows;
+            // the two oldest already opened, so Routines shows 3 unread.
+            app.messages = Self.routineFixtureMessages(now: now)
+            let scope = employee + "/" + conversationID
+            for message in app.messages.prefix(4) {
+                if let report = LAARoutineReport(message) { LAARoutineReportStore.shared.markRead(report, in: scope) }
+            }
+            // `-LAA_FIXTURE_ROUTINE_PUSH <name>`: as if that routine's push
+            // was tapped, so the chat lands on its report (no notifier).
+            if let name = args.firstIndex(of: "-LAA_FIXTURE_ROUTINE_PUSH").flatMap({ args.indices.contains($0 + 1) ? args[$0 + 1] : nil }) {
+                LAARoutineReportStore.shared.noteTappedNotification(title: "Cron job \"\(name)\"")
+            }
+        }
         if args.contains("-LAA_FIXTURE_PREVIEW_FAILED"), let dashboardID = app.activeDashboardID {
             let link = WidgetLaunchLink(action: .employeeChat, workspace: .init(dashboardID: dashboardID, profile: employee), reference: nil)!
             app.widgetLaunchPendingLinkChanged(link)
@@ -269,6 +283,28 @@ final class LAABackgroundFixture: ObservableObject {
         }
         self.state = app
         self.bots = bots
+    }
+
+    /// `-LAA_V2_CHAT_FIXTURE routines`: the owner's exchange with five
+    /// routine reports between and after its rows (synthetic text only).
+    static func routineFixtureMessages(now: TimeInterval) -> [ChatMessage] {
+        func stamp(_ hoursAgo: Double) -> String {
+            ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: now - hoursAgo * 3600))
+        }
+        func report(_ id: String, _ name: String, _ body: String, _ hoursAgo: Double) -> ChatMessage {
+            ChatMessage(id: id, role: .system,
+                        content: "[Cron job \"\(name)\" report: shown in the chat, no reply asked for]\n\n\(body)",
+                        timestamp: stamp(hoursAgo), displayKind: ChatMessage.internalNotificationDisplayKind)
+        }
+        return [
+            report("routine-1", "朝の確認", "今日の予定は3件です。午前に打ち合わせが1件あります。", 30),
+            report("routine-2", "市場メモ", "主要指数は小動きでした。気になる動きはありません。", 26),
+            ChatMessage(id: "owner-1", role: .user, content: "今日の予定を整理して。", timestamp: stamp(5)),
+            ChatMessage(id: "reply-1", role: .assistant, content: "午前は打ち合わせ、午後は資料の確認です。", timestamp: stamp(4.9)),
+            report("routine-3", "経理の確認", "## 今週の支出\n\n- 交通費 2件\n- 書籍 1件\n\n領収書はすべて揃っています。", 3),
+            report("routine-4", "学習の記録", "昨日は英語を30分、読書を20分でした。", 2),
+            report("routine-5", "夜の点検", "バックアップと同期は正常に終わりました。", 0.5),
+        ]
     }
 
     private static var captureReply: String {

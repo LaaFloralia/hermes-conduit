@@ -32,6 +32,15 @@ struct ChatView: View {
 #if LAA_BUILD
     /// The working capsule's height follows the text size (laaBottomRoom).
     @Environment(\.dynamicTypeSize) private var laaTypeSize
+    /// Chat or Routines (D-47): which thread of the chat shows.
+    @State private var laaThread: LAAChatThread = .chat
+    /// The routine report open in Routines.
+    @State private var laaOpenedRoutineID: String?
+    @ObservedObject private var laaRoutineStore = LAARoutineReportStore.shared
+    /// The chat's routine reports, newest first, re-read when the
+    /// transcript's targets change rather than on every body.
+    @State private var laaRoutineReports: [LAARoutineReport] = []
+    @State private var laaThreadSwitchHeight: CGFloat = 0
 #endif
     /// V2: the composer floats over the transcript, which scrolls on under
     /// it and fades, instead of ending at a hard edge above it.
@@ -139,7 +148,8 @@ struct ChatView: View {
     /// Without such a step, the targets themselves, uncopied.
     private var drawnMessageScrollTargets: [ChatMessageScrollTarget] {
 #if LAA_BUILD
-        let targets = chatMessageScrollTargets.filter { LAAChatVisibility.shows($0.message) }
+        // Routine reports show in Routines only (D-47), never in the chat.
+        let targets = chatMessageScrollTargets.filter { !$0.isCronReport && LAAChatVisibility.shows($0.message) }
 #else
         let targets = chatMessageScrollTargets
 #endif
@@ -156,6 +166,29 @@ struct ChatView: View {
     private var bottomAnchor: String {
         Self.bottomAnchorID(for: activeOrFallbackScrollSessionKey)
     }
+
+#if LAA_BUILD
+    private var laaRoutineScope: String { LAARoutineReportStore.scope(activeOrFallbackScrollSessionKey) }
+    private var laaShowsRoutines: Bool { laaThread == .routines && !laaRoutineReports.isEmpty }
+    private var laaHidesChatThread: Bool { laaShowsRoutines }
+
+    private func laaRereadRoutineReports() {
+        let reports = LAARoutineReport.reports(in: scrollEngine.targets)
+        if reports != laaRoutineReports { laaRoutineReports = reports }
+        if reports.isEmpty, laaThread != .chat { laaThread = .chat; laaOpenedRoutineID = nil }
+        laaFollowRoutineRoute()
+    }
+
+    /// A tapped routine notification opened this chat: Routines, on the
+    /// newest report of that routine.
+    private func laaFollowRoutineRoute() {
+        guard laaRoutineStore.route != nil, let report = laaRoutineStore.takeRoute(in: laaRoutineReports) else { return }
+        laaThread = .routines
+        laaOpenedRoutineID = report.id
+    }
+#else
+    private var laaHidesChatThread: Bool { false }
+#endif
 
     /// The tool running in this turn, for the working line. Looks back only
     /// to the turn's own rows.
@@ -390,6 +423,21 @@ struct ChatView: View {
     var body: some View {
         let _ = TranscriptPerf.note(.chatViewBody)
         VStack(spacing: 0) {
+#if LAA_BUILD
+            // Chat and Routines (D-47): only a chat with routine reports
+            // shows the switch; one column on the Mac too.
+            if !laaRoutineReports.isEmpty {
+                LAAChatThreadSwitch(thread: $laaThread,
+                                    unread: laaRoutineStore.unreadCount(laaRoutineReports, in: laaRoutineScope))
+                    .background(laaShowsRoutines ? LAAColor.background : Color.clear)
+                    // Where the switch ends in the chat's own space: the
+                    // Routines cover starts there (the bar above it is an
+                    // inset the transcript scrolls under).
+                    .onGeometryChange(for: CGFloat.self) {
+                        $0.frame(in: .named(LAAChatRoutinesMetrics.space)).maxY
+                    } action: { laaThreadSwitchHeight = $0 }
+            }
+#endif
             // Message list
             ScrollViewReader { proxy in
                 sessionObservers(
@@ -404,7 +452,7 @@ struct ChatView: View {
                 )
             }
             // VoiceOver reads only the saved copy while it is up.
-            .accessibilityHidden(showsOfflineCopy || appState.showsPendingNewChat)
+            .accessibilityHidden(showsOfflineCopy || appState.showsPendingNewChat || laaHidesChatThread)
             // A chat picked in the saved list covers a transcript still up
             // from before (a profile switch): that one is hidden, not drawn
             // under it. It stays laid out, so its scroll position holds.
@@ -428,6 +476,7 @@ struct ChatView: View {
             // controls row. Keep the transcript outside that region.
             bottomBar
                 .fixedSize(horizontal: false, vertical: true)
+                .accessibilityHidden(laaShowsRoutines)
 #if targetEnvironment(macCatalyst)
                 // The Mac window's rounded bottom edge: + and Send keep clear of it.
                 .padding(.bottom, LAASpacing.x2)
@@ -446,6 +495,27 @@ struct ChatView: View {
                     .modifier(V2LegacyScrollEdge(edge: .bottom))
             }
         }
+#endif
+#if LAA_BUILD
+        // Routines covers the transcript and the composer under the switch;
+        // both stay mounted, so the chat keeps its place and its draft.
+        .coordinateSpace(.named(LAAChatRoutinesMetrics.space))
+        .overlay {
+            if laaShowsRoutines {
+                LAAChatRoutinesView(reports: laaRoutineReports, scope: laaRoutineScope,
+                                    openedID: $laaOpenedRoutineID, gatewayResolver: appState.gatewayMediaResolver)
+                    .padding(.top, laaThreadSwitchHeight)
+                    .ignoresSafeArea(.container, edges: .top)
+                    .transition(.opacity)
+            }
+        }
+        .onChange(of: viewportInputs.targetsRevision, initial: true) { _, _ in laaRereadRoutineReports() }
+        .onChange(of: activeOrFallbackScrollSessionKey) { _, _ in
+            laaThread = .chat
+            laaOpenedRoutineID = nil
+            laaRereadRoutineReports()
+        }
+        .onChange(of: laaRoutineStore.route) { _, _ in laaFollowRoutineRoute() }
 #endif
         .onPreferenceChange(V2ComposerTypingKey.self) { typing in
             withAnimation(ConduitMotion.ease(reduceMotion: composerReduceMotion)) {
@@ -583,8 +653,7 @@ struct ChatView: View {
                         message: target.message,
                         gatewayResolver: appState.gatewayMediaResolver,
                         step: target.step,
-                        stepsAbove: target.stepsAbove,
-                        notice: target.notice
+                        stepsAbove: target.stepsAbove
                     )
                         .equatable()
 #if LAA_BUILD
@@ -1377,42 +1446,18 @@ struct MessageBubble: View, Equatable {
     /// On a reply, the run of steps above it when it has thinking (the
     /// reply's Show thinking). Nil outside the chat transcript.
     var stepsAbove: ChatStepGroup? = nil
-    /// A cron report's place in a folded run of reports. Nil outside the
-    /// chat transcript and for a report on its own.
-    var notice: ChatNoticePlacement? = nil
 
     nonisolated static func == (lhs: MessageBubble, rhs: MessageBubble) -> Bool {
         lhs.message == rhs.message && lhs.gatewayResolver === rhs.gatewayResolver && lhs.step == rhs.step
-            && lhs.stepsAbove == rhs.stepsAbove && lhs.notice == rhs.notice
+            && lhs.stepsAbove == rhs.stepsAbove
     }
     @Environment(\.chatRowState) private var rowState
     @Environment(\.chatRowActions) private var rowActions
     /// Acted on, not observed: what a row shows comes from `rowState`.
     private var appState: AppState { rowActions.required }
     @Environment(\.openURL) private var openURL
-#if LAA_BUILD
-    @Environment(\.chatRowDisclosure) private var disclosure
-#endif
 
-    var body: some View {
-#if LAA_BUILD
-        if let notice, let disclosure, message.role == .system {
-            LAAChatCronReportRun(
-                message: message,
-                notice: notice,
-                gatewayResolver: gatewayResolver,
-                disclosure: disclosure,
-                toggles: disclosure.groupToggles
-            )
-        } else {
-            bubble
-        }
-#else
-        bubble
-#endif
-    }
-
-    @ViewBuilder private var bubble: some View {
+    @ViewBuilder var body: some View {
         let _ = TranscriptPerf.note(.settledBubbleBody)
         switch message.role {
         case .user:

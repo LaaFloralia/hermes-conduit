@@ -11,7 +11,8 @@ struct ChatMessageScrollTarget: Identifiable, Equatable {
     let restorationMetadata: ChatScrollAnchorMetadata
     /// Derived once per rebuild, not re-parsed on every step-run scan.
     let isStep: Bool
-    /// A cron job's report (`ChatMessage.isCronReport`), derived once.
+    /// A cron job's report (`ChatMessage.isCronReport`), derived once: LAA
+    /// shows reports in the chat's Routines, not in its transcript.
     let isCronReport: Bool
     /// Transcript-order position, maintained by the cache so views can
     /// iterate the targets collection directly (no Array(enumerated()) copy
@@ -24,26 +25,10 @@ struct ChatMessageScrollTarget: Identifiable, Equatable {
     /// On a reply: the run of steps right above it, when that run has
     /// thinking (its menu's Show thinking). Nil for every other row.
     var stepsAbove: ChatStepGroup? = nil
-    /// Where this cron report sits in a run of two or more reports that
-    /// draws folded into one row. Nil for every other row and for a report
-    /// on its own.
-    var notice: ChatNoticePlacement? = nil
 
     /// SwiftUI keeps the existing source-row identity for rendering and
     /// controls. Only scroll targeting uses the source-independent ID.
     var id: String { message.id }
-}
-
-/// A cron report's place in a run of reports that draws as one folded
-/// row: the first draws the run's line, the others only while it is open.
-struct ChatNoticePlacement: Equatable {
-    /// The first report's message id: stable while reports are added.
-    let runID: String
-    let count: Int
-    let index: Int
-    /// The newest report's routine name and time, for the run's line.
-    let latestTitle: String
-    let latestTimestamp: String
 }
 
 enum ChatMessageScrollTargetCacheUpdate: Equatable {
@@ -116,7 +101,6 @@ struct ChatMessageScrollTargetCache: Equatable {
             }
             targets.replaceSubrange(suffixStart..., with: replacement)
             placeSteps(from: suffixStart)
-            placeNotices(from: suffixStart)
             renderingRevision &+= 1
             return .renderingChanged
         }
@@ -144,7 +128,6 @@ struct ChatMessageScrollTargetCache: Equatable {
             fingerprints.replaceSubrange(suffixStart..., with: suffixFingerprints)
             targets.replaceSubrange(suffixStart..., with: suffixTargets)
             placeSteps(from: suffixStart)
-            placeNotices(from: suffixStart)
             renderingRevision &+= 1
             return .semanticsChanged
         }
@@ -162,7 +145,6 @@ struct ChatMessageScrollTargetCache: Equatable {
             fingerprints: updatedFingerprints
         )
         placeSteps(from: 0)
-        placeNotices(from: 0)
         renderingRevision &+= 1
         return .semanticsChanged
     }
@@ -202,53 +184,6 @@ struct ChatMessageScrollTargetCache: Equatable {
             runAbove = group
             i = end
         }
-    }
-
-    /// Re-place the runs of cron reports from `index` on, starting at the
-    /// run that reaches it. A run is two or more reports with only rows
-    /// the LAA chat hides between them; it draws as one folded row
-    /// (`ChatNoticePlacement`). Its id is its first report's, so a report
-    /// added at the end keeps the run, and its open state, as it was.
-    /// Upstream draws every report as before.
-    private mutating func placeNotices(from index: Int) {
-#if LAA_BUILD
-        func hidden(_ target: ChatMessageScrollTarget) -> Bool {
-            !target.isCronReport && !LAAChatVisibility.shows(target.message)
-        }
-        var start = min(index, targets.count)
-        while start > 0, targets[start - 1].isCronReport || hidden(targets[start - 1]) {
-            start -= 1
-        }
-        var i = start
-        while i < targets.count {
-            guard targets[i].isCronReport else {
-                if targets[i].notice != nil { targets[i].notice = nil }
-                i += 1
-                continue
-            }
-            var members = [i]
-            var end = i + 1
-            while end < targets.count, targets[end].isCronReport || hidden(targets[end]) {
-                if targets[end].isCronReport { members.append(end) }
-                end += 1
-            }
-            for k in i..<end where targets[k].notice != nil { targets[k].notice = nil }
-            if members.count > 1, let last = members.last {
-                let latest = targets[last].message
-                let runID = targets[i].id
-                for (position, member) in members.enumerated() {
-                    targets[member].notice = ChatNoticePlacement(
-                        runID: runID,
-                        count: members.count,
-                        index: position,
-                        latestTitle: MessageNormalizer.cronReport(latest.content)?.title ?? "",
-                        latestTimestamp: latest.timestamp
-                    )
-                }
-            }
-            i = end
-        }
-#endif
     }
 
     private static func fingerprintedBytes(of messages: [ChatMessage]) -> Int {
