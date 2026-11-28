@@ -20,7 +20,8 @@ export const requestKey = (value) => text(value, 'requestId', 200);
 // own authentication. Brand, preference, look, name and logo choices are
 // Monet's like every other kind, even when filed as 【必ず社長：ブランドの好み】.
 // Mirrored by `OWNER_KIND` in hq/harness/orchestrate.py; keep both in step.
-const OWNER_ONLY_KIND = /物理|本人の?操作|本人の?認証|^本人$|physical|authenticat|passkey|biometric|identity|owner'?s?(operation|action)/iu;
+// Real-account trading keeps the trading rules (the owner sets its start conditions).
+const OWNER_ONLY_KIND = /物理|本人の?操作|本人の?認証|^本人$|実口座|売買|発注|取引|physical|authenticat|passkey|biometric|identity|owner'?s?(operation|action)|trad(e|es|ing)\b/iu;
 export const ownerOnlyKind = (kind) => OWNER_ONLY_KIND.test(String(kind).normalize('NFKC').replace(/[\s・、,／/]/gu, ''));
 export function decisionCategory(impact) {
   const kind = typeof impact === 'string' && /^【必ず社長：([^【】\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+)】/u.exec(impact)?.[1].trim();

@@ -862,7 +862,7 @@ test('add: a short Paseo id resolves to the one full id it names', (t) => {
 
 test('D-47: only the owner\'s own physical operation and authentication stay owner-only; brand and design choices are Monet\'s', async (t) => {
   const f = fixture(t);
-  for (const kind of ['本人の操作', '本人操作', '本人の物理操作', '物理操作', '本人認証', '本人の認証', '本人', '本人 の 操作', 'Physical operation', 'authentication', 'Passkey', 'biometric', "owner's operation"]) {
+  for (const kind of ['本人の操作', '本人操作', '本人の物理操作', '物理操作', '本人認証', '本人の認証', '本人', '本人 の 操作', 'Physical operation', 'authentication', 'Passkey', 'biometric', "owner's operation", '売買', '実口座', '発注', '取引の開始', 'Trading', 'trade']) {
     assert.equal(decisionCategory(`【必ず社長：${kind}】`).category, 'owner', kind);
   }
   for (const kind of ['お金', '停止', '削除', '公開範囲', '社外への公開', '本人の判断', '契約', '選択', 'ブランドの好み', 'ブランド', '好み', '見た目', 'デザイン案', '名前', 'ロゴ', 'Brand', 'brand preference', 'BRAND', 'ｂｒａｎｄ', 'Final logo', 'look', 'aesthetic']) {
