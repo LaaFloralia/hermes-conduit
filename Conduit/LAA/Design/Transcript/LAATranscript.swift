@@ -73,15 +73,6 @@ struct LAAOwnerBubbleWidth: Layout {
     }
 }
 
-/// Who speaks a row of the transcript.
-enum LAATranscriptActor: Equatable {
-    case owner
-    case staff
-    case agent
-    case thinking
-    case toolWork
-}
-
 /// The speaker line above a turn: the 24 pt picture, the name in 13/500 and
 /// the role as a muted 12 pt label (`Administration`, `Secretary`), and the
 /// message's time. The owner's line trails, mirrored.

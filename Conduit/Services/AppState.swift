@@ -11926,8 +11926,7 @@ final class AppState: ObservableObject {
     private var groupRoomPollTask: Task<Void, Never>?
 #if LAA_BUILD
     /// Chaired-room (壁打ち) Voice, bound to `groupRoomEpoch`. Silent until
-    /// the bar's explicit Voice tap (`engage`); the bar stays hidden while
-    /// `LAAChairedVoiceSurface.playbackWired` is false.
+    /// the owner's explicit Voice tap in the meeting controls (`engage`).
     let chairedVoice = LAAChairedVoiceBinding()
     let chairedMeeting = LAAMeetingSession()
     var chairedMeetingEndCapture: ((Bool) -> Void)?
