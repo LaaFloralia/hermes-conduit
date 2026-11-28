@@ -1110,3 +1110,21 @@ test('a send the engine drops mid-call is held; a failed row sent again is queue
   assert.equal(sends().filter((c) => c[3].messageId === 'msg_sent').length, 1);
   assert.throws(() => service.withdrawQueued(id, 'msg_sent'), { code: 'message_sent' });
 });
+
+test('a resend of a held follow-up keeps the pictures staged with its first send', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'paseo-held-images-')); t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const images = sessionImageStore(join(dir, 'images'));
+  const f = fixture(), service = createSessionService({ sessionStore: createSessionStore({ file: join(dir, 'sessions.json') }), daemon: f.daemon, adapter: {}, images, findWorkspace: async () => null, notify: async () => {}, outboxPollMs: 0 });
+  t.after(() => service.close());
+  await service.syncDaemon(); const id = daemonSessionID('parent');
+  // The fixture's parent is mid-turn, so a queued follow-up is held.
+  const first = { message: '画像つき', messageId: 'msg_held', delivery: 'queue', images: [{ data: 'YWJj', mimeType: 'image/png' }] };
+  assert.equal((await service.sendMessage({ id, key: 'h1', body: first })).queued, true);
+  const staged = images.references(id).msg_held;
+  assert.equal(staged.length, 1);
+  // The app's Resend carries no images; another picture under the same id is not restaged either.
+  assert.equal((await service.sendMessage({ id, key: 'h2', body: { message: '画像つき', messageId: 'msg_held', delivery: 'queue' } })).queued, true);
+  assert.equal((await service.sendMessage({ id, key: 'h3', body: { ...first, images: [{ data: 'ZGVm', mimeType: 'image/png' }] } })).queued, true);
+  assert.deepEqual(images.references(id).msg_held, staged);
+  assert.equal(f.calls.filter((c) => c[0] === 'send').length, 0);
+});

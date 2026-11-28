@@ -1001,12 +1001,13 @@ export function createSessionService({
     const delivery = body.delivery === undefined || body.delivery === null ? 'queue' : asText(body.delivery, 'delivery', { max: 10 });
     if (delivery !== 'now' && delivery !== 'queue') throw badRequest('payload_invalid', 'delivery is now or queue');
     const attachments = parseImages(body.images);
-    images.stage(id, messageId, attachments);
-    if (owner) rememberOwnerMessage(messageId, text);
-
     // A retried request carries the same message id: it is already held or
     // already sent, and must not become a second turn.
     const held = Array.isArray(record.outbox) ? record.outbox.find((row) => row?.id === messageId) : null;
+    // A held row keeps the pictures staged with its first send: a Resend (which
+    // carries no images) or a request without images never restages them.
+    if (!held && attachments?.length) images.stage(id, messageId, attachments);
+    if (owner) rememberOwnerMessage(messageId, text);
     if (held?.status === 'failed') {
       // The owner sends an undeliverable message again: queue it afresh.
       // The engine accepts a message id once, so this cannot become two turns.
