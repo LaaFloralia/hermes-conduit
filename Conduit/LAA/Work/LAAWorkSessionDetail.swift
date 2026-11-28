@@ -295,13 +295,21 @@ struct LAAWorkSessionDetail: View {
         .onChange(of: messages.last?.text) { _, _ in followNewArrival() }
         .onAppear { transcriptVisible = true }
         .onDisappear { transcriptVisible = false }
-        .task(id: "\(bridge.revision)-\(id)-\(observationEpoch)-\(scenePhase)-\(transcriptVisible)") {
+        .task(id: observationKey) {
             guard transcriptVisible, scenePhase == .active else { return }
             await observe()
         }
         .task {
             if options == nil { options = try? await bridge.read("/v1/session-options") }
         }
+    }
+
+    /// What restarts the observation. Built outside `body`: inside the long
+    /// modifier chain the interpolation did not type-check in time.
+    private var observationKey: String {
+        let parts: [String] = [String(describing: bridge.revision), id, String(observationEpoch),
+                               String(describing: scenePhase), String(transcriptVisible)]
+        return parts.joined(separator: "-")
     }
 
     // MARK: - The page
