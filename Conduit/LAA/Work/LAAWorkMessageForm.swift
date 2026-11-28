@@ -196,8 +196,8 @@ struct LAAWorkMessageForm: View {
                     .foregroundStyle(LAAColor.text)
                     .frame(width: 20, height: 20)
                     .conduitGlassControl(cornerRadius: 10, interactive: true)
-                    // A 20 pt mark with a 32 pt target, off the thumbnail's corner.
-                    .frame(width: 32, height: 32)
+                    // A 20 pt mark inside the platform's full transparent target, off the thumbnail's corner.
+                    .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
