@@ -340,12 +340,12 @@ struct LAAWorkSessionDetail: View {
                             .foregroundStyle(LAAColor.attention)
                     } else if !historyReady {
                         // Header and field are usable at once; only the
-                        // history is still on its way (BUS-575).
+                        // history is still on its way (BUS-575). The wait is
+                        // the particles alone, never a loading line
+                        // (DESIGN.md); the dots say "Loading" to VoiceOver.
                         HStack(spacing: LAASpacing.x2) {
                             LAALoadingDots()
-                            Text(verbatim: "履歴を読み込み中").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                         }
-                        .accessibilityElement(children: .combine)
                     } else if messages.isEmpty && heldItems.isEmpty && sentEchoes.isEmpty && !canStop(session) && !session.needsDecision {
                         // Only a quiet, idle session is empty: while it thinks
                         // or waits on a decision the line would contradict it.
