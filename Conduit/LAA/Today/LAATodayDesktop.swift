@@ -65,7 +65,10 @@ struct LAATodayDesktopView: View {
         .accessibilityIdentifier("laa.today.desktop")
         .onChange(of: calendar.events.map(\.id), initial: true) { _, ids in
             if let selectedEventID, !ids.contains(selectedEventID) { self.selectedEventID = nil }
-            if selectedEventID == nil, let first = calendar.events.first { selectedEventID = first.id }
+            if calendar.mode != .month, selectedEventID == nil, let first = calendar.events.first { selectedEventID = first.id }
+        }
+        .onChange(of: calendar.mode) { _, mode in
+            if mode == .month { selectedEventID = nil }
         }
     }
 
