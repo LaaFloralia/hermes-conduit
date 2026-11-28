@@ -70,3 +70,22 @@ test('acceptance limits', () => {
   assert.throws(() => parseAcceptance([{ id: 'a1', text: 'x', note: '二行\nです' }]), /single line/);
   assert.deepEqual(parseAcceptance(null), []);
 });
+
+test('an agent cannot sidestep acceptance by withdrawing or by completing a flow requirement that has no items', () => {
+  const record = project();
+  change(record, 'add', { title: '件数を出す', source: 'owner', acceptance, flowId: FLOW }, 'bridge');
+  const { id } = projectRequirements(record)[0];
+  assert.equal(thrown(() => change(record, 'withdraw', {}, 'agent', id))?.code, 'requirement_withdraw_forbidden');
+  assert.equal(projectRequirements(record).length, 1);
+  // A flow requirement whose acceptance list is empty cannot be completed by anyone but the owner.
+  const bare = project();
+  change(bare, 'add', { title: '設計前', source: 'owner', flowId: FLOW }, 'bridge');
+  const bareId = projectRequirements(bare)[0].id;
+  const done = { status: 'completed', verifiedBy: 'monet', note: '実物を確認' };
+  for (const author of ['agent', 'monet']) assert.equal(thrown(() => change(bare, 'update', done, author, bareId))?.code, 'acceptance_missing');
+  // The owner and the flow itself may still withdraw; a plain requirement stays withdrawable by an agent.
+  assert.equal(change(record, 'withdraw', {}, 'bridge', id), true);
+  const plain = project();
+  change(plain, 'add', { title: '台帳の整理', source: 'ai' }, 'agent');
+  assert.equal(change(plain, 'withdraw', {}, 'agent', projectRequirements(plain)[0].id), true);
+});

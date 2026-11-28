@@ -99,10 +99,24 @@ function designFields(next, body, author) {
 
 // Completion by anyone but the owner needs every acceptance item passed (the owner may close a
 // requirement by hand in the app). Read against the list this same change leaves behind.
-function assertAcceptancePassed(acceptance, statusValue, author) {
-  if (author === 'owner' || statusValue !== 'completed' || !Array.isArray(acceptance)) return;
+function assertAcceptancePassed(acceptance, statusValue, author, flowId = null) {
+  if (author === 'owner' || statusValue !== 'completed') return;
+  // A requirement that came through the requirement flow cannot be completed without its acceptance list.
+  if (flowId && (!Array.isArray(acceptance) || !acceptance.length)) {
+    throw new BridgeError(422, 'acceptance_missing', 'a requirement of the requirement flow needs its acceptance items before completion');
+  }
+  if (!Array.isArray(acceptance)) return;
   const open = acceptance.filter((item) => item.status !== 'passed').map((item) => item.id);
   if (open.length) throw new BridgeError(422, 'acceptance_open', `acceptance items are not passed: ${open.join(', ')}`, { details: { open } });
+}
+
+// Withdrawing must not be a way around acceptance: only the owner or the flow itself removes a
+// requirement that carries a flowId or acceptance items.
+function assertWithdrawAllowed(item, author) {
+  if (author === 'owner' || DESIGN_AUTHORS.has(author)) return;
+  if (item.flowId || (Array.isArray(item.acceptance) && item.acceptance.length)) {
+    throw new BridgeError(403, 'requirement_withdraw_forbidden', 'a requirement of the requirement flow is withdrawn by the owner or the flow only');
+  }
 }
 
 function logDenominator(project, at, delta, reason) {
@@ -170,7 +184,7 @@ export function changeRequirement(project, { action, id, body, iso, belongs, aut
     const next = {};
     verification(next, body, iso, author);
     designFields(next, body, author);
-    assertAcceptancePassed(next.acceptance, body.status, author);
+    assertAcceptancePassed(next.acceptance, body.status, author, next.flowId ?? null);
     if (author === 'agent' && body.reason !== undefined) assertOwnerSurface(body.reason, 'reason');
     logDenominator(project, iso, 1, body.reason);
     (project.requirements ??= []).push({
@@ -190,6 +204,7 @@ export function changeRequirement(project, { action, id, body, iso, belongs, aut
   if (!item) throw notFound('requirement not found');
   if (action === 'withdraw') {
     if (Object.keys(body).length) fields(body, ['reason']);
+    assertWithdrawAllowed(item, author);
     if (author === 'agent' && body.reason !== undefined) assertOwnerSurface(body.reason, 'reason');
     logDenominator(project, iso, -1, body.reason);
     item.withdrawnAt = item.updatedAt = iso;
@@ -203,7 +218,7 @@ export function changeRequirement(project, { action, id, body, iso, belongs, aut
     fields(body, ['title', 'details', 'status', 'sessionIds', ...VERIFY_FIELDS, ...DESIGN_FIELDS]);
     verification(next, body, iso, author);
     designFields(next, body, author);
-    assertAcceptancePassed(next.acceptance ?? item.acceptance, body.status, author);
+    assertAcceptancePassed(next.acceptance ?? item.acceptance, body.status, author, next.flowId ?? item.flowId ?? null);
     // Replaying the same verified transition must not re-date the evidence.
     if (next.verifiedAt && next.verifiedBy === item.verifiedBy && next.note === item.note
       && (next.requestId === undefined || next.requestId === item.requestId) && item.verifiedAt) next.verifiedAt = item.verifiedAt;
