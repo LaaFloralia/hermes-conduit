@@ -68,7 +68,7 @@ const designExample = (profiles) => JSON.stringify({
   packages: [{ id: 'wp1', requirement: 0, title: '対象｜作業', profile: profiles.join(' | '), repo: '/Users/laa/dev/<repo> or null', owns: ['path/**'], after: [],
     purpose: 'why this package exists', completion: 'the done condition', scope: 'inputs, what may and may not be touched',
     verification: 'the checks the session must run before returning', prompt: 'the full task for the implementation session' }],
-  risks: ['…'], ownerDecisions: [{ title: '日本語', summary: '日本語', options: ['案A', '案B'], recommended: 0, impact: '【任せられる】… or 【必ず社長：ブランドの好み】…' }],
+  risks: ['…'], ownerDecisions: [{ title: '日本語', summary: '日本語', options: ['案A', '案B'], recommended: 0, impact: '【任せられる】… or 【必ず社長：本人の操作】…' }],
 }, null, 1);
 
 export function advisorTask({ flow, config }) {
