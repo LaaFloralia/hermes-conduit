@@ -32,6 +32,20 @@ final class MarkdownReferenceLinkTests: XCTestCase {
         XCTAssertEqual(OwnerMessageMarkdown.preservingLineBreaks(source), source)
     }
 
+    /// Owner, 2026-11-28: the owner's own message shows exactly as sent.
+    func testOwnerVerbatimTextKeepsEveryLineBreakBlankLineAndMarkdownCharacter() throws {
+        let sent = "\n  first\nsecond\n\n\n\nthird  **not bold** # not a heading\n\n- not a list\nhttps://example.com/a  \n"
+        let shown = OwnerVerbatimText.attributed(sent, font: .systemFont(ofSize: 17), color: .black)
+        XCTAssertEqual(shown.string, "first\nsecond\n\n\n\nthird  **not bold** # not a heading\n\n- not a list\nhttps://example.com/a")
+        let url = (shown.string as NSString).range(of: "https://example.com/a")
+        XCTAssertEqual((shown.attribute(.link, at: url.location, effectiveRange: nil) as? URL)?.absoluteString,
+                       "https://example.com/a")
+        let extra = OwnerVerbatimText.attributed("open a/b.swift", font: .systemFont(ofSize: 17), color: .black) { text in
+            [(range: (text as NSString).range(of: "a/b.swift"), url: URL(string: "file:///a/b.swift")!)]
+        }
+        XCTAssertEqual((extra.attribute(.link, at: 6, effectiveRange: nil) as? URL)?.absoluteString, "file:///a/b.swift")
+    }
+
     // MARK: - Foundation characterization
 
     func testFoundationFullDocumentResolvesReferenceLinkAndHidesDefinition() throws {

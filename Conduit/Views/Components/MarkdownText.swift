@@ -74,6 +74,65 @@ enum OwnerMessageMarkdown {
     }
 }
 
+/// The owner's own words exactly as sent (owner, 2026-11-28): every line
+/// break and every blank line stays, and nothing in them reads as Markdown.
+/// Only the whole message's outer whitespace is left out. Web addresses,
+/// and any links a caller names (Work's Mac paths), stay tappable. The
+/// AI's replies keep MarkdownText.
+struct OwnerVerbatimText: View {
+    typealias Link = (range: NSRange, url: URL)
+
+    let text: String
+    var foregroundStyle: Color = .primary
+    var usesAccentSurface = false
+    /// Further links, as UTF-16 ranges of the displayed text.
+    var links: ((String) -> [Link])? = nil
+    @Environment(\.chatTextSize) private var chatTextSize
+    @Environment(\.sizeCategory) private var sizeCategory
+
+    private static let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+
+    /// What is drawn: the text with its outer whitespace trimmed, inner
+    /// line breaks, blank lines and spaces untouched.
+    static func displayed(_ text: String) -> String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    static func attributed(_ text: String, font: UIFont, color: UIColor,
+                           links: ((String) -> [Link])? = nil) -> NSAttributedString {
+        let shown = displayed(text)
+        let result = NSMutableAttributedString(string: shown, attributes: [.font: font, .foregroundColor: color])
+        let whole = NSRange(location: 0, length: result.length)
+        for match in detector?.matches(in: shown, range: whole) ?? [] {
+            if let url = match.url { result.addAttribute(.link, value: url, range: match.range) }
+        }
+        for link in links?(shown) ?? [] where NSMaxRange(link.range) <= result.length {
+            result.addAttribute(.link, value: link.url, range: link.range)
+        }
+        return result
+    }
+
+    var body: some View {
+        let appearance = chatTextSize.resolving(sizeCategory)
+        let font = ChatTypography.font(for: .body, appearance: appearance)
+        let color = usesAccentSurface ? UIColor.white : UIColor(foregroundStyle)
+#if LAA_BUILD
+        let linkColor = MarkdownRichPalette.link(usesAccentSurface: usesAccentSurface, usesLAARichContentStyle: true)
+#else
+        let linkColor = MarkdownRichPalette.link(usesAccentSurface: usesAccentSurface, usesLAARichContentStyle: false)
+#endif
+        SelectableTextView(
+            attributedText: Self.attributed(text, font: font, color: color, links: links),
+            font: font,
+            textColor: color,
+            lineSpacing: 4,
+            linkColor: linkColor
+        )
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .environment(\.textSelectionTint, usesAccentSurface ? UIColor.conduitSelectionOnAccent : nil)
+    }
+}
+
 struct MarkdownText: View {
     let source: String
     var foregroundStyle: Color = .primary

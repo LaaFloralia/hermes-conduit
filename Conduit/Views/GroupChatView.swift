@@ -1008,9 +1008,11 @@ struct GroupUserBubble<Footer: View>: View {
                                                 authorName: reply.isOwnMessage ? LAAChatLabels.text("You") : reply.author)
                     }
                     if !ownText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        // The owner's words exactly as sent: every line break
+                        // and blank line stays (owner, 2026-11-28).
                         HugsIdealWidth {
-                            MarkdownText(
-                                source: GroupRoomMentions.linkingMarkdown(ownText, members: members),
+                            OwnerVerbatimText(
+                                text: GroupRoomMentions.refanged(ownText),
                                 foregroundStyle: Self.ink,
                                 usesAccentSurface: Self.onAccent
                             )

@@ -1914,10 +1914,11 @@ struct SteerMessageContent: View, Equatable {
                 VStack(alignment: .leading, spacing: 8) {
                     ReplyReferenceQuoteCard(quote: reply.quote, onAccentSurface: false,
                                             authorName: reply.isOwnMessage ? AppLocalization.string("You") : nil)
-                    MarkdownText(source: reply.message)
+                    OwnerVerbatimText(text: reply.message)
                 }
             } else {
-                MarkdownText(source: message.content)
+                // A steer is the owner's words: shown exactly as sent.
+                OwnerVerbatimText(text: message.content)
             }
         }
         .padding(.horizontal, 15)
@@ -2020,9 +2021,11 @@ struct UserMessageContent: View, Equatable {
             } else if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 // The text fills the column for its own layout; a sent
                 // bubble fits a short message instead.
+                // The owner's words exactly as sent: every line break and
+                // blank line stays (owner, 2026-11-28).
                 HugsIdealWidth {
-                    MarkdownText(source: text, foregroundStyle: Self.onAccent ? .white : Self.ink,
-                                 usesAccentSurface: Self.onAccent)
+                    OwnerVerbatimText(text: text, foregroundStyle: Self.onAccent ? .white : Self.ink,
+                                      usesAccentSurface: Self.onAccent)
                 }
             }
 

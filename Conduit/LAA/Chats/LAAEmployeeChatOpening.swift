@@ -130,8 +130,8 @@ struct LAAEmployeeChatOpeningView: View {
                         LAATranscriptOwnerTurn(timestamp: message.timestamp) {
                             // Selectable text, as in the conversation: a hold selects it.
                             HugsIdealWidth {
-                                MarkdownText(source: ReplyQuoteEnvelope.parse(message.content)?.message ?? message.content,
-                                             foregroundStyle: LAAColor.text)
+                                OwnerVerbatimText(text: ReplyQuoteEnvelope.parse(message.content)?.message ?? message.content,
+                                                  foregroundStyle: LAAColor.text)
                             }
                             .laaTranscriptOwnerBubble()
                         }.laaChatColumn(.trailing)

@@ -92,6 +92,16 @@ struct LAAWorkMessageRow: View {
             if !message.text.isEmpty {
                 // A short turn keeps a short bubble, as in the chat.
                 HugsIdealWidth {
+                    if isOwner {
+                        // The owner's words exactly as sent: every line break
+                        // and blank line stays (owner, 2026-11-28); Mac paths
+                        // and web addresses still open.
+                        OwnerVerbatimText(text: message.text, foregroundStyle: LAAColor.text, links: { [cwd] shown in
+                            LAAFileLinks.matches(in: shown).compactMap { match -> OwnerVerbatimText.Link? in
+                                LAAFileLinks.workLink(match.reference, cwd: cwd).map { (range: match.range, url: $0) }
+                            }
+                        })
+                    } else {
                     // Mac paths become links a tap opens; the AI's `MEDIA:`
                     // files and `::preview` pages are read from the Mac
                     // through the Bridge (`LAAWorkFiles`), not from Hermes.
@@ -100,6 +110,7 @@ struct LAAWorkMessageRow: View {
                                  gatewayMediaDataURL: isOwner ? nil : { [bridge, sessionID] path in
                                      await LAAWorkFiles.dataURL(bridge: bridge, sessionID: sessionID, path: path)
                                  })
+                    }
                 }
                 .environment(\.chatTextSize, LAAReadingStyle.reading(ChatTextAppearance(size: ChatTypography.resolve(rawValue: responseSize), style: .standard)))
             }
