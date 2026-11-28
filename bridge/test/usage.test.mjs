@@ -290,17 +290,13 @@ test('fableWeekly cannot rescue an unavailable, stale or expired ordinary Claude
   }
 });
 
-test('Google keeps each account and the exact active flag; fableWeekly is Claude only', () => {
+test('Google AI Ultra keeps the exact active flag; fableWeekly is Claude only', () => {
   const payload = feed();
-  for (const [id, remaining, active] of [['sub2', 15, false], ['sub3', 92, true], ['sub4', 50, false]]) {
-    payload.providers.push({ ...payload.providers[0], id: `google-ai-pro-${id}`, active, fableWeekly: FABLE,
-      windows: [{ ...payload.providers[0].windows[0], remaining }] });
-  }
+  payload.providers.push({ ...payload.providers[0], id: 'google-ai-pro-ultra', active: true, fableWeekly: FABLE,
+    windows: [{ ...payload.providers[0].windows[0], remaining: 92 }] });
   const google = usageItemsFromFeed(payload, { now: NOW }).filter((item) => item.group === 'google-ai-pro');
-  assert.deepEqual(google.map((item) => [item.id, item.value, item.active, item.detail.fableWeekly]), [
-    ['provider.google-ai-pro-sub2.quota', 15, false, undefined],
-    ['provider.google-ai-pro-sub3.quota', 92, true, undefined],
-    ['provider.google-ai-pro-sub4.quota', 50, false, undefined],
+  assert.deepEqual(google.map((item) => [item.id, item.label, item.value, item.active, item.detail.fableWeekly]), [
+    ['provider.google-ai-pro-ultra.quota', 'Google AI Ultra', 92, true, undefined],
   ]);
 });
 

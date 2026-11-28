@@ -544,8 +544,8 @@ test('Venice USD and Magnific credits keep their units and priority, without Ant
     { id: 'antigravity', available: true, updatedAt: '2026-10-29T04:58:00Z',
       windows: [{ label: 'Weekly', remaining: 90 }] },
   ]);
-  assert.deepEqual([...new Set(items.map(item => item.id.split('.')[1]))].slice(0, 12),
-    ['opencode-go', 'claude', 'google-ai-pro-sub2', 'google-ai-pro-sub3', 'google-ai-pro-sub4',
+  assert.deepEqual([...new Set(items.map(item => item.id.split('.')[1]))].slice(0, 10),
+    ['opencode-go', 'claude', 'google-ai-pro-ultra',
       'muse-Muse1', 'muse-Muse2', 'muse-Muse3', 'magnific', 'claude-api', 'liquid', 'venice']);
   assert.equal(items.some(item => item.id.startsWith('provider.antigravity.')), false);
   assert.equal(items.some(item => item.id.startsWith('provider.nanogpt.')), false);
@@ -559,40 +559,43 @@ test('Venice USD and Magnific credits keep their units and priority, without Ant
   assert.equal(magnific.detail.creditUnit, 'AI credits');
 });
 
-test('Google AI Pro accounts pass through as one group with the 5-hour and weekly windows and the active mark', () => {
+test('Google AI Ultra passes through as the only Google row with the 5-hour and weekly windows and the active mark', () => {
   const now = Date.parse('2026-11-23T05:00:00Z');
   const row = (account, extra) => ({ id: `google-ai-pro-${account}`, name: `Google ${account}`, group: 'google-ai-pro',
-    groupName: 'Google AI Pro', kind: 'quota', source: 'agy-usage', updatedAt: '2026-11-23T04:58:00Z',
+    groupName: 'Google AI Ultra', kind: 'quota', source: 'agy-usage', updatedAt: '2026-11-23T04:58:00Z',
     freshUntil: '2026-11-23T05:03:00Z', ...extra });
   const feed = { version: 1, fetchedAt: '2026-11-23T04:59:00Z', providers: [
-    row('sub2', { available: true, active: true, windows: [
+    row('ultra', { available: true, active: true, windows: [
       { label: '5時間', remaining: 0, resetsAt: '2026-11-23T07:00:00Z', windowMinutes: 300 },
       { label: '週間', remaining: 64.5, resetsAt: '2026-11-27T00:00:00Z', windowMinutes: 10080 }] }),
-    row('sub3', { available: false, active: false, reason: 'auth_required' }),
-    row('sub4', { available: false, active: false, reason: 'サインインが切れています /Users/x' }),
+    row('sub2', { available: true, active: false, windows: [{ label: '5時間', remaining: 50, windowMinutes: 300 }] }),
   ] };
   const items = usageItemsFromFeed(feed, { now, receivedAt: now });
-  const sub2 = byId(items, 'provider.google-ai-pro-sub2.quota');
-  assert.equal(sub2.availability, 'available');
-  assert.equal(sub2.label, 'Google Sub2');
-  assert.equal(sub2.group, 'google-ai-pro');
-  assert.equal(sub2.groupName, 'Google AI Pro');
-  assert.equal(sub2.active, true);
+  const ultra = byId(items, 'provider.google-ai-pro-ultra.quota');
+  assert.equal(ultra.availability, 'available');
+  assert.equal(ultra.label, 'Google AI Ultra');
+  assert.equal(ultra.group, 'google-ai-pro');
+  assert.equal(ultra.groupName, 'Google AI Ultra');
+  assert.equal(ultra.active, true);
   // 0% is a real reading here, the binding window.
-  assert.equal(sub2.value, 0);
-  assert.deepEqual(sub2.detail.windows.map(w => [w.label, w.remainingPercent, w.windowMinutes]), [['5時間', 0, 300], ['週間', 64.5, 10080]]);
-  assert.equal(sub2.detail.freshUntil, '2026-11-23T05:03:00.000Z');
-  const sub3 = byId(items, 'provider.google-ai-pro-sub3.quota');
-  assert.deepEqual([sub3.availability, sub3.value, sub3.nullReason, sub3.group, sub3.active], ['unavailable', null, 'auth_required', 'google-ai-pro', false]);
+  assert.equal(ultra.value, 0);
+  assert.deepEqual(ultra.detail.windows.map(w => [w.label, w.remainingPercent, w.windowMinutes]), [['5時間', 0, 300], ['週間', 64.5, 10080]]);
+  assert.equal(ultra.detail.freshUntil, '2026-11-23T05:03:00.000Z');
+  // Sub2/3/4 are no longer listed, even when the upstream feed still carries them.
+  assert.equal(items.some(item => /google-ai-pro-sub/.test(item.id)), false);
+  assert.deepEqual(items.filter(item => item.group === 'google-ai-pro').map(item => item.id), ['provider.google-ai-pro-ultra.quota']);
   // A free-text reason never reaches the app.
-  assert.equal(byId(items, 'provider.google-ai-pro-sub4.quota').nullReason, 'fetch_failed');
-  // A feed without the accounts still lists the group's rows, unread.
+  const reason = usageItemsFromFeed({ ...feed, providers: [row('ultra', { available: false, active: false, reason: 'サインインが切れています /Users/x' })] }, { now, receivedAt: now });
+  assert.equal(byId(reason, 'provider.google-ai-pro-ultra.quota').nullReason, 'fetch_failed');
+  const authed = usageItemsFromFeed({ ...feed, providers: [row('ultra', { available: false, active: false, reason: 'auth_required' })] }, { now, receivedAt: now });
+  assert.deepEqual([byId(authed, 'provider.google-ai-pro-ultra.quota').nullReason, byId(authed, 'provider.google-ai-pro-ultra.quota').active], ['auth_required', false]);
+  // A feed without the account still lists the row, unread.
   const empty = usageItemsFromFeed({ ...feed, providers: [] }, { now, receivedAt: now });
-  const missing = byId(empty, 'provider.google-ai-pro-sub2.quota');
+  const missing = byId(empty, 'provider.google-ai-pro-ultra.quota');
   assert.deepEqual([missing.availability, missing.value, missing.group, 'active' in missing], ['unavailable', null, 'google-ai-pro', false]);
   // Another source spelling is not automatic.
   const foreign = usageItemsFromFeed({ ...feed, providers: [{ ...feed.providers[0], source: 'scraped' }] }, { now, receivedAt: now });
-  assert.equal(byId(foreign, 'provider.google-ai-pro-sub2.quota').availability, 'unavailable');
+  assert.equal(byId(foreign, 'provider.google-ai-pro-ultra.quota').availability, 'unavailable');
 });
 
 test('Muse accounts pass through as one group with the weekly Free allowance, the active resident and a sign-in reason', () => {
@@ -623,9 +626,9 @@ test('Muse accounts pass through as one group with the weekly Free allowance, th
   const late = usageItemsFromFeed(feed, { now: Date.parse('2026-11-26T12:52:00Z'), receivedAt: now });
   assert.deepEqual([byId(late, 'provider.muse-Muse1.quota').availability, byId(late, 'provider.muse-Muse1.quota').value], ['unavailable', null]);
   // needs_owner_login is Muse's word only.
-  const google = usageItemsFromFeed({ ...feed, providers: [{ id: 'google-ai-pro-sub2', available: false, reason: 'needs_owner_login' }] },
+  const google = usageItemsFromFeed({ ...feed, providers: [{ id: 'google-ai-pro-ultra', available: false, reason: 'needs_owner_login' }] },
     { now, receivedAt: now });
-  assert.equal(byId(google, 'provider.google-ai-pro-sub2.quota').nullReason, 'fetch_failed');
+  assert.equal(byId(google, 'provider.google-ai-pro-ultra.quota').nullReason, 'fetch_failed');
 });
 
 test('A Muse reading taken around a job keeps its number for 24 hours while usage-meters vouches for it; the feed still expires in 10 minutes', () => {

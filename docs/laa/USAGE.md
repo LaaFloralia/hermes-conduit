@@ -8,7 +8,7 @@
 |---|---|---|
 | 各サービスの利用枠 | CodexBar → ローカルproxy `/widget`、残り% | 数値なし |
 | 自動取得可能な残高 | 同proxy、USD・クレジット | 数値なし |
-| Google AI Pro（Sub2・Sub3・Sub4） | `laa-agy-pool usage` の `agy -p /usage`（モデルを呼ばない）→ usage-meters → 同proxy（`source: agy-usage`）。Gemini群の5時間・週の残り% | アカウントごとに数値なし。サインイン切れは `auth_required` |
+| Google AI Ultra（固定1アカウント） | `laa-agy-pool usage` の `agy -p /usage`（モデルを呼ばない）→ usage-meters → 同proxy（`source: agy-usage`）。Gemini群の5時間・週の残り% | アカウントごとに数値なし。サインイン切れは `auth_required` |
 | Muse（Muse1・Muse2・Muse3） | Museの常駐が設定のUsage欄を読んだ記録 `~/.local/state/laa-muse/accounts.json` → usage-meters `muse_usage.py` → 同proxy（`source: muse-usage`）。Free枠の週の残り%（アプリを開かない） | アカウントごとに数値なし。サインイン切れは `auth_required` |
 | GPT API・Claude APIの残高 | 請求画面で確かめた残高（HQ `catalog.verifiedMoney`、確認日時付き）。usage-metersが `balance` として渡す。両社とも残高のAPIを公開していない（2026-11-11確認：AnthropicのAdmin API・OpenAIのCosts APIは使用額だけ、ダッシュボードの請求経路はブラウザのセッション専用） | `not_auto`・数値なし。使用額で代用しない |
 | nanoGPT | 表示しない（2026-11-11に社長が解約）。proxyが行を送ってもBridgeは読まない | — |
@@ -52,7 +52,7 @@ proxyとBridgeはバックグラウンドで取得し、要求時に上流を待
 - `nullReason` は `not_configured` / `auth_required` / `not_auto` / `freshness_unknown` / `fetch_failed` / `unsupported`。原文エラー、鍵、cookieは渡さない。
 - 古いBridgeの応答に `freshUntil` がない場合、アプリは観測時刻と受信時刻の早い方から10分を上限にする。同じ観測時刻を再受信しても期限は延ばさない。ただし旧Bridgeはfeedの取得時刻を渡さないため、この代用だけでfeed側の期限は再現できない。更新後のBridgeを使う。
 
-- Google AI Pro（2026-11-23）: IDは `provider.google-ai-pro-sub2.quota`・`-sub3`・`-sub4`（プールが使う順）。項目は全状態で `group: google-ai-pro`・`groupName: Google AI Pro`（コード所有）を持ち、上流行の真偽値 `active`（プールが次に使うアカウント）だけを `active` として渡す。windowsは「5時間」（300分）と「週間」（10080分）。上流の理由文は渡さず、既知の理由コード以外は `fetch_failed`。Usage画面はこの3行を1群「Google AI Pro」にまとめ、閉じた状態は使用中アカウントの5時間・週、開くと各アカウントの2枠と回復時刻を出す。開閉は端末に保存する。The medium widget shows only the single active account; none or several active accounts means unknown. Google remains outside Work's weekly gauge.
+- Google AI Ultra（2026-11-28、旧Google AI Pro Sub2〜4を置換）: 1行だけ `provider.google-ai-pro-ultra.quota`（ラベル「Google AI Ultra」）。固定した1アカウントでローテーションはない。群ID `group: google-ai-pro` は導入済みウィジェットのSlot互換のため維持し、`groupName: Google AI Ultra`（コード所有）。上流行の真偽値 `active` だけを渡し、windowsは「5時間」（300分）と「週間」（10080分）。上流の理由文は渡さず、既知の理由コード以外は `fetch_failed`。上流がSub2〜4を返しても出さない。Google remains outside Work's weekly gauge.
 - Muse（2026-11-26 社長）: IDは `provider.muse-Muse1.quota`・`-Muse2`・`-Muse3`。全状態で `group: muse`・`groupName: Muse` を持ち、`active` はハーネスが送る常駐のアカウント。windowsは「週間」（10080分）の1枠だけで、Museは曜日しか示さないため `resetsAt` はnull。上流の `needs_owner_login` は `auth_required` に、それ以外の未知の理由は `fetch_failed` にする。端末名・状態・Additional残高はアプリへ渡さない。Museの常駐は仕事の前後にしか読まず、週の残りは使った時だけ動くため、usage-meters は観測から24時間 `freshUntil` を付ける（2026-11-27）。Bridgeは `source: muse-usage` で `freshUntil` がある行に限り、観測時刻の上限を24時間とし、feedの `fetchedAt` と受信時刻からの10分、上流の `freshUntil` はそのまま守る。`freshUntil` の無いMuse行と他のproviderは10分のまま。アプリは古い観測の数値を経過時間つきで出す。Usage画面はGoogleの下にMuseのカードを置き、閉じた状態は使用中アカウントの7d、開くと3アカウントを出す。ウィジェットの6行とWorkの計器には入れない。
 - Usage shows Codex, Claude, Google and Muse as stacked quota cards above Storage. OpenCode, Magnific, GPT API, Claude API, Liquid AI and Venice are under the collapsed Other section. The title row shows observation age and a refresh button for the feed; there is no per-card refresh.
 - Claude's optional `detail.fableWeekly` (`claude-weekly-scoped-fable`) is a separate display-only weekly reading, not an ordinary Claude window, headline value, alert source or Work gauge input. A missing, malformed or reset-expired value is unknown; a measured 0% remains 0%.
