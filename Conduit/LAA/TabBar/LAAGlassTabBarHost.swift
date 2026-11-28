@@ -3,17 +3,21 @@ import LAAKit
 import SwiftUI
 
 /// Screens that hid the system tab bar (a conversation's composer, detail pages, an opening chat) hide the
-/// glass bar the same way: each one registers while it is on screen. TabView runs onDisappear when its tab
-/// is left, so a hidden detail in another tab does not hide the bar here.
+/// glass bar the same way: each one registers while it is on screen, under the tab it lives in. TabView does
+/// not always run onDisappear when its tab is left (BUS-360: a Work detail kept the bar hidden in the other
+/// tabs), so a hider only hides the bar while its own tab is selected. A hider outside any tab (scope nil)
+/// hides it everywhere.
 @MainActor
 final class LAATabBarVisibility: ObservableObject {
     static let shared = LAATabBarVisibility()
-    @Published private(set) var hiders: Set<UUID> = []
+    @Published private(set) var hiders: [UUID: LAATab?] = [:]
 
-    var isHidden: Bool { !hiders.isEmpty }
+    func isHidden(for tab: LAATab) -> Bool {
+        hiders.values.contains { scope in scope == nil || scope == tab }
+    }
 
-    func hide(_ id: UUID) { hiders.insert(id) }
-    func show(_ id: UUID) { hiders.remove(id) }
+    func hide(_ id: UUID, scope: LAATab? = nil) { hiders[id] = .some(scope) }
+    func show(_ id: UUID) { hiders.removeValue(forKey: id) }
 
     nonisolated static func isCovered(legacyCallPresented: Bool, employeeCallActive: Bool,
                           employeeCallPresented: Bool) -> Bool {
@@ -22,11 +26,12 @@ final class LAATabBarVisibility: ObservableObject {
 }
 
 private struct LAATabBarHider: ViewModifier {
+    @Environment(\.laaTabBarScope) private var scope
     @State private var id = UUID()
 
     func body(content: Content) -> some View {
         content
-            .onAppear { LAATabBarVisibility.shared.hide(id) }
+            .onAppear { LAATabBarVisibility.shared.hide(id, scope: scope) }
             .onDisappear { LAATabBarVisibility.shared.show(id) }
     }
 }
@@ -34,6 +39,8 @@ private struct LAATabBarHider: ViewModifier {
 extension EnvironmentValues {
     /// True while the app icon's settings card is open over this screen (iPhone shell).
     @Entry var laaBehindSettingsCard = false
+    /// The bottom tab this screen lives in (set on each tab root of the iPhone shell); nil outside the tabs.
+    @Entry var laaTabBarScope: LAATab? = nil
 }
 
 private struct LAAHiddenBehindSettingsCard: ViewModifier {

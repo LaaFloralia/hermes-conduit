@@ -159,18 +159,42 @@ struct GlassTabBarTests {
         #expect(settings.artwork(selected: true) == nil)
     }
 
+    /// The owner circle and the Close circle are the bar's own sizes (tokens `tabBar.iphone.appIcon` 56 / 36,
+    /// the bar's height, the tab icon 24), not the generic icon button's 36 / 20 (Kit 0.5.0 drew those).
     @Test(arguments: [LAAPlatform.iphone, .mac])
-    func roundControlsFitTheirCenteredSlot(platform: LAAPlatform) {
-        let size = platform.iconControl
-        let hit = platform.controlHitArea
-        #expect(size.icon < size.visual)
-        #expect(size.visual <= hit)
-        #expect(hit <= LAATabBarToken.appCapsule)
-        #expect(hit <= LAATabBarToken.height)
-        for style in [platform.secondaryControl, platform.compactControl] {
-            #expect(style.height / style.label <= LAAControl.heightToLabelMax)
-            #expect(style.height <= hit)
-        }
+    func roundControlsUseTheTabBarTokens(platform: LAAPlatform) {
+        #expect(LAATabBarToken.appCapsule == 56)
+        #expect(LAATabBarToken.appImage == 36)
+        #expect(LAATabBarToken.appCapsule == LAATabBarToken.height)
+        #expect(LAATabBarToken.icon == 24)
+        #expect(LAATabBarToken.appImage < LAATabBarToken.appCapsule)
+        #expect(LAATabBarToken.icon < LAATabBarToken.height)
+        // The circle is its own hit frame on both platforms: never smaller than the platform's hit area.
+        #expect(platform.controlHitArea <= LAATabBarToken.appCapsule)
+        #expect(platform.controlHitArea <= LAATabBarToken.height)
+    }
+
+    /// The count is anchored by its leading edge, 2 pt inside the icon's trailing edge: "99+" (three 12 pt
+    /// semibold glyphs, at most 8 pt each) stays clear of the next tab's glyph at the narrowest tab width.
+    @Test func badgeGrowsAwayFromTheIcon() {
+        #expect(LAAGlassTabBarLayout.badgeLeadingInset == 2)
+        let margin = LAAGlassTabBarLayout.margin(forWidth: 375)
+        let item = LAAGlassTabBarLayout.widths(count: 5, available: 375 - 2 * margin).item
+        let gapToNextIcon = item - LAATabBarToken.icon
+        #expect(3 * 8 - LAAGlassTabBarLayout.badgeLeadingInset < gapToNextIcon)
+    }
+
+    /// The bar hides for a real software keyboard only: a hardware keyboard's assistant bar, an off-screen
+    /// frame and an empty frame do not count.
+    @Test func keyboardCountsOnlyWhenItCoversTheScreen() {
+        let screen = CGRect(x: 0, y: 0, width: 393, height: 852)
+        #expect(LAAKeyboardState.covers(endFrame: CGRect(x: 0, y: 552, width: 393, height: 300), screen: screen))
+        #expect(!LAAKeyboardState.covers(endFrame: CGRect(x: 0, y: 792, width: 393, height: 60), screen: screen))
+        // A full-height keyboard frame parked below the screen with only its assistant bar showing.
+        #expect(!LAAKeyboardState.covers(endFrame: CGRect(x: 0, y: 783, width: 393, height: 336), screen: screen))
+        #expect(!LAAKeyboardState.covers(endFrame: CGRect(x: 0, y: 852, width: 393, height: 300), screen: screen))
+        #expect(!LAAKeyboardState.covers(endFrame: .zero, screen: screen))
+        #expect(LAAKeyboardState.minimumHeight == 120)
     }
 
     @Test func atMostFiveTabs() {

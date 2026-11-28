@@ -204,6 +204,9 @@ public enum LAAGlassTabBarLayout {
         return x
     }
 
+    /// The count starts this far inside the icon's trailing edge and grows outwards, so two and three digits
+    /// never cover the glyph ("99+" ends about 21 pt past the icon; the next glyph is at least 29 pt away).
+    public static let badgeLeadingInset: Double = 2
     /// How far past the end slot the lens may stretch, as a fraction of a slot.
     static let edgeGiveFraction = 0.25
     /// The lens while a finger is on the bar (Reduce Motion: 1, it does not grow).
@@ -213,10 +216,11 @@ public enum LAAGlassTabBarLayout {
 }
 
 public extension View {
-    /// Places the bar over the bottom of `self` (keyboard-safe: it stays under the keyboard like a system tab
-    /// bar) with an invisible layer that collapses the card on an outside tap. Hide it with `isHidden` on screens
-    /// where the system bar was hidden (a conversation's composer, detail pages). Content insets are the host's:
-    /// apply `laaTabBarClearance(_:)` to each tab's root.
+    /// Places the bar over the bottom of `self` with an invisible layer that collapses the card on an outside
+    /// tap. Hide it with `isHidden` on screens where the system bar was hidden (a conversation's composer,
+    /// detail pages); while the software keyboard is shown the bar fades out by itself (tokens
+    /// `tabBar.iphone.hidden`), so hosts need no keyboard observer. Content insets are the host's: apply
+    /// `laaTabBarClearance(_:)` to each tab's root.
     func laaGlassTabBar<ID: Hashable, Card: View>(
         _ tabs: [LAAGlassTab<ID>], selection: Binding<ID>, isExpanded: Binding<Bool>, isHidden: Bool = false,
         app: LAAAppIdentity, onReselect: ((ID) -> Void)? = nil, @ViewBuilder card: @escaping () -> Card
@@ -228,7 +232,8 @@ public extension View {
     }
 
     /// Reserves the bar's height at the bottom of scrolling content so the last row clears the glass while the
-    /// content still flows under it.
+    /// content still flows under it. The reserve is given back while the software keyboard is shown (the bar is
+    /// hidden then), so a bottom field sits on the keyboard.
     func laaTabBarClearance(_ visible: Bool = true) -> some View {
         modifier(LAATabBarClearance(visible: visible))
     }
@@ -239,9 +244,14 @@ private struct LAATabBarClearance: ViewModifier {
     @State private var safeBottom: Double = 34
 
     func body(content: Content) -> some View {
-        content
+        let keyboard = LAAKeyboardState.shared.isVisible
+        return content
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                Color.clear.frame(height: visible ? LAAGlassTabBarLayout.contentClearance(safeBottom: safeBottom) : 0)
+                Color.clear
+                    .frame(height: visible && !keyboard
+                        ? LAAGlassTabBarLayout.contentClearance(safeBottom: safeBottom) : 0)
+                    // Only the keyboard's coming and going eases the reserve; a host's own `visible` stays instant.
+                    .animation(.easeInOut(duration: LAAMotionToken.base), value: keyboard)
                     .accessibilityHidden(true)
                     .allowsHitTesting(false)
             }
@@ -258,14 +268,18 @@ struct LAAGlassTabBarOverlay<ID: Hashable, Card: View>: View {
     let app: LAAAppIdentity
     let onReselect: ((ID) -> Void)?
     let card: () -> Card
+    /// The keyboard came up for a field inside the open card: it must not hide the bar it belongs to.
+    @State private var keyboardOwnedByCard = false
 
     var body: some View {
-        GeometryReader { proxy in
+        let keyboard = LAAKeyboardState.shared.isVisible
+        let hidden = isHidden || (keyboard && !isExpanded && !keyboardOwnedByCard)
+        return GeometryReader { proxy in
             let width = proxy.size.width
             let margin = LAAGlassTabBarLayout.margin(forWidth: width)
             let available = width - 2 * margin - proxy.safeAreaInsets.leading - proxy.safeAreaInsets.trailing
             ZStack(alignment: .bottom) {
-                if isExpanded && !isHidden {
+                if isExpanded && !hidden {
                     // The outside tap: invisible, not an accessibility element (escape collapses instead).
                     Color.clear
                         .contentShape(Rectangle())
@@ -273,7 +287,7 @@ struct LAAGlassTabBarOverlay<ID: Hashable, Card: View>: View {
                         .accessibilityHidden(true)
                         .ignoresSafeArea()
                 }
-                if !isHidden {
+                if !hidden {
                     LAAGlassTabBar(tabs: tabs, selection: $selection, isExpanded: $isExpanded, app: app,
                                    available: available, maxCardHeight: proxy.size.height * LAATabBarToken.Card.maxHeight,
                                    onReselect: onReselect, card: card)
@@ -284,9 +298,12 @@ struct LAAGlassTabBarOverlay<ID: Hashable, Card: View>: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             .ignoresSafeArea(.container, edges: .bottom)
+            // The bar leaves and returns with a fade (a push, a pop, the keyboard) instead of popping.
+            .animation(.easeInOut(duration: LAAMotionToken.base), value: hidden)
         }
         .ignoresSafeArea(.keyboard)
-        .onChange(of: isHidden) { _, hidden in if hidden { isExpanded = false } }
+        .onChange(of: hidden) { _, hidden in if hidden { isExpanded = false } }
+        .onChange(of: keyboard) { _, shown in keyboardOwnedByCard = shown && isExpanded }
     }
 }
 
@@ -316,6 +333,9 @@ public struct LAAGlassTabBar<ID: Hashable, Card: View>: View {
     @State private var dragStartID: ID?
     @State private var dragHoverID: ID?
     @State private var dragLeftStart = false
+    /// True while a touch is on the tab capsule. The system resets it when it takes the touch away (a
+    /// home-indicator swipe, Control Centre, a call), which never reaches `onEnded`.
+    @GestureState private var fingerDown = false
 
     public init(tabs: [LAAGlassTab<ID>], selection: Binding<ID>, isExpanded: Binding<Bool>, app: LAAAppIdentity,
                 available: Double, maxCardHeight: Double = 520, onReselect: ((ID) -> Void)? = nil,
@@ -352,6 +372,14 @@ public struct LAAGlassTabBar<ID: Hashable, Card: View>: View {
             : .spring(response: LAAMotionToken.snappy.response, dampingFraction: LAAMotionToken.snappy.damping)
     }
 
+    /// The mark under a finger: a tight spring that keeps up with it and never jumps (the landing is `press`).
+    /// Reduce Motion: the mark is simply where the finger is.
+    private var follow: Animation? {
+        reduceMotion
+            ? nil
+            : .interactiveSpring(response: LAAMotionToken.quick, dampingFraction: LAAMotionToken.snappy.damping)
+    }
+
     public var body: some View {
         LAAGlassCluster(spacing: LAATabBarToken.mergeSpacing) {
             HStack(alignment: .bottom, spacing: LAATabBarToken.gap) {
@@ -372,7 +400,17 @@ public struct LAAGlassTabBar<ID: Hashable, Card: View>: View {
         .animation(morph, value: isExpanded)
         .sensoryFeedback(.selection, trigger: selection)
         .onChange(of: isExpanded) { _, expanded in
-            if expanded { headerFocused = true }
+            guard expanded else { return }
+            endSlide()
+            headerFocused = true
+        }
+        .onChange(of: fingerDown) { _, down in
+            guard !down else { return }
+            // One hop later, so a normal release has run `onEnded` first. What is still set then belongs to
+            // a touch the system cancelled: let go of the lens and light the selected tab again.
+            Task { @MainActor in
+                if !fingerDown, dragX != nil { endSlide() }
+            }
         }
     }
 
@@ -411,38 +449,36 @@ public struct LAAGlassTabBar<ID: Hashable, Card: View>: View {
         return tabs[LAAGlassTabBarLayout.tabIndex(atX: x, count: tabs.count, itemWidth: item)].id
     }
 
+    /// Nothing here runs inside `withAnimation`: `selection` is the host's binding, and animating its write
+    /// animated every host view that depends on the selected tab. The bar animates itself (the mark in
+    /// `selectionIndicator`, the icons in `tabItem`).
     private func slide(item: Double) -> some Gesture {
         DragGesture(minimumDistance: 0, coordinateSpace: .named(LAAGlassTabBarLayout.trackSpace))
+            .updating($fingerDown) { _, down, _ in down = true }
             .onChanged { value in
                 guard let hover = tabID(atX: value.location.x, item: item) else { return }
                 if dragX == nil {
                     dragStartID = tabID(atX: value.startLocation.x, item: item)
                     dragLeftStart = false
-                    withAnimation(press) {
-                        dragX = value.location.x
-                        dragHoverID = hover
-                    }
-                } else {
-                    // Under the finger, unanimated: the lens is directly manipulated.
-                    dragX = value.location.x
-                    if hover != dragHoverID {
-                        withAnimation(.easeOut(duration: LAAMotionToken.quick)) { dragHoverID = hover }
-                    }
                 }
+                dragX = value.location.x
+                if hover != dragHoverID { dragHoverID = hover }
                 if hover != dragStartID { dragLeftStart = true }
             }
             .onEnded { value in
                 let target = tabID(atX: value.location.x, item: item) ?? selection
                 let reselect = target == selection && dragStartID == selection && !dragLeftStart
-                withAnimation(press) {
-                    if target != selection { selection = target }
-                    dragX = nil
-                    dragHoverID = nil
-                }
-                dragStartID = nil
-                dragLeftStart = false
+                endSlide()
+                if target != selection { selection = target }
                 if reselect { onReselect?(target) }
             }
+    }
+
+    private func endSlide() {
+        dragX = nil
+        dragHoverID = nil
+        dragStartID = nil
+        dragLeftStart = false
     }
 
     /// VoiceOver, Switch Control and Full Keyboard Access activate a tab directly.
@@ -450,7 +486,7 @@ public struct LAAGlassTabBar<ID: Hashable, Card: View>: View {
         if id == selection {
             onReselect?(id)
         } else {
-            withAnimation(press) { selection = id }
+            selection = id
         }
     }
 
@@ -458,8 +494,12 @@ public struct LAAGlassTabBar<ID: Hashable, Card: View>: View {
         let selected = tab.id == selection
         // While a finger is on the bar the tab under it is lit; otherwise the selected one.
         let lit = (dragHoverID ?? selection) == tab.id
+        // Every icon keeps one identity whatever is selected (it pairs only with the Close circle's icon when
+        // the bar opens). Switching the pairing on with the selection re-created both icons and flew a ghost
+        // of each between the two slots on every tab change.
         return tabIcon(tab, selected: lit)
-            .modifier(Matched(id: "current", space: space, enabled: selected && !reduceMotion))
+            .animation(.easeOut(duration: LAAMotionToken.quick), value: lit)
+            .modifier(Matched(id: MorphIcon(id: tab.id), space: space, enabled: !reduceMotion))
             .overlay(alignment: .topTrailing) { badge(tab.badge) }
             .frame(width: widths.item, height: LAATabBarToken.height - 2 * LAATabBarToken.inset)
             .contentShape(Rectangle())
@@ -491,6 +531,9 @@ public struct LAAGlassTabBar<ID: Hashable, Card: View>: View {
         }
         .frame(width: width, height: height)
         .offset(x: center - width / 2)
+        // The mark's own animation, keyed on what moves it (not on the width, so a rotation does not slide it):
+        // it follows the finger, lands with `press`, and returns by itself when a touch is cancelled.
+        .animation(isDragging ? follow : press, value: IndicatorState(index: index, dragX: dragX, lifted: lifted))
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
@@ -505,7 +548,9 @@ public struct LAAGlassTabBar<ID: Hashable, Card: View>: View {
         // laa-design:allow pill The lifted lens is the system tab bar's clear-glass capsule.
         let shape = Capsule()
         if !reduceTransparency, #available(iOS 26, macOS 26, watchOS 26, *) {
+            // Materialises in place: it must not bud out of the capsule's own glass in the same container.
             shape.fill(.clear).glassEffect(Glass.clear.interactive(), in: shape)
+                .glassEffectTransition(.materialize)
         } else {
             shape.fill(palette.selection)
         }
@@ -535,14 +580,16 @@ public struct LAAGlassTabBar<ID: Hashable, Card: View>: View {
                 .font(.system(size: LAAPlatform.current.canvas.label, weight: .semibold).monospacedDigit())
                 .foregroundStyle(palette.accent)
                 .fixedSize()
-                .offset(x: 10, y: -6)
+                // Anchored by its leading edge: more digits grow away from the icon, never over it.
+                .alignmentGuide(.trailing) { $0[.leading] + LAAGlassTabBarLayout.badgeLeadingInset }
+                .offset(y: -6)
                 .accessibilityHidden(true)
         }
     }
 
     private var appButton: some View {
-        roundButton(id: "app", slotWidth: LAATabBarToken.appCapsule, action: { isExpanded = true }) {
-            ownerAvatar(size: LAAPlatform.current.iconControl.icon)
+        roundButton(id: "app", visual: LAATabBarToken.appCapsule, action: { isExpanded = true }) {
+            ownerAvatar(size: LAATabBarToken.appImage)
         }
         .accessibilityLabel(Text(app.settingsAccessibilityLabel()))
         .accessibilityIdentifier("laa.tabbar.app")
@@ -553,13 +600,12 @@ public struct LAAGlassTabBar<ID: Hashable, Card: View>: View {
             .accessibilityHidden(true)
     }
 
-    /// The glyph, glass, and transparent hit frame share one center. The tab-bar slot
-    /// keeps its layout size; only the glass morphs, not the profile artwork.
-    private func roundButton<Label: View>(id: String, slotWidth: Double, action: @escaping () -> Void,
+    /// The glyph, glass, and transparent hit frame share one center. The circle is the bar's own size
+    /// (`tabBar.iphone.appIcon.capsule`, the bar's height), not the generic icon button's; only the glass
+    /// morphs, not the profile artwork.
+    private func roundButton<Label: View>(id: String, visual: Double, action: @escaping () -> Void,
                                           @ViewBuilder label: () -> Label) -> some View {
-        let platform = LAAPlatform.current
-        let visual = platform.iconControl.visual
-        let hit = platform.controlHitArea
+        let hit = max(LAAPlatform.current.controlHitArea, visual)
         return Button(action: action) {
             Color.clear.frame(width: visual, height: visual)
                 .overlay(alignment: .center, content: label)
@@ -569,16 +615,16 @@ public struct LAAGlassTabBar<ID: Hashable, Card: View>: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .frame(width: slotWidth, height: LAATabBarToken.height, alignment: .center)
+        .frame(width: visual, height: LAATabBarToken.height, alignment: .center)
     }
 
     // MARK: Expanded
 
     private var currentTab: some View {
-        roundButton(id: "tabs", slotWidth: LAATabBarToken.height, action: { isExpanded = false }) {
+        roundButton(id: "tabs", visual: LAATabBarToken.height, action: { isExpanded = false }) {
             if let current {
-                tabIcon(current, selected: true, size: LAAPlatform.current.iconControl.icon)
-                    .modifier(Matched(id: "current", space: space, enabled: !reduceMotion))
+                tabIcon(current, selected: true)
+                    .modifier(Matched(id: MorphIcon(id: current.id), space: space, enabled: !reduceMotion))
             }
         }
         .accessibilityLabel(Text("Close"))
@@ -698,8 +744,21 @@ struct MorphGlass<S: InsettableShape>: ViewModifier {
     }
 }
 
-struct Matched: ViewModifier {
-    let id: String
+/// The identity one tab's icon keeps between the tab capsule and the Close circle (apart from the glass ids).
+private struct MorphIcon<ID: Hashable>: Hashable {
+    let id: ID
+}
+
+/// What moves the selection mark: the selected slot, the finger, and whether the mark is lifted.
+private struct IndicatorState: Equatable {
+    let index: Int
+    let dragX: Double?
+    let lifted: Bool
+}
+
+/// `enabled` must be constant for a view's lifetime (Reduce Motion only): the two branches are two identities.
+struct Matched<ID: Hashable>: ViewModifier {
+    let id: ID
     let space: Namespace.ID
     let enabled: Bool
 
@@ -716,16 +775,14 @@ struct LAAProfileImage: View {
     @Environment(\.laaPalette) private var palette
 
     var body: some View {
-        let canvas = LAAPlatform.current.canvas
-        let initialSize = size <= LAAPlatform.current.iconControl.icon ? canvas.small : canvas.heading
-        return (profile == nil ? palette.wash : Color.clear)
+        (profile == nil ? palette.wash : Color.clear)
             .frame(width: size, height: size)
             .overlay(alignment: .center) {
                 if let profile {
                     profile.resizable().scaledToFill()
                 } else {
                     Text(verbatim: initial)
-                        .laaFont(initialSize, weight: .semibold)
+                        .laaFont(LAAPlatform.current.canvas.heading, weight: .semibold)
                         .foregroundStyle(palette.text)
                         .lineLimit(1)
                         .minimumScaleFactor(0.5)

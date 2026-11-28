@@ -215,6 +215,7 @@ struct LAAAppShell: View {
     private var normalBar: some View {
         TabView(selection: $selectedTab) {
             chatsTab
+                .environment(\.laaTabBarScope, .chats)
                 .toolbar(.hidden, for: .tabBar)
                 .tag(LAATab.chats)
             ForEach(LAATab.destinations.filter { $0 != .chats }) { tab in
@@ -226,6 +227,7 @@ struct LAAAppShell: View {
                               usageState: usageState, selectedTab: $selectedTab,
                               onRequestSettings: onRequestSettings)
                     .equatable()
+                    .environment(\.laaTabBarScope, tab)
                 .modifier(LAATabRoot(barVisible: !barHidden))
                 .tag(tab)
             }
@@ -256,8 +258,9 @@ struct LAAAppShell: View {
         }
     }
 
-    /// A call covering the tabs, or a screen that hid the system bar (a conversation, a detail page).
-    private var barHidden: Bool { callCoveringTabs || tabBarVisibility.isHidden }
+    /// A call covering the tabs, or a screen of the selected tab that hid the system bar (a conversation, a
+    /// detail page). A hider left behind in another tab never hides the bar here (BUS-360).
+    private var barHidden: Bool { callCoveringTabs || tabBarVisibility.isHidden(for: selectedTab) }
     @State private var loginSafeBottom: Double = 34
 
     @ViewBuilder

@@ -181,6 +181,22 @@ final class LAATabModelTests: XCTestCase {
         // Employee voice flags stay active after Chat minimises its call screen.
         XCTAssertFalse(LAATabBarVisibility.isCovered(legacyCallPresented: true, employeeCallActive: true, employeeCallPresented: false))
     }
+
+    /// BUS-360: a Work detail that never ran onDisappear must not hide the bar in the other tabs.
+    @MainActor
+    func testTabBarHidersOnlyHideTheirOwnTab() {
+        let visibility = LAATabBarVisibility()
+        let detail = UUID(), unscoped = UUID()
+        visibility.hide(detail, scope: .work)
+        XCTAssertTrue(visibility.isHidden(for: .work))
+        XCTAssertFalse(visibility.isHidden(for: .chats))
+        XCTAssertFalse(visibility.isHidden(for: .today))
+        visibility.hide(unscoped)
+        XCTAssertTrue(visibility.isHidden(for: .chats))
+        visibility.show(unscoped)
+        visibility.show(detail)
+        XCTAssertFalse(visibility.isHidden(for: .work))
+    }
 }
 /// Opt-in cleanup for the dedicated live-Bridge simulator only.
 final class LAABridgeSimulatorCleanupTests: XCTestCase {
