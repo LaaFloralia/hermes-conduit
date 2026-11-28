@@ -887,6 +887,17 @@ test('2026-11-28: only brand preference and the owner\'s own operation stay owne
   assert.equal(JSON.parse(readFileSync(f.store.file, 'utf8')).records.find((r) => r.id === legacy.id).category, 'delegable');
 });
 
+test('GA-10: real-account trading kinds are owner-only and Monet cannot answer them', async (t) => {
+  const f = fixture(t);
+  for (const kind of ['売買', '実口座', '発注', '取引', '実口座の発注', 'Trade', 'trading', 'real account', 'Real-Account']) {
+    assert.equal(decisionCategory(`【必ず社長：${kind}】`).category, 'owner', kind);
+  }
+  const trade = f.service.add(request({ requestId: 'trade', impact: '【必ず社長：売買】Gazania 実口座' })).decision;
+  assert.equal(trade.category, 'owner');
+  await assert.rejects(f.service.answerAsMonet({ id: trade.id, body: { optionIndex: 0 }, reason: '推奨' }), { code: 'decision_owner_only', status: 409 });
+  assert.equal(f.service.stats().answeredByMonet, 0);
+});
+
 test('2026-11-28: the same conversation re-asking the same title replaces its open item', (t) => {
   const f = fixture(t);
   const first = f.service.add(request({ requestId: 'icon-1', title: 'アイコン案' })).decision;

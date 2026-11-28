@@ -17,9 +17,11 @@ export const requestKey = (value) => text(value, 'requestId', 200);
 
 // Owner-only kinds (2026-11-28 owner: 「ブランドの好み以外ばいいです」): the brand
 // preference (final choice of a name or look) and the owner's own physical
-// operation or authentication. Every other kind, even when filed as
+// operation or authentication. Real-account trading (実口座・売買・発注・取引) is
+// owner-only too: its start conditions stay with the owner (GA-10; mirror of
+// hq/harness/orchestrate.py OWNER_KIND). Every other kind, even when filed as
 // 【必ず社長：お金】 etc., is answered by Monet with its recommended option.
-const OWNER_ONLY_KIND = /ブランド|好み|見た目|物理|本人の?操作|本人の?認証|^本人$|brand|preference|aesthetic|look|logo|physical|authenticat|passkey|biometric|identity|owner'?s?(operation|action)/iu;
+const OWNER_ONLY_KIND = /ブランド|好み|見た目|物理|本人の?操作|本人の?認証|^本人$|実口座|売買|発注|取引|trad(e|es|ing)|real.?account|brand|preference|aesthetic|look|logo|physical|authenticat|passkey|biometric|identity|owner'?s?(operation|action)/iu;
 export const ownerOnlyKind = (kind) => OWNER_ONLY_KIND.test(String(kind).normalize('NFKC').replace(/[\s・、,／/]/gu, ''));
 export function decisionCategory(impact) {
   const kind = typeof impact === 'string' && /^【必ず社長：([^【】\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+)】/u.exec(impact)?.[1].trim();
