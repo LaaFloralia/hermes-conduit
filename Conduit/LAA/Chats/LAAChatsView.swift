@@ -187,7 +187,12 @@ struct LAAChatsView: View {
     }
 
     private func refresh() async {
-        guard appState.isConnected else { return }
+        // Pulling the offline list tries to connect again; the task keyed on
+        // isConnected reloads everything once it succeeds.
+        guard appState.isConnected else {
+            if !appState.isConnecting { await appState.reconnect() }
+            return
+        }
         await appState.loadSessions(forceRefresh: true)
         await appState.refreshBotRoster()
         await readRooms()
