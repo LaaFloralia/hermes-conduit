@@ -21,7 +21,8 @@ export const requestKey = (value) => text(value, 'requestId', 200);
 // Monet's like every other kind, even when filed as 【必ず社長：ブランドの好み】.
 // Mirrored by `OWNER_KIND` in hq/harness/orchestrate.py; keep both in step.
 // Real-account trading keeps the trading rules (the owner sets its start conditions).
-const OWNER_ONLY_KIND = /物理|本人の?操作|本人の?認証|^本人$|実口座|売買|発注|取引|physical|authenticat|passkey|biometric|identity|owner'?s?(operation|action)|trad(e|es|ing)\b/iu;
+// `real.?account` (GA-10) is not yet in OWNER_KIND; HQ should add it (stricter here is safe: Monet's answer gets 409).
+const OWNER_ONLY_KIND = /物理|本人の?操作|本人の?認証|^本人$|実口座|売買|発注|取引|physical|authenticat|passkey|biometric|identity|owner'?s?(operation|action)|trad(e|es|ing)\b|real.?account/iu;
 export const ownerOnlyKind = (kind) => OWNER_ONLY_KIND.test(String(kind).normalize('NFKC').replace(/[\s・、,／/]/gu, ''));
 export function decisionCategory(impact) {
   const kind = typeof impact === 'string' && /^【必ず社長：([^【】\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+)】/u.exec(impact)?.[1].trim();
