@@ -37,7 +37,15 @@ enum LAAChatsPreview {
     /// assistant row that is only the token. A person's own "[SILENT]" stays.
     static func shows(role: MessageRole, content: String) -> Bool {
         guard role == .user || role == .assistant, !content.isEmpty else { return false }
+        guard !isInternalNotice(content) else { return false }
         return !(role == .assistant && isNoReplySentinel(content))
+    }
+
+    /// Hermes' own notices ("[System: The active model … has changed …]" and
+    /// the other `[System: …]` lines) are not someone's words (BUS-558).
+    static func isInternalNotice(_ text: String) -> Bool {
+        MessageNormalizer.modelChangeActivity(fromText: text) != nil
+            || MessageNormalizer.systemNoticeText(fromText: text) != nil
     }
 
     static func latest(_ messages: [ChatMessage]) -> ChatMessage? {
@@ -52,7 +60,7 @@ enum LAAChatsPreview {
     static func choose(live: ChatMessage?, cached: OfflineCachedMessage?, roster: String?) -> Choice? {
         if let live { return Choice(text: live.content, timestamp: live.timestamp) }
         if let cached { return Choice(text: cached.content, timestamp: cached.timestamp) }
-        guard let roster, !isNoReplySentinel(roster) else { return nil }
+        guard let roster, !isNoReplySentinel(roster), !isInternalNotice(roster) else { return nil }
         // A cron report never shows its internal header line.
         return Choice(text: MessageNormalizer.cronReport(roster)?.body ?? roster, timestamp: nil)
     }

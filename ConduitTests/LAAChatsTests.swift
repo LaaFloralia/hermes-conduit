@@ -95,5 +95,19 @@ final class LAAChatsTests: XCTestCase {
         let live = ChatMessage(id: "l", role: .user, content: "ありがとう", timestamp: "10")
         XCTAssertEqual(LAAChatsPreview.choose(live: live, cached: cached, roster: "older")?.text, "ありがとう")
     }
+
+    // BUS-558: the model-change notice became the list preview.
+
+    func testInternalNoticesNeverBecomeThePreview() throws {
+        let notice = "[System: The active model for this chat has changed to claude-opus-5-5 via provider claude-subscription-directsdk-experimental. From this point forward, respond as that model.]"
+        XCTAssertNil(LAAChatsPreview.choose(live: nil, cached: nil, roster: notice))
+        XCTAssertNil(LAAChatsPreview.choose(live: nil, cached: nil, roster: "[System: Something internal]"))
+        let rows = try [
+            ChatMessage(id: "a", role: .assistant, content: "承知しました。", timestamp: "1"),
+            ChatMessage(id: "n", role: .user, content: notice, timestamp: "2")
+        ].map { try XCTUnwrap(OfflineCachedMessage($0)) }
+        XCTAssertEqual(LAAChatsPreview.latest(rows)?.id, "a")
+        XCTAssertEqual(LAAChatsPreview.choose(live: nil, cached: nil, roster: "明日の予定です")?.text, "明日の予定です")
+    }
 }
 #endif
