@@ -91,6 +91,30 @@ final class LAADecisionMediaTests: XCTestCase {
         XCTAssertEqual(LAADecisionBoardView.delivered(answered).images, item.images)
     }
 
+    /// D-47 B9: an Answered row shows the chosen option's picture; an open
+    /// question, a free answer or an option without one shows none.
+    func testAnsweredRowTakesTheChosenOptionsPicture() throws {
+        func item(_ answer: String, delivery: String = "delivered") throws -> LAADecision {
+            try decision("""
+                { "kind": "board", \(base.replacingOccurrences(of: "\"open\"", with: "\"answered\"")),
+                  "options": [ { "label": "A", "recommended": true }, { "label": "B" }, { "label": "C" } ],
+                  "images": [ { "id": "img_0000000000a0", "width": 8, "height": 8, "option": 0 },
+                              { "id": "img_0000000000b0", "width": 8, "height": 8, "option": 1 },
+                              { "id": "img_00000000000a", "width": 8, "height": 8 } ],
+                  "answer": \(answer), "delivery": { "state": "\(delivery)", "attempts": 1 } }
+                """)
+        }
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        XCTAssertEqual(try item(#"{ "optionIndex": 1, "label": "B", "answeredAt": "\#(stamp)" }"#).answeredOptionImage?.id,
+                       "img_0000000000b0")
+        XCTAssertNil(try item(#"{ "optionIndex": 2, "label": "C", "answeredAt": "\#(stamp)" }"#).answeredOptionImage,
+                     "the chosen option has no picture")
+        XCTAssertNil(try item(#"{ "optionIndex": null, "label": "自由回答", "answeredAt": "\#(stamp)" }"#).answeredOptionImage)
+        XCTAssertNil(try item(#"{ "optionIndex": 1, "label": "B", "answeredAt": "\#(stamp)" }"#, delivery: "failed").answeredOptionImage,
+                     "an undelivered answer is not settled")
+        XCTAssertNil(try decision("{ \(base), \"options\": [ { \"label\": \"A\" } ] }").answeredOptionImage)
+    }
+
     /// Retention is quiet: 410, or the route's own 404 code. A 404 with no
     /// such code is an older Bridge without the route, not a removed picture.
     func testRemovedPictureIsToldApartFromAnOlderBridge() {

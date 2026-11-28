@@ -44,6 +44,8 @@ struct LAASegmentedControl<Value: Hashable>: View {
     @Binding var selection: Value
     let title: (Value) -> String
     var identifier: (Value) -> String = { _ in "" }
+    /// A small number after a segment's name (Chat's unread Routines); nil for none.
+    var count: (Value) -> Int? = { _ in nil }
 
     @Namespace private var pill
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -69,10 +71,17 @@ struct LAASegmentedControl<Value: Hashable>: View {
                 } label: {
                     // The secondary size (13 pt, scaled): the switcher names
                     // the lists below it and should not outweigh their rows.
-                    Text(verbatim: title(value))
-                        .laaTextStyle(.secondary).fontWeight(selected ? .semibold : .medium)
-                        .monospacedDigit()
-                        .foregroundStyle(selected ? LAAColor.link : LAAColor.text)
+                    HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x1) {
+                        Text(verbatim: title(value))
+                            .laaTextStyle(.secondary).fontWeight(selected ? .semibold : .medium)
+                            .monospacedDigit()
+                            .foregroundStyle(selected ? LAAColor.link : LAAColor.text)
+                        if let number = count(value) {
+                            Text(verbatim: "\(number)")
+                                .laaTextStyle(.section).monospacedDigit()
+                                .foregroundStyle(LAAColor.link)
+                        }
+                    }
                         .lineLimit(1)
                         .minimumScaleFactor(0.75)
                         .frame(maxWidth: .infinity, minHeight: 30)

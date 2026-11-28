@@ -114,7 +114,7 @@ test('muted notifications are processed once by decisions, tasks and calendar', 
   const notify = async () => { calls++; return { delivered: false, reason: 'muted' }; };
   const store = createDecisionStore({ dir });
   const service = createDecisionService({ store, notify });
-  service.add({ title: '題', summary: '本文', options: [{ label: 'A' }, { label: 'B' }], impact: '【必ず社長：ブランドの好み】', requestId: 'new' });
+  service.add({ title: '題', summary: '本文', options: [{ label: 'A' }, { label: 'B' }], impact: '【必ず社長：本人認証】', requestId: 'new' });
   await service.sync(); await service.sync(); assert.equal(calls, 1);
   const poller = createOwnerTaskNotificationPoller({ notify, source: { ownerInboxAvailable: true, listCollection: async () => ({ items: [{ id: 'n', type: 'issueMention', updatedAt: 'v1', issue: { id: 'issue' } }], nextCursor: null }) } });
   await poller.poll(); await poller.poll(); assert.equal(calls, 2);
@@ -129,7 +129,7 @@ test('muted notifications are processed once by decisions, tasks and calendar', 
 test('quick board: expiry is atomic, normal answers unchanged, closed and replay precede expiry', async (t) => {
   const dir = dirFor(t); let now = 100000;
   const store = createDecisionStore({ dir, now: () => now });
-  const add = (requestId) => store.add({ title: '題', summary: '本文', impact: '【必ず社長：ブランドの好み】', options: [{ label: 'A' }, { label: 'B' }], deadline: new Date(now + 1000).toISOString(), requestId }).decision;
+  const add = (requestId) => store.add({ title: '題', summary: '本文', impact: '【必ず社長：本人認証】', options: [{ label: 'A' }, { label: 'B' }], deadline: new Date(now + 1000).toISOString(), requestId }).decision;
   const expired = add('expired'), accepted = add('accepted');
   const body = { requestId: 'reply', optionIndex: 1, quick: true };
   store.reserve(accepted.id, 'phone', body); now += 2000;
@@ -222,7 +222,7 @@ test('quick board HTTP: 409 expired, accepted before expiry, replay after expiry
   const dir = dirFor(t); let now = Date.now();
   const store = createDecisionStore({ dir, now: () => now });
   const service = createDecisionService({ store, now: () => now, notify: async () => ({ delivered: true }) });
-  const add = (requestId) => service.add({ title: '題', summary: '本文', impact: '【必ず社長：ブランドの好み】', options: [{ label: 'A' }, { label: 'B' }], deadline: new Date(now + 1000).toISOString(), requestId }).decision;
+  const add = (requestId) => service.add({ title: '題', summary: '本文', impact: '【必ず社長：本人認証】', options: [{ label: 'A' }, { label: 'B' }], deadline: new Date(now + 1000).toISOString(), requestId }).decision;
   const a = add('a'), b = add('b');
   const h = await startBridge({ decisions: { service } }); t.after(() => h.close()); const token = await h.token();
   const post = (id, key, requestId = key) => h.request(`/v1/decisions/${id}/answer`, { token, method: 'POST', key, body: { requestId, optionIndex: 0, quick: true } });
@@ -248,7 +248,7 @@ test('the outbox does not retry previously queued unclassified or delegated deci
   const dir = dirFor(t), file = join(dir, 'notify.json');
   const store = createDecisionStore({ dir });
   const add = (requestId, impact) => store.add({ title: '題', summary: '本文', options: [{ label: 'A' }, { label: 'B' }], impact, requestId }).decision.id;
-  const owner = add('owner', '【必ず社長：ブランドの好み】'), delegated = add('delegated', '【任せられる】');
+  const owner = add('owner', '【必ず社長：本人認証】'), delegated = add('delegated', '【任せられる】');
   const sent = [];
   let online = false;
   const notify = createOwnerNotifier({ file, deliver: async (event) => {

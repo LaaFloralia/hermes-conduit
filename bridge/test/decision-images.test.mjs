@@ -251,3 +251,24 @@ test('decision sync prunes images at seven days and old orphan/staging dirs, ret
   }
   assert.equal((await get(open)).status, 200);
 });
+
+test('D-47: decide images writes an item\'s images for Monet\'s design choice without touching the board', mac, (t) => {
+  const f = cliFixture(t);
+  const a = join(f.root, 'a.png'), b = join(f.root, 'b.png'), general = join(f.root, 'g.png');
+  for (const p of [a, b, general]) writeFileSync(p, png);
+  const added = f.run(['--image', general], [`案A::image=${a}`, `案B::image=${b}`]);
+  assert.equal(added.status, 0, added.stderr);
+  const id = added.json.decision.id;
+  const before = readFileSync(join(f.dir, 'decisions.json'));
+  const out = join(f.root, 'out');
+  const env = { HOME: join(f.root, 'home'), TMPDIR: join(f.root, 'tmp'), PATH: `${dirname(process.execPath)}:/usr/bin:/bin`,
+    LAA_LANE_ID: 'decision-images-unit', LAA_LANE_ROOT: f.root, LAA_BRIDGE_STATE_DIR: f.dir, LAA_BRIDGE_PORT: '0', LAA_BRIDGE_BRAIN_ROOT: join(f.root, 'brain') };
+  const run = (args) => spawnSync(cli, ['decide', 'images', ...args], { env, encoding: 'utf8', timeout: 90_000 });
+  const r = run([id, '--out', out, '--json']);
+  assert.equal(r.status, 0, r.stderr);
+  const { images } = JSON.parse(r.stdout);
+  assert.deepEqual(images.map((i) => i.option).sort(), [1, 2, null].sort());
+  for (const i of images) { assert(i.path.startsWith(out)); assert.equal(mode(i.path), 0o600); assert.ok(statSync(i.path).size > 0); }
+  assert.deepEqual(readFileSync(join(f.dir, 'decisions.json')), before);
+  assert.notEqual(run([id, '--out', 'relative']).status, 0);
+});

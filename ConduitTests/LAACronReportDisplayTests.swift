@@ -7,7 +7,7 @@ import XCTest
 /// owner and the employee; compaction's second copy of each report shows
 /// once; reports never push the conversation out of the display cap; a
 /// report shows its routine's name and never its internal header line;
-/// and a run of reports folds into one row.
+/// and reports leave the transcript for the chat's Routines thread (D-47).
 @MainActor
 final class LAACronReportDisplayTests: XCTestCase {
     private enum FixtureError: Error {
@@ -200,61 +200,54 @@ final class LAACronReportDisplayTests: XCTestCase {
         XCTAssertEqual(choice?.text, "異常なし")
     }
 
-    // MARK: - Run placement
+    // MARK: - Routines (D-47)
 
-    func testConsecutiveReportsSeparatedOnlyByHiddenRowsFoldIntoOneRun() throws {
-        let rows = [Self.cron("c0", "A"), Self.tool("t1"), Self.cron("c2", "B"), Self.cron("c3", "C"),
-                    Self.message("u4", .user, "社長"), Self.cron("c5", "D")]
+    func testReportsAreFlaggedForRoutinesNewestFirstWithIdsAndOrderUnchanged() throws {
+        let rows = [Self.cron("c0", "A", timestamp: "2026-11-27T08:00:00Z"), Self.tool("t1"),
+                    Self.message("u2", .user, "社長"), Self.cron("c3", "B", body: "## 見出し\n\n- 本文の一行目", timestamp: "2026-11-27T10:00:00Z")]
         var cache = ChatMessageScrollTargetCache()
         cache.update(for: rows)
-        let targets = cache.targets
-        XCTAssertEqual(targets.map(\.id), rows.map(\.id), "Ids and order are unchanged")
-        XCTAssertEqual(targets.map(\.order), Array(0..<rows.count))
-        XCTAssertEqual(Set(targets.map(\.semanticID)).count, rows.count)
-
-        let lead = try XCTUnwrap(targets[0].notice)
-        XCTAssertEqual(lead.runID, "c0")
-        XCTAssertEqual(lead.count, 3)
-        XCTAssertEqual(lead.index, 0)
-        XCTAssertEqual(lead.latestTitle, "C")
-        XCTAssertEqual(targets[2].notice?.index, 1)
-        XCTAssertEqual(targets[3].notice?.index, 2)
-        XCTAssertEqual(targets[3].notice?.runID, "c0")
-        XCTAssertNil(targets[1].notice, "A hidden row is no member")
-        XCTAssertNil(targets[4].notice)
-        XCTAssertNil(targets[5].notice, "A report on its own draws as a single card")
-
-        let semanticIDs = targets.map(\.semanticID)
-        cache.update(for: rows + [Self.cron("c6", "E")])
-        XCTAssertEqual(Array(cache.targets.prefix(rows.count).map(\.semanticID)), semanticIDs)
-        XCTAssertEqual(cache.targets[5].notice?.runID, "c5", "An appended report starts a run under the older one")
-        XCTAssertEqual(cache.targets[6].notice?.runID, "c5")
-        XCTAssertEqual(cache.targets[0].notice?.runID, "c0")
+        XCTAssertEqual(cache.targets.map(\.id), rows.map(\.id), "Ids and order are unchanged")
+        XCTAssertEqual(cache.targets.filter(\.isCronReport).map(\.id), ["c0", "c3"], "The transcript leaves these out")
+        let reports = LAARoutineReport.reports(in: cache.targets)
+        XCTAssertEqual(reports.map(\.title), ["B", "A"], "Newest first")
+        XCTAssertEqual(reports.first?.preview, "見出し")
+        XCTAssertEqual(Set(reports.map(\.id)).count, 2)
+        // Compaction's copy of the same delivery reads as the same report.
+        let twin = try XCTUnwrap(LAARoutineReport(Self.cron("c9", "A", timestamp: "2026-11-27T08:00:00Z")))
+        XCTAssertEqual(twin.id, reports.last?.id)
+        XCTAssertNil(LAARoutineReport(Self.message("u", .user, "社長")))
     }
 
-    func testRunIDStaysWhenAReportIsAppended() {
-        var cache = ChatMessageScrollTargetCache()
-        let rows = [Self.message("u", .user, "社長"), Self.cron("c1", "A"), Self.cron("c2", "B")]
-        cache.update(for: rows)
-        XCTAssertEqual(cache.targets[1].notice?.runID, "c1")
-        cache.update(for: rows + [Self.cron("c3", "C")])
-        XCTAssertEqual(cache.targets[1].notice?.runID, "c1")
-        XCTAssertEqual(cache.targets[1].notice?.count, 3)
-        XCTAssertEqual(cache.targets[3].notice?.index, 2)
-        XCTAssertEqual(cache.targets[3].notice?.latestTitle, "C")
+    func testOpeningAReportMarksItReadPerChatAndPersists() throws {
+        let suite = "LAACronReportDisplayTests.read.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let store = LAARoutineReportStore(defaults: defaults)
+        let reports = [Self.cron("1", "A"), Self.cron("2", "B")].compactMap(LAARoutineReport.init)
+        XCTAssertEqual(store.unreadCount(reports, in: "laa-cto/s1"), 2)
+        store.markRead(reports[0], in: "laa-cto/s1")
+        XCTAssertEqual(store.unreadCount(reports, in: "laa-cto/s1"), 1)
+        XCTAssertEqual(store.unreadCount(reports, in: "laa-cio/s2"), 2, "Another chat keeps its own")
+        XCTAssertTrue(LAARoutineReportStore(defaults: defaults).isRead(reports[0], in: "laa-cto/s1"), "Kept on the device")
     }
 
-    func testCollapsedRunDrawsOnlyItsLead() {
-        var cache = ChatMessageScrollTargetCache()
-        cache.update(for: [Self.cron("c1", "A"), Self.cron("c2", "B"), Self.cron("c3", "C")])
-        let disclosure = ChatRowDisclosure()
-        let preferences = ProfileDisplayPreferences()
-        let drawn = { cache.targets.filter { $0.drawsRow(preferences: preferences, isBusy: false, disclosure: disclosure) }.map(\.id) }
-        XCTAssertEqual(drawn(), ["c1"])
-        disclosure.willToggleNoticeRun("c1", to: true)
-        XCTAssertEqual(drawn(), ["c1", "c2", "c3"])
-        disclosure.willToggleNoticeRun("c1", to: false)
-        XCTAssertEqual(drawn(), ["c1"])
+    func testARoutineNotificationLandsOnItsNewestReport() {
+        XCTAssertEqual(LAARoutineReportStore.routineName(notificationTitle: "Cron job \"朝の確認\""), "朝の確認")
+        XCTAssertNil(LAARoutineReportStore.routineName(notificationTitle: "Cron job \"朝の確認\" failed"))
+        XCTAssertNil(LAARoutineReportStore.routineName(notificationTitle: "Monet"))
+        let store = LAARoutineReportStore(defaults: UserDefaults(suiteName: "LAACronReportDisplayTests.route.\(UUID().uuidString)")!)
+        let reports = [Self.cron("3", "B"), Self.cron("2", "A", timestamp: "2026-11-27T10:00:00Z"), Self.cron("1", "A")]
+            .compactMap(LAARoutineReport.init)
+        let tapped = Date()
+        store.noteTappedNotification(title: "Cron job \"A\"", now: tapped)
+        XCTAssertEqual(store.takeRoute(in: reports, now: tapped)?.message.id, "2")
+        XCTAssertNil(store.takeRoute(in: reports, now: tapped), "Taken once")
+        store.noteTappedNotification(title: "Cron job \"A\"", now: tapped)
+        XCTAssertNil(store.takeRoute(in: reports, now: tapped.addingTimeInterval(121)), "An old tap is no route")
+        store.noteTappedNotification(title: "Cron job \"A\"", now: tapped)
+        store.noteTappedNotification(title: "Reply", now: tapped)
+        XCTAssertNil(store.route, "Another notification replaces it")
     }
 
     // MARK: - Harness: the open walks to the last exchange

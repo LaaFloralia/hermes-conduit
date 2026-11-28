@@ -326,6 +326,10 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
                 // A calendar change Hermes asked for: its card shows once fetched.
                 await AppStateRuntimeRegistry.shared.appState.handlePhoneChangesPush(request.content.userInfo)
             } else if request.trigger is UNPushNotificationTrigger {
+                #if LAA_BUILD
+                // A routine report's push opens its chat on Routines (D-47).
+                LAARoutineReportStore.shared.noteTappedNotification(title: request.content.title)
+                #endif
                 PushNotificationService.shared.receiveNotificationPayload(request.content.userInfo)
             } else {
                 // Conduit posts only "Hermes wants to talk" itself (#449).

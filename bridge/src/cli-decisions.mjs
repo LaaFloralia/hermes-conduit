@@ -1,3 +1,5 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { isAbsolute, join } from 'node:path';
 import { resolvePort, resolveStateDir } from './config.mjs';
 import { connectLaneWork } from './lane/adapters.mjs';
 import { validateLane } from './lane/guard.mjs';
@@ -15,13 +17,14 @@ export const DECISIONS_USAGE = `laa-bridge decide — 判断ボード
              --impact <t> [--recommended <1-based index>] [--deadline <ISO>]
              [--image <absolute path>] (repeat up to 6 times)
              [--no-other] [--agent <paseo id>] [--name <title>] --request-id <id> [--json]
-             --impact starts with 【必ず社長：ブランドの好み】 or 【必ず社長：本人の操作】 (the owner
-             answers; name/look final choice, physical operation, own authentication) or
-             【任せられる】 (Monet answers: money, contracts, deletion, publishing, stop, scope…).
+             --impact starts with 【必ず社長：本人の操作】 or 【必ず社長：本人認証】 (the owner
+             answers: own physical operation, own authentication) or 【任せられる】
+             (Monet answers everything else, design and name choices included).
              Asking again with the same --title from the same conversation replaces the open item.
   decide status <id|ref> [--json]
+  decide images <id|ref> --out <absolute dir> [--json]   (writes the item's images, read-only on the board)
   decide withdraw <id|ref> --reason <t> [--json]
-  decide answer <id|ref> (--option <1-based>|--note <text>) --by monet --reason <one line> [--json]
+  decide answer <id|ref> (--option <1-based>|--note <text>) --by monet --reason <one or two lines> [--json]
   decide list [--monet-log [--since <ISO>]] [--json]
   decide stats [--since <ISO>] [--json]
 `;
@@ -34,10 +37,10 @@ export async function decisionsCommand(argv, flags, io = {}) {
   try {
     const [sub, given] = argv;
     if (!sub || sub === 'help') { write(DECISIONS_USAGE); return 0; }
-    const allowed = { add: 'title summary option recommended impact deadline no-other agent name request-id image json', status: 'json',
+    const allowed = { add: 'title summary option recommended impact deadline no-other agent name request-id image json', status: 'json', images: 'out json',
       withdraw: 'reason json', answer: 'option note by reason json', list: 'monet-log since json', stats: 'since json' };
     if (!Object.hasOwn(allowed, sub)) usage('unknown decide subcommand');
-    if (argv.length !== (['status', 'withdraw', 'answer'].includes(sub) ? 2 : 1)) usage('invalid positional arguments');
+    if (argv.length !== (['status', 'images', 'withdraw', 'answer'].includes(sub) ? 2 : 1)) usage('invalid positional arguments');
     for (const flag of Object.keys(flags)) if (!allowed[sub].split(' ').includes(flag)) usage(`unknown flag --${flag}`);
     const requireFlag = (key) => { if (typeof flags[key] !== 'string' || !flags[key]) usage(`--${key} is required`); return flags[key]; };
     const dir = resolveStateDir();
@@ -80,7 +83,20 @@ export async function decisionsCommand(argv, flags, io = {}) {
         source: { paseoAgentId: flags.agent ?? process.env.PASEO_AGENT_ID ?? null, name: flags.name ?? null } }, imageInputs, { author: 'agent' });
       result.decision = service.view(result.decision);
     } else if (sub === 'status') result = { decision: service.get(id) };
-    else if (sub === 'withdraw') result = { decision: service.withdraw(id, requireFlag('reason')) };
+    else if (sub === 'images') {
+      // For Monet's design choice (D-47): a model that reads images opens these files.
+      const out = requireFlag('out');
+      if (!isAbsolute(out)) usage('--out must be an absolute directory');
+      const decision = service.get(id);
+      mkdirSync(out, { recursive: true, mode: 0o700 });
+      const images = (decision.images ?? []).map((image, i) => {
+        const { bytes, contentType } = service.image(decision.id, image.id, 'full');
+        const path = join(out, `${i + 1}-${image.option === undefined ? 'general' : `option${image.option + 1}`}.${contentType === 'image/png' ? 'png' : 'jpg'}`);
+        writeFileSync(path, bytes, { mode: 0o600 });
+        return { option: image.option === undefined ? null : image.option + 1, path };
+      });
+      result = { decision: { id: decision.id, title: decision.title }, images };
+    } else if (sub === 'withdraw') result = { decision: service.withdraw(id, requireFlag('reason')) };
     else if (sub === 'answer') {
       if (requireFlag('by') !== 'monet') usage('--by must be monet');
       if ((flags.option === undefined) === (flags.note === undefined)) usage('choose one of --option or --note');
@@ -97,6 +113,7 @@ export async function decisionsCommand(argv, flags, io = {}) {
     else if (sub === 'add') write(`判断ボードへ登録しました（${result.decision.ref ? `${result.decision.ref} · ` : ''}${result.decision.id}）。${result.decision.category === 'owner' ? '社長' : 'Monet'}の回答はこの会話に届きます。${result.superseded?.length ? '同じ件名の前の判断を置き換えました。' : ''}ここで手番を終えてください。\n`);
     else if (sub === 'stats') for (const [key, count] of Object.entries(result)) write(`${key}: ${count}\n`);
     else if (flags['monet-log']) for (const r of result.items) write(`${r.time}  ${r.subject}  ${r.chosenOption}  ${r.reason}\n`);
+    else if (sub === 'images') for (const r of result.images) write(`${r.option ? `option ${r.option}` : 'general'}  ${r.path}\n`);
     else if (result.decision) write(`${result.decision.id}  ${result.decision.status}  ${result.decision.title}\n回答: ${result.decision.answer?.label ?? '未回答'}\n配達: ${result.decision.delivery?.state ?? '未回答'}${result.decision.delivery?.waiting ? '（会話が空き次第、自動で届けます）' : ''}\n`);
     else for (const r of result.items) write(`${r.ref ?? r.id ?? r.sessionId}  ${r.status}  ${r.category}  ${r.title}\n`);
     return 0;

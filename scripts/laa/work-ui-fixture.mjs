@@ -235,7 +235,7 @@ const followUps = [];
 // stay undelivered. The first decision carries J1/S4; the others keep ref and
 // sourceRef null, as an older Bridge sends.
 const DECISION_IDS = { hp: 'dec_0000000000000a01', card: 'dec_0000000000000a02', failed: 'dec_0000000000000a03',
-  long: 'dec_0000000000000a04', media: 'dec_0000000000000a05' };
+  long: 'dec_0000000000000a04', media: 'dec_0000000000000a05', chosen: 'dec_0000000000000a06' };
 // D-17: /decisions/images lists J5 (two general pictures, a picture on
 // options A and B, and option C's picture already removed by retention) beside
 // J1 without pictures; J5's sooner deadline puts it first, so the Mac's detail
@@ -346,12 +346,31 @@ const resetDecisions = () => {
       source: { paseoAgentId: 'agent-fixture-widget', sessionId: null, name: 'Hortensia｜ウィジェット' }, sourceRef: 'S6',
       createdAt: iso(-0.5), updatedAt: iso(-0.5), answer: null, delivery: null,
       images: MEDIA_IMAGES.map(({ id, width, height, option }) => (option === undefined ? { id, width, height } : { id, width, height, option })) },
+    // D-47 B9: an answer delivered an hour ago whose chosen option (B) has a
+    // picture, for the Answered row's thumbnail (/decisions/answered-images).
+    { id: DECISION_IDS.chosen, ref: 'J6', status: 'answered', title: '名刺の裏面を選ぶ',
+      summary: '2案の裏面を並べました。',
+      options: [
+        { label: 'A案 ロゴだけ', detail: null, recommended: true },
+        { label: 'B案 ロゴと連絡先', detail: null, recommended: false },
+      ],
+      allowOther: true, impact: null, deadline: null,
+      source: { paseoAgentId: 'agent-fixture-card-back', sessionId: null, name: 'Studio｜名刺' }, sourceRef: null,
+      createdAt: iso(-3), updatedAt: iso(-1),
+      answer: { optionIndex: 1, label: 'B案 ロゴと連絡先', note: null, answeredAt: iso(-1), deviceId: 'work-fixture' },
+      delivery: { state: 'delivered', attempts: 1, messageId: `${DECISION_IDS.chosen}:answer:1`, deliveredAt: iso(-1), error: null },
+      images: MEDIA_IMAGES.filter((i) => i.option === 0 || i.option === 1).map(({ id, width, height, option }) => ({ id, width, height, option })) },
   ];
 };
 resetDecisions();
 const boardItems = () => {
   if (decisionMode === 'off' || decisionMode === 'empty' || decisionMode === 'unsupported') return [];
   let items = decisions.filter((d) => d.status === 'open' || d.delivery?.state === 'failed').map((d) => ({ kind: 'board', ...d }));
+  // J6 (answered, with the chosen option's picture) belongs to
+  // /decisions/answered-images only: J1 open, J6 under Answered.
+  if (decisionMode === 'answered-images') {
+    return decisions.filter((d) => d.id === DECISION_IDS.hp || d.id === DECISION_IDS.chosen).map((d) => ({ kind: 'board', ...d }));
+  }
   // J5 belongs to /decisions/images only, so every other board stays as it was.
   if (decisionMode === 'images') return items.filter((d) => d.id === DECISION_IDS.media || d.id === DECISION_IDS.hp);
   items = items.filter((d) => d.id !== DECISION_IDS.media);
@@ -693,7 +712,7 @@ const control = createLaneFixtureServer(async (req, res) => {
     imagesServed = 0;
     resetDecisions();
   }
-  const decisionControl = req.url.match(/^\/decisions\/(normal|empty|unsupported|off|long|single|images)$/);
+  const decisionControl = req.url.match(/^\/decisions\/(normal|empty|unsupported|off|long|single|images|answered-images)$/);
   if (decisionControl) decisionMode = decisionControl[1];
   if (req.url === '/decisions/fail-next') failNextDelivery = true;
   if (req.url === '/decisions/note-limit-600') noteLimit = 600;

@@ -555,8 +555,6 @@ extension ChatMessageScrollTarget {
     @MainActor
     func drawsRow(preferences: ProfileDisplayPreferences, isBusy: Bool, disclosure: ChatRowDisclosure) -> Bool {
         if !preferences.showReviews, isReview { return false }
-        // A folded run of cron reports draws its first report only.
-        if let notice, notice.index > 0, !disclosure.isNoticeRunExpanded(notice.runID) { return false }
         return step?.drawsRow(messageID: id, preferences: preferences, isBusy: isBusy, disclosure: disclosure) ?? true
     }
 }
