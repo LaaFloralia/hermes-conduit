@@ -6,7 +6,8 @@
 # The APNs key never lives on disk outside this process: 1Password hands it
 # over as APNS_KEY, this script writes it to a 0600 file in a private
 # directory under ~/.config/laa/tmp-secrets — the relay needs a file — and the
-# directory is removed when the relay exits.
+# directory is removed when the relay exits (and any left by a killed run is
+# removed at the next start).
 #
 # Environment:
 #   LAA_RELAY_TEMPLATE    the 1Password template (default
@@ -49,6 +50,10 @@ fi
 
 mkdir -p "$secrets_root"
 chmod 700 "$secrets_root"
+# A relay killed with SIGKILL or a crash skips the trap below and leaves its key
+# copy behind (BUS-567 F3). launchd runs one relay, and a running relay read its
+# key once at start (apns.mjs), so any copy here now is stale: remove them all.
+find "$secrets_root" -mindepth 1 -maxdepth 1 -type d -name 'relay-apns.*' -exec rm -rf {} +
 secrets="$(mktemp -d "$secrets_root/relay-apns.XXXXXX")"
 key_path="$secrets/AuthKey_${APNS_KEY_ID}.p8"
 (umask 077; printf '%s\n' "$APNS_KEY" > "$key_path")
