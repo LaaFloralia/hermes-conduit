@@ -39,6 +39,12 @@ enum LAALaunchSignpost {
 
 final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        #if LAA_BUILD && targetEnvironment(macCatalyst)
+        // Before the first window: AppKit builds the Window menu's tab items
+        // from this setting, and with a single window they have nothing to act
+        // on (see LAAMacWindow).
+        LAAMacWindow.turnOffAutomaticWindowTabbing()
+        #endif
         #if LAA_BUILD
         // Kept on main: SwiftUI resolves the reading faces by name when it
         // first draws and does not redraw when a late registration lands, so

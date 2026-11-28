@@ -1,4 +1,5 @@
 #if LAA_BUILD && targetEnvironment(macCatalyst)
+import ObjectiveC
 import SwiftUI
 import UIKit
 
@@ -25,6 +26,20 @@ enum LAAMacWindow {
     /// Large enough for any display; the screen, not this, is the limit.
     static let maximumWidth: CGFloat = 8000
     static let maximumHeight: CGFloat = 5000
+
+    /// Catalyst keeps one window, but AppKit's automatic window tabbing still
+    /// adds Show Tab Bar, Show All Tabs, Show Previous/Next Tab, Move Tab to
+    /// New Window and Merge All Windows to the View and Window menus. Turned
+    /// off before the first window exists so AppKit never builds the items.
+    /// Catalyst cannot import AppKit, so the class property is set through the
+    /// Objective-C runtime the way `NSScreen` and `NSApplication` are read.
+    static func turnOffAutomaticWindowTabbing() {
+        let selector = NSSelectorFromString("setAllowsAutomaticWindowTabbing:")
+        guard let windowClass = NSClassFromString("NSWindow"),
+              let method = class_getClassMethod(windowClass, selector) else { return }
+        typealias Setter = @convention(c) (AnyClass, Selector, Bool) -> Void
+        unsafeBitCast(method_getImplementation(method), to: Setter.self)(windowClass, selector, false)
+    }
 
     /// Geometry uses Mac system points, not Catalyst UIKit points.
     static func comfortableFrame(in visible: CGRect) -> CGRect {
