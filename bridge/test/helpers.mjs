@@ -8,6 +8,7 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DEFAULT_SCOPES, IDEMPOTENCY_RETENTION_MS, PAIRING_TTL_MS, STUDIO_SCOPES } from '../src/config.mjs';
+import { isAdapterEnvKey } from '../src/lane/guard.mjs';
 import { createStore } from '../src/store.mjs';
 import { createBridge } from '../src/http.mjs';
 import { grantStudio, issuePairing } from '../src/pairing.mjs';
@@ -111,4 +112,21 @@ export async function startBridge({ now, testEndpoints = true, drive = null, wor
       rmSync(dir, { recursive: true, force: true });
     },
   };
+}
+
+/// A lane built inside a Work session inherits that session's wiring
+/// (`LAA_WORK_*`, `PASEO_*`), which the lane guard refuses on purpose: a lane may
+/// not take an adapter from the environment. Clear those keys for the test and
+/// put them back afterwards, so the suite gives the same verdict from an agent
+/// session as from a plain login shell.
+export function clearInheritedAdapters(t) {
+  const saved = [];
+  for (const key of Object.keys(process.env)) {
+    if (!isAdapterEnvKey(key)) continue;
+    saved.push([key, process.env[key]]);
+    delete process.env[key];
+  }
+  t.after(() => {
+    for (const [key, value] of saved) process.env[key] = value;
+  });
 }

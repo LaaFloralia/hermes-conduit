@@ -559,7 +559,7 @@ test('Venice USD and Magnific credits keep their units and priority, without Ant
   assert.equal(magnific.detail.creditUnit, 'AI credits');
 });
 
-test('Google AI Ultra passes through as the only Google row with the 5-hour and weekly windows and the active mark', () => {
+test('Google AI Ultra keeps its windows and active mark; Pro Sub2-4 ride along as optional rows in its group', () => {
   const now = Date.parse('2026-11-23T05:00:00Z');
   const row = (account, extra) => ({ id: `google-ai-pro-${account}`, name: `Google ${account}`, group: 'google-ai-pro',
     groupName: 'Google AI Ultra', kind: 'quota', source: 'agy-usage', updatedAt: '2026-11-23T04:58:00Z',
@@ -575,15 +575,21 @@ test('Google AI Ultra passes through as the only Google row with the 5-hour and 
   assert.equal(ultra.availability, 'available');
   assert.equal(ultra.label, 'Google AI Ultra');
   assert.equal(ultra.group, 'google-ai-pro');
-  assert.equal(ultra.groupName, 'Google AI Ultra');
+  // The group holds Ultra and the optional Pro Sub2-4 accounts, so its name is the
+  // product family; the account stays on the row's own label.
+  assert.equal(ultra.groupName, 'Google AI');
   assert.equal(ultra.active, true);
   // 0% is a real reading here, the binding window.
   assert.equal(ultra.value, 0);
   assert.deepEqual(ultra.detail.windows.map(w => [w.label, w.remainingPercent, w.windowMinutes]), [['5時間', 0, 300], ['週間', 64.5, 10080]]);
   assert.equal(ultra.detail.freshUntil, '2026-11-23T05:03:00.000Z');
-  // Sub2/3/4 are no longer listed, even when the upstream feed still carries them.
-  assert.equal(items.some(item => /google-ai-pro-sub/.test(item.id)), false);
-  assert.deepEqual(items.filter(item => item.group === 'google-ai-pro').map(item => item.id), ['provider.google-ai-pro-ultra.quota']);
+  // Pro Sub2-4 are optional rows (2026-11-28 22:15 owner): listed beside Ultra while the
+  // feed carries the account, gone once its plan ends, so an ended plan never shows.
+  assert.deepEqual(items.filter(item => item.group === 'google-ai-pro').map(item => item.id),
+    ['provider.google-ai-pro-ultra.quota', 'provider.google-ai-pro-sub2.quota']);
+  assert.equal(byId(items, 'provider.google-ai-pro-sub2.quota').label, 'Google Sub2');
+  const withoutPro = usageItemsFromFeed({ ...feed, providers: [feed.providers[0]] }, { now, receivedAt: now });
+  assert.deepEqual(withoutPro.filter(item => item.group === 'google-ai-pro').map(item => item.id), ['provider.google-ai-pro-ultra.quota']);
   // A free-text reason never reaches the app.
   const reason = usageItemsFromFeed({ ...feed, providers: [row('ultra', { available: false, active: false, reason: 'サインインが切れています /Users/x' })] }, { now, receivedAt: now });
   assert.equal(byId(reason, 'provider.google-ai-pro-ultra.quota').nullReason, 'fetch_failed');

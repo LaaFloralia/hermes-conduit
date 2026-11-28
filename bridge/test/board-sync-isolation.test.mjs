@@ -14,7 +14,7 @@ import { DEFAULT_KINDS } from '../src/notify/preferences.mjs';
 import { issuePairing } from '../src/pairing.mjs';
 import { StateFileError } from '../src/routes/state-file.mjs';
 import { createStore } from '../src/store.mjs';
-import { startBridge } from './helpers.mjs';
+import { clearInheritedAdapters, startBridge } from './helpers.mjs';
 
 const epoch = Date.parse('2026-11-24T22:56:31.626Z');
 const source = { paseoAgentId: '019af000-0000-8000-8000-000000000001', sessionId: 'ses_0123456789abcdef', name: 'Lab Work' };
@@ -33,6 +33,7 @@ const writeRows = (dir, records) => writeFileSync(join(dir, 'decisions.json'), J
 
 for (const [index, record] of fixtureRows.entries()) {
   test(`board ${index + 1}: failing lane notifier cannot break either HTTP list or retry on polls`, async (t) => {
+    clearInheritedAdapters(t);
     const root = mkdtempSync(join(tmpdir(), 'laa-lane-'));
     const env = { LAA_LANE_ID: 'decision-sync-test', LAA_LANE_ROOT: root, LAA_BRIDGE_PORT: '0', HOME: join(root, 'home'),
       TMPDIR: join(root, 'tmp'), LAA_BRIDGE_STATE_DIR: join(root, 'state'), LAA_BRIDGE_BRAIN_ROOT: join(root, 'brain') };

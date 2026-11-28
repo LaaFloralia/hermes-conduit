@@ -93,6 +93,13 @@ const ADAPTER_ENV = /^(?:LAA_(?:BRIDGE_|GOOGLE_|LINEAR_|OWNER_TASKS_|CAMPAIGN_|P
 const ALLOWED = new Set(['LAA_BRIDGE_STATE_DIR', 'LAA_BRIDGE_PORT', 'LAA_BRIDGE_BRAIN_ROOT',
   'LAA_BRIDGE_QUIET', 'LAA_BRIDGE_TEST_ENDPOINTS', 'LAA_WORK_SOCKET']);
 
+/// Whether a lane must refuse this env key: a wiring override, not a path or a port.
+/// Exported so a test that builds a lane inside an agent's environment can clear
+/// exactly what `validateLane` refuses instead of repeating the pattern.
+export function isAdapterEnvKey(key) {
+  return ADAPTER_ENV.test(key) && !ALLOWED.has(key);
+}
+
 export function validateLane(env, { stateDir, port }) {
   if (!laneEnabled(env)) return null;
   const id = env.LAA_LANE_ID;
@@ -108,7 +115,7 @@ export function validateLane(env, { stateDir, port }) {
   }
   // No env-supplied adapters, not even an in-root executable: wiring is fixed.
   for (const key of Object.keys(env)) {
-    if (ADAPTER_ENV.test(key) && !ALLOWED.has(key)) invalid(key, 'adapter override is not permitted in a lane');
+    if (isAdapterEnvKey(key)) invalid(key, 'adapter override is not permitted in a lane');
   }
   const work = env.LAA_WORK_SOCKET === undefined ? null : lanePath(root, env.LAA_WORK_SOCKET, 'LAA_WORK_SOCKET');
   if (work !== null && work !== join(realpathSync(root), 'w.sock')) invalid('LAA_WORK_SOCKET', 'must be the lane engine socket');

@@ -11,7 +11,7 @@ import { sessionOptionsFrom, sessionOptionsReader } from '../src/sessions/option
 import { createSessionService } from '../src/sessions/service.mjs';
 import { createSessionStore } from '../src/sessions/store.mjs';
 import { createStore } from '../src/store.mjs';
-import { startBridge } from './helpers.mjs';
+import { clearInheritedAdapters, startBridge } from './helpers.mjs';
 
 const profile = (harness, model, effort = 'high', manual = false) => ({ harness, model, effort, manual });
 const group = (id, name, order) => ({ id, name, order });
@@ -101,6 +101,7 @@ test('employee Chat requires a Chat-tagged subscription route, independent of Wo
 });
 
 test('Bridge HTTP lane returns only HQ options in both response variants', async (t) => {
+  clearInheritedAdapters(t);
   const root = mkdtempSync(join(tmpdir(), 'laa-lane-'));
   const dir = join(root, 'state'), home = join(root, 'home'), modelsFile = join(home, 'hq/harness/models.json');
   for (const child of ['tmp', 'brain', 'sink']) mkdirSync(join(root, child));
