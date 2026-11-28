@@ -70,7 +70,7 @@ struct LAATaskBatchBar: View {
         HStack(spacing: LAASpacing.x1) {
             Button(action: clear) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(LAAColor.secondaryText)
                     .frame(width: height, height: height)
                     .laaGlass(in: Circle())
@@ -93,7 +93,7 @@ struct LAATaskBatchBar: View {
                     if progress != nil {
                         ProgressView().controlSize(.mini).tint(LAAColor.filledButtonText)
                     } else {
-                        Image(systemName: "checkmark").font(.system(size: 12, weight: .bold))
+                        Image(systemName: "checkmark").font(.system(size: 11, weight: .bold))
                     }
                     Text(verbatim: progress.map { LAATaskRunCopy.batchProgress(done: $0.done, total: $0.total) }
                          ?? LAATaskRunCopy.batchButton(count: count))
@@ -101,9 +101,9 @@ struct LAATaskBatchBar: View {
                 }
                 .laaTextStyle(.secondary).fontWeight(.semibold)
                 .foregroundStyle(LAAColor.filledButtonText)
-                .padding(.horizontal, LAASpacing.x4)
+                .padding(.horizontal, 14)
                 .frame(minHeight: height)
-                .background(LAAColor.filledButton.opacity(enabled || progress != nil ? 1 : 0.45), in: RoundedRectangle(cornerRadius: LAAKit.LAARadius.button, style: .continuous))
+                .background(LAAColor.filledButton.opacity(enabled || progress != nil ? 1 : 0.45), in: Capsule())
                 .frame(minHeight: LAASpacing.minimumTouchTarget)
                 .contentShape(Rectangle())
             }
@@ -178,7 +178,7 @@ struct LAATaskRow: View, Equatable {
             if desktop {
                 // The open row keeps the selection fill; a picked one takes a
                 // lighter teal, so both read at once.
-                RoundedRectangle(cornerRadius: LAAKit.LAARadius.selection, style: .continuous)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(selected ? LAAColor.selectionFill : picked ? LAAColor.link.opacity(0.10)
                           : hovered ? LAAColor.subtleSurface.opacity(0.7) : .clear)
             }
@@ -199,7 +199,7 @@ struct LAATaskRow: View, Equatable {
 
     private var meta: some View {
         // Wraps rather than truncating when Dynamic Type grows.
-        LAATaskMetaFlow(spacing: LAASpacing.x2, lineSpacing: LAASpacing.x1) {
+        LAATaskMetaFlow(spacing: 10, lineSpacing: 4) {
             if showsGenre {
                 HStack(spacing: 4) {
                     Circle().fill(row.genre.tint).frame(width: 7, height: 7)
