@@ -65,7 +65,10 @@ struct LAATodayDesktopView: View {
         .accessibilityIdentifier("laa.today.desktop")
         .onChange(of: calendar.events.map(\.id), initial: true) { _, ids in
             if let selectedEventID, !ids.contains(selectedEventID) { self.selectedEventID = nil }
-            if selectedEventID == nil, let first = calendar.events.first { selectedEventID = first.id }
+            if calendar.mode != .month, selectedEventID == nil, let first = calendar.events.first { selectedEventID = first.id }
+        }
+        .onChange(of: calendar.mode) { _, mode in
+            if mode == .month { selectedEventID = nil }
         }
     }
 
@@ -144,7 +147,7 @@ struct LAATodayDesktopView: View {
     private func eventRow(_ event: LAACalendarEvent) -> some View {
         Button { selectedEventID = event.id } label: {
             HStack(alignment: .top, spacing: LAASpacing.x3) {
-                RoundedRectangle(cornerRadius: 2).fill(color(for: event)).frame(width: 4)
+                RoundedRectangle(cornerRadius: 4).fill(color(for: event)).frame(width: 4)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(verbatim: event.allDay ? "All Day" : LAADateText.string(event.start, .time) + "–" + LAADateText.string(event.end, .time))
                         .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
@@ -236,6 +239,7 @@ struct LAATodayDesktopView: View {
                 Spacer(minLength: 0)
             }
             .padding(LAASpacing.x2)
+            // laa-design:allow oversized-button month-grid-cell
             .frame(maxWidth: .infinity, minHeight: 68, alignment: .topLeading)
             .background(selected ? LAAColor.selectionFill : (today ? LAAColor.subtleSurface : LAAColor.surface))
             .overlay(alignment: .topTrailing) {
@@ -270,6 +274,7 @@ struct LAATodayDesktopView: View {
     private func color(for event: LAACalendarEvent) -> Color {
         guard let hex = calendar.calendars.first(where: { $0.id == event.calendarId })?.color,
               let value = UInt(hex.trimmingCharacters(in: CharacterSet(charactersIn: "#")), radix: 16) else { return LAAColor.link }
+        // laa-design:allow hard-colour calendar-provided-event-colour
         return Color(red: Double((value >> 16) & 255) / 255, green: Double((value >> 8) & 255) / 255, blue: Double(value & 255) / 255)
     }
 }
