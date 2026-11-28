@@ -43,6 +43,7 @@ struct LAAWorkDesktopSessionsView: View {
     #endif
     @State private var hoveredID: String?
     @State private var failure: String?
+    @State private var engineDown = false
     @State private var loading = false
     @State private var hasLoaded = false
     @State private var showLauncher = false
@@ -111,6 +112,7 @@ struct LAAWorkDesktopSessionsView: View {
                     if let failure {
                         LAAWorkFailure(text: failure) { Task { await load() } }
                     }
+                    if engineDown && failure == nil { LAAWorkEngineDownLine() }
                     if loading && !hasLoaded && sessions.isEmpty { LAALoadingDots() }
                 }
                 .padding(LAASpacing.x3)
@@ -318,10 +320,12 @@ struct LAAWorkDesktopSessionsView: View {
         defer { loading = false; hasLoaded = true }
         do {
             let query = showArchived ? [URLQueryItem(name: "archived", value: "only")] : []
-            async let page: [LAAWorkSession] = LAAWorkPaging.all(bridge, "/v1/sessions", query: query)
+            async let page: (items: [LAAWorkSession], engineDown: Bool) = LAAWorkPaging.pages(bridge, "/v1/sessions", query: query)
             async let projectPage: [LAAWorkProject] = LAAWorkPaging.all(bridge, "/v1/projects")
-            let (loaded, loadedProjects) = try await (page, projectPage)
+            let (read, loadedProjects) = try await (page, projectPage)
             guard !Task.isCancelled else { return }
+            let loaded = read.items
+            engineDown = read.engineDown
             sessions = loaded.filter { $0.isArchived == showArchived }
             LAAWorkSessionCache.save(sessions, store: drafts, device: bridge.deviceID, target: showArchived ? "archived" : "list")
             projects = loadedProjects

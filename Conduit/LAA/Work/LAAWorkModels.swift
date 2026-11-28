@@ -13,6 +13,14 @@ struct LAAWorkPage<Item: Decodable>: Decodable {
     /// read-only routes answer from the last good value while they refresh,
     /// so a page older than the freshness window is shown as such.
     let fetchedAt: String?
+    /// The Work engine's state when the Bridge answered from its stored rows
+    /// (the engine was down). An older Bridge omits it.
+    var engine: LAAWorkEngineState? = nil
+}
+
+struct LAAWorkEngineState: Decodable, Hashable {
+    let available: Bool
+    let code: String?
 }
 
 enum LAAWorkFreshness {

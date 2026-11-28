@@ -27,6 +27,7 @@ struct LAAWorkSessionsSection: View {
     @State private var showLauncher = false
     @State private var opened: LAAWorkSession?
     @State private var failure: String?
+    @State private var engineDown = false
     @State private var loading = false
     @State private var hasLoaded = false
     @State private var openRow: String?
@@ -61,6 +62,7 @@ struct LAAWorkSessionsSection: View {
             // Only running Sessions are 実行中; the rest wait (BUS-508).
             if !showArchived && hasLoaded { LAAWorkSessionTallyLine(tally: LAAWorkSessionTally(sessions: sessions)) }
             if let failure { LAAWorkFailure(text: failure) { Task { await load() } } }
+            if engineDown && failure == nil { LAAWorkEngineDownLine() }
             if loading && !hasLoaded && sessions.isEmpty { LAALoadingDots() }
 
             if query == nil {
@@ -249,10 +251,12 @@ struct LAAWorkSessionsSection: View {
         defer { loading = false; hasLoaded = true }
         do {
             let query = showArchived ? [URLQueryItem(name: "archived", value: "only")] : []
-            async let page: [LAAWorkSession] = LAAWorkPaging.all(bridge, "/v1/sessions", query: query)
+            async let page: (items: [LAAWorkSession], engineDown: Bool) = LAAWorkPaging.pages(bridge, "/v1/sessions", query: query)
             async let projectPage: [LAAWorkProject] = LAAWorkPaging.all(bridge, "/v1/projects")
-            let (loaded, loadedProjects) = try await (page, projectPage)
+            let (read, loadedProjects) = try await (page, projectPage)
             guard !Task.isCancelled else { return }
+            let loaded = read.items
+            engineDown = read.engineDown
             // An older Bridge ignores the filters: keep worktree and archived rows out here too.
             let visible = loaded.filter { $0.isArchived == showArchived }
             sessions = showArchived ? visible : LAAWorkSessionScope.default(visible, projects: loadedProjects)
@@ -683,18 +687,37 @@ enum LAAWorkSessionStyle {
 enum LAAWorkPaging {
     @MainActor static func all<T: Decodable>(_ bridge: LAABridgeSession, _ path: String,
                                              query: [URLQueryItem] = []) async throws -> [T] {
+        try await pages(bridge, path, query: query).items
+    }
+
+    /// Every page, and whether the Bridge said the Work engine was down while
+    /// it answered from its stored rows.
+    @MainActor static func pages<T: Decodable>(_ bridge: LAABridgeSession, _ path: String,
+                                               query: [URLQueryItem] = []) async throws -> (items: [T], engineDown: Bool) {
         var all: [T] = []
+        var engineDown = false
         var cursor: String?
         var seen = Set<String>()
         repeat {
             let items = query + (cursor.map { [URLQueryItem(name: "cursor", value: $0)] } ?? [])
             let page: LAAWorkPage<T> = try await bridge.read(LAAWorkPresentation.path(path, query: items))
             all.append(contentsOf: page.items)
+            if page.engine?.available == false { engineDown = true }
             cursor = page.nextCursor
             if let cursor, !seen.insert(cursor).inserted { throw LAABridgeError.invalidResponse }
         } while cursor != nil && seen.count < 50
         guard cursor == nil else { throw LAABridgeError.invalidResponse }
-        return all
+        return (all, engineDown)
+    }
+}
+
+/// The list is the last confirmed state because the Work engine did not answer.
+struct LAAWorkEngineDownLine: View {
+    var body: some View {
+        Label(LAACopy.WorkTab.engineDownList, systemImage: "exclamationmark.triangle.fill")
+            .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier("work.sessions.engineDown")
     }
 }
 
