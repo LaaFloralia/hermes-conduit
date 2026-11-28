@@ -314,25 +314,21 @@ struct LAAUsageGroup: Identifiable {
     /// supply a URL that the app can open.
     var serviceURL: URL? {
         let links = [
-            "provider.codex": "https://chatgpt.com/codex/cloud/settings/usage",
             "provider.opencode-go": "https://opencode.ai/console",
             "provider.claude": "https://claude.ai/settings/usage",
             "provider.venice": "https://venice.ai/settings/api",
             "provider.refuseless": "https://refuseless.com/console/billing",
             "provider.magnific": "https://www.magnific.com/user/my-subscriptions",
-            "provider.openai-api": "https://platform.openai.com/usage",
             "provider.claude-api": "https://platform.claude.com/settings/billing",
             "provider.liquid": "https://console.liquid.ai/",
         ]
         return links[id].flatMap(URL.init(string:))
     }
 
-    /// Where the owner checks an API balance by hand. Only the two API
-    /// providers publish a billing page; every other reading uses serviceURL.
+    /// Where the owner checks an API balance by hand. Only Claude API
+    /// publishes a billing page; every other reading uses serviceURL.
     static func billingURL(for itemID: String) -> URL? {
         switch itemID {
-        case "provider.openai-api.balance":
-            return URL(string: "https://platform.openai.com/settings/organization/billing/overview")
         case "provider.claude-api.balance":
             return URL(string: "https://platform.claude.com/settings/billing")
         default:
@@ -357,9 +353,10 @@ struct LAAUsageGroup: Identifiable {
         return result
     }
 
-    /// Follow the ordered Usage slots: the Codex, Claude and Google cards,
-    /// then the additional providers, ending with Venice and Refuseless.
-    /// Retired providers (Jev, Google Cloud, Google Flow, and nanoGPT) are never listed.
+    /// Follow the ordered Usage slots: the Claude and Google cards, then the
+    /// additional providers, ending with Venice and Refuseless. Retired
+    /// providers (Jev, Google Cloud, Google Flow, nanoGPT, and since
+    /// 2026-11-28 Codex and GPT API, D-42) are never listed.
     static func displayGroups(_ items: [LAAUsageItem]) -> [LAAUsageGroup] {
         LAAWidgetUsageBuilder.slots.compactMap { slot -> LAAUsageGroup? in
             if slot.reading == .accountGroup {
@@ -397,7 +394,7 @@ struct LAAUsageGroup: Identifiable {
     }
 
     static func isAPI(_ id: String) -> Bool {
-        id.hasPrefix("provider.openai-api.") || id.hasPrefix("provider.claude-api.")
+        id.hasPrefix("provider.claude-api.")
     }
 }
 

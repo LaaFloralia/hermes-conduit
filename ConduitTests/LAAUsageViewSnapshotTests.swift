@@ -18,9 +18,9 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
         }
         let items = try JSONDecoder().decode([LAAUsageItem].self, from: JSONSerialization.data(withJSONObject: rows))
         XCTAssertTrue(items.allSatisfy { $0.availableValue == nil })
-        XCTAssertEqual(LAAUsageGroup.displayGroups(items).compactMap(\.serviceURL).map(\.scheme), ["https", "https", "https"])
+        XCTAssertEqual(LAAUsageGroup.displayGroups(items).compactMap(\.serviceURL).map(\.scheme), ["https", "https"])
         XCTAssertNil(LAAUsageGroup(id: "unknown", label: "Unknown", items: []).serviceURL)
-        XCTAssertEqual(LAAUsageGroup.billingURL(for: "provider.openai-api.balance")?.host, "platform.openai.com")
+        XCTAssertNil(LAAUsageGroup.billingURL(for: "provider.openai-api.balance"), "GPT API left on 2026-11-28 (D-42)")
         XCTAssertEqual(LAAUsageGroup.billingURL(for: "provider.claude-api.balance")?.host, "platform.claude.com")
         XCTAssertNil(LAAUsageGroup.billingURL(for: "provider.venice.balance"))
         let state = LAAUsageState(widgetStore: nil)

@@ -189,7 +189,7 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
         try JSONDecoder().decode([LAAUsageItem].self, from: Data(liveItemsJSON.utf8))
     }
 
-    static let ownerRows = ["Codex 7d", "Claude 5h", "Claude 7d", "Claude Mythos"]
+    static let ownerRows = ["Claude 5h", "Claude 7d", "Claude Mythos"]
     /// iPhone Pro Max and the smallest current iPhone, medium family.
     static let proMaxMedium = CGSize(width: 364, height: 170)
     static let compactMedium = CGSize(width: 329, height: 155)
@@ -199,14 +199,14 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
         let entry = LAAEmployeeWidgetEntry.make(employee: .monet,
             snapshot: WidgetSnapshot(appLanguage: "ja", currentWorkspaceID: nil, workspaces: []).withUsage(usage),
             date: Self.liveNow)
-        // Codex and Claude read; Fable and Google had no reading then.
+        // Claude reads; Fable and Google had no reading then (Codex left 2026-11-28).
         XCTAssertEqual(entry.usage?.meters.map(\.label), Self.ownerRows)
-        XCTAssertEqual(entry.usage?.meters.map(\.remainingPercent), [0, 84, 82, nil])
+        XCTAssertEqual(entry.usage?.meters.map(\.remainingPercent), [84, 82, nil])
         for (size, tag) in [(Self.proMaxMedium, "364x170"), (Self.compactMedium, "329x155")] {
             for style in [UIUserInterfaceStyle.light, .dark] {
                 let name = "live-\(tag)-\(style == .dark ? "dark" : "light")"
                 let rows = try render(entry, size: size, style: style, name: name).rows
-                XCTAssertEqual(rows, 6, name)
+                XCTAssertEqual(rows, 5, name)
             }
         }
         try render(entry, size: Self.proMaxMedium, style: .light, mode: .accented, name: "live-364x170-tinted")
@@ -217,10 +217,10 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
                 date: Self.liveNow)
             for style in [UIUserInterfaceStyle.light, .dark] {
                 let name = "employee-\(employee.rawValue)-364x170-\(style == .dark ? "dark" : "light")"
-                XCTAssertEqual(try render(other, size: Self.proMaxMedium, style: style, name: name).rows, 6, name)
+                XCTAssertEqual(try render(other, size: Self.proMaxMedium, style: style, name: name).rows, 5, name)
             }
             let compact = "employee-\(employee.rawValue)-329x155-light"
-            XCTAssertEqual(try render(other, size: Self.compactMedium, style: .light, name: compact).rows, 6, compact)
+            XCTAssertEqual(try render(other, size: Self.compactMedium, style: .light, name: compact).rows, 5, compact)
         }
     }
 
@@ -233,7 +233,7 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
             date: Self.liveNow)
         for style in [UIUserInterfaceStyle.light, .dark] {
             let name = "missing-364x170-\(style == .dark ? "dark" : "light")"
-            XCTAssertEqual(try render(entry, size: Self.proMaxMedium, style: style, name: name).rows, 6, name)
+            XCTAssertEqual(try render(entry, size: Self.proMaxMedium, style: style, name: name).rows, 5, name)
         }
     }
 

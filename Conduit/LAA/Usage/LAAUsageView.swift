@@ -195,7 +195,7 @@ struct LAAUsageView: View {
         withAnimation(.smooth(duration: 0.25)) { expandedGroups = open.sorted().joined(separator: ",") }
     }
 
-    /// The provider cards in one column (Codex, Claude, Google, Muse), then
+    /// The provider cards in one column (Claude, Google, Muse), then
     /// the other services folded into ruled rows below them.
     private var services: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -365,8 +365,8 @@ struct LAAUsageView: View {
         return LAACopy.Usage.expires + " \(month)/\(day)"
     }
 
-    /// GPT API and Claude API: the credit left, never the spend. Neither
-    /// provider publishes a balance API, so the reading is the billing page's,
+    /// Claude API: the credit left, never the spend. The provider publishes
+    /// no balance API, so the reading is the billing page's,
     /// so the row has an empty meter until a reading has been recorded.
     @ViewBuilder private func apiBalanceRow(_ item: LAAUsageItem?, groupID: String, provider: String, name: String) -> some View {
         let billing = LAAUsageGroup.billingURL(for: groupID + ".balance")

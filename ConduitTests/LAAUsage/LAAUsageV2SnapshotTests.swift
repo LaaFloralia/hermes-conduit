@@ -24,13 +24,13 @@ final class LAAUsageV2SnapshotTests: XCTestCase {
         return LAAEmployeeWidgetEntry.make(employee: .monet, snapshot: snapshot, date: date ?? now)
     }
 
-    func testMediumWidgetDrawsAllSixRows() throws {
+    func testMediumWidgetDrawsAllFiveRows() throws {
         let live = entry(try F.items())
-        XCTAssertEqual(live.usage?.meters.map(\.label), ["Codex 7d", "Claude 5h", "Claude 7d", "Claude Mythos", "Google 5h", "Google 7d"])
+        XCTAssertEqual(live.usage?.meters.map(\.label), ["Claude 5h", "Claude 7d", "Claude Mythos", "Google 5h", "Google 7d"])
         for (size, tag) in [(Self.proMaxMedium, "364x170"), (Self.compactMedium, "329x155")] {
             for style in [UIUserInterfaceStyle.light, .dark] {
                 let name = "v2-widget-\(tag)-\(style == .dark ? "dark" : "light")"
-                XCTAssertEqual(try render(live, size: size, style: style, name: name).rows, 6, name)
+                XCTAssertEqual(try render(live, size: size, style: style, name: name).rows, 5, name)
             }
         }
         try render(live, size: Self.proMaxMedium, style: .light, mode: .accented, name: "v2-widget-364x170-tinted")
@@ -38,17 +38,16 @@ final class LAAUsageV2SnapshotTests: XCTestCase {
         let unknown = entry(try F.items(fable: nil, googleActive: [:]))
         for style in [UIUserInterfaceStyle.light, .dark] {
             let name = "v2-widget-unknown-329x155-\(style == .dark ? "dark" : "light")"
-            XCTAssertEqual(try render(unknown, size: Self.compactMedium, style: style, name: name).rows, 6, name)
+            XCTAssertEqual(try render(unknown, size: Self.compactMedium, style: style, name: name).rows, 5, name)
         }
         // Low shares: caution and critical bars.
         var rows = F.rows(fable: F.fable(0.0))
-        rows[0] = F.quota("codex", label: "Codex", windows: [F.window("Weekly", 8, minutes: 10_080, reset: 3 * 86_400)])
         let low = entry(try F.decode(rows))
         for style in [UIUserInterfaceStyle.light, .dark] {
             try render(low, size: Self.compactMedium, style: style, name: "v2-widget-low-329x155-\(style == .dark ? "dark" : "light")")
         }
-        // No snapshot at all: six empty tracks.
-        XCTAssertEqual(try render(entry(nil), size: Self.compactMedium, style: .light, name: "v2-widget-empty-329x155").rows, 6)
+        // No snapshot at all: five empty tracks.
+        XCTAssertEqual(try render(entry(nil), size: Self.compactMedium, style: .light, name: "v2-widget-empty-329x155").rows, 5)
     }
 
     /// Larger text shortens and drops the reset time first; only then does a
@@ -56,7 +55,7 @@ final class LAAUsageV2SnapshotTests: XCTestCase {
     func testLargerTextDropsFiveHourRowsFirst() throws {
         let live = entry(try F.items())
         for (size, tag) in [(Self.proMaxMedium, "364x170"), (Self.compactMedium, "329x155")] {
-            var previous = 6
+            var previous = 5
             for type in [DynamicTypeSize.large, .xLarge, .xxLarge, .xxxLarge, .accessibility1, .accessibility3] {
                 let name = "v2-type-\(tag)-\(type)"
                 let rows = try XCTUnwrap(try render(live, size: size, style: .light, dynamicTypeSize: type, name: name).rows, name)
@@ -64,9 +63,9 @@ final class LAAUsageV2SnapshotTests: XCTestCase {
                 XCTAssertGreaterThanOrEqual(rows, 1, name)
                 previous = rows
             }
-            XCTAssertEqual(try render(live, size: size, style: .light, dynamicTypeSize: .large, name: "v2-type-\(tag)-default").rows, 6)
+            XCTAssertEqual(try render(live, size: size, style: .light, dynamicTypeSize: .large, name: "v2-type-\(tag)-default").rows, 5)
         }
-        XCTAssertEqual(LAAWidgetUsageColumn.rows(dropping: 2).map(\.label), ["Codex 7d", "Claude 7d", "Claude Mythos", "Google 7d"])
+        XCTAssertEqual(LAAWidgetUsageColumn.rows(dropping: 2).map(\.label), ["Claude 7d", "Claude Mythos", "Google 7d"])
     }
 
     /// The timeline has an entry at Fable's reset; from then the Fable row

@@ -50,9 +50,9 @@ final class LAAUsageWidgetTests: XCTestCase {
     }
 
     func testWeeklyWindowIsChosenOverALowerFiveHourWindow() throws {
-        let items = try [item("codex", windows: [weekly(5, minutes: 300, label: "Session"), weekly(80)])]
+        let items = try [item("claude", windows: [weekly(5, minutes: 300, label: "Session"), weekly(80)])]
         let meter = try XCTUnwrap(LAAWidgetUsageBuilder.make(items: items, receivedAt: now).meters.first)
-        XCTAssertEqual(meter.label, "Codex 7d")
+        XCTAssertEqual(meter.label, "Claude 7d")
         XCTAssertEqual(meter.amount, 80)
     }
 
@@ -128,12 +128,11 @@ final class LAAUsageWidgetTests: XCTestCase {
     func testLastKnownValuesSurviveMissingRowsWithoutChangingTheirTime() throws {
         let original = LAAWidgetUsageBuilder.make(items: [
             try item("claude", windows: [weekly(42)]),
-            try item("codex", windows: [weekly(18)]),
         ], receivedAt: now)
         let later = now.addingTimeInterval(3600)
         let retained = LAAWidgetUsageBuilder.make(items: [try unavailable("claude")], receivedAt: later, previous: original)
-        XCTAssertEqual(retained.meters.filter(\.available).map(\.amount), [18, 42])
-        XCTAssertEqual(retained.meters.filter(\.available).map(\.observedAt), [now, now])
+        XCTAssertEqual(retained.meters.filter(\.available).map(\.amount), [42])
+        XCTAssertEqual(retained.meters.filter(\.available).map(\.observedAt), [now])
         XCTAssertTrue(retained.meters.filter(\.available).allSatisfy { $0.hasRecordedValue(at: later) && $0.isPast(at: later) })
         XCTAssertEqual(retained.checkedAt, now)
         let replaced = LAAWidgetUsageBuilder.make(items: [try item("claude", windows: [weekly(0)])], receivedAt: now, previous: retained)
@@ -226,9 +225,9 @@ final class LAAUsageWidgetTests: XCTestCase {
         let items = try [unavailable("fal"), unavailable("venice"), unavailable("jev"), unavailable("google-cloud"),
                          unavailable("google-flow"), unavailable("magnific", label: "Magnific"),
                          unavailable("antigravity"), unavailable("codex"), unavailable("claude")]
-        XCTAssertEqual(LAAUsageGroup.displayGroups(items).map(\.id), ["provider.codex", "provider.claude", "provider.magnific",
+        XCTAssertEqual(LAAUsageGroup.displayGroups(items).map(\.id), ["provider.claude", "provider.magnific",
             "provider.venice"])
-        XCTAssertEqual(LAAUsageGroup.displayGroups(items).first?.label, "Codex")
+        XCTAssertEqual(LAAUsageGroup.displayGroups(items).first?.label, "Claude")
         let refuseless = try item("refuseless", kind: "balance", label: "Refuseless", value: 30, unit: "usd")
         XCTAssertEqual(LAAUsageGroup.displayGroups([refuseless]).map(\.label), ["Refuseless"])
         XCTAssertEqual(LAAUsageGroup.displayGroups([refuseless]).first?.serviceURL?.host, "refuseless.com")
@@ -237,10 +236,10 @@ final class LAAUsageWidgetTests: XCTestCase {
         XCTAssertEqual(LAAUsageGroup.displayGroups([liquid]).map(\.label), ["Liquid AI"])
         XCTAssertEqual(LAAUsageGroup.displayGroups([try item("opencode-go", label: "OpenCode Go")]).map(\.label), ["OpenCode"])
         let widget = LAAWidgetUsageBuilder.make(items: items, receivedAt: now)
-        XCTAssertEqual(widget.meters.map(\.label), ["Codex 7d", "Claude 7d", "Claude 5h", "Claude Mythos"])
+        XCTAssertEqual(widget.meters.map(\.label), ["Claude 7d", "Claude 5h", "Claude Mythos"])
         XCTAssertTrue(widget.meters.allSatisfy { !$0.available })
         XCTAssertEqual(LAAWidgetUsageBuilder.widgetMeters(widget).count, widget.meters.count)
-        let retired = ["jev", "google-cloud", "google-flow", "fal", "antigravity"]
+        let retired = ["jev", "google-cloud", "google-flow", "fal", "antigravity", "codex"]
         XCTAssertFalse(widget.meters.contains { meter in retired.contains { meter.id.contains($0) } })
     }
 

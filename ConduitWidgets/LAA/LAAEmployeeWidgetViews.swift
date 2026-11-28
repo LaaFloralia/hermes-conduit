@@ -33,9 +33,9 @@ struct LAAEmployeeWidgetEntry: TimelineEntry {
     let usage: WidgetUsageSnapshot?
 
     static func make(employee: LAAWidgetEmployee, snapshot: WidgetSnapshot?, date: Date = Date(), freshnessAnchor: Date? = nil) -> Self {
-        // Only the six fixed rows render; a snapshot an older build saved is
-        // reprojected onto them (its Codex and Claude weekly rows keep their
-        // ids), and anything without a place there is dropped.
+        // Only the fixed rows render; a snapshot an older build saved is
+        // reprojected onto them (its Claude weekly row keeps its id), and
+        // anything without a place there (Codex since 2026-11-28) is dropped.
         let usage = snapshot?.usage.map { usage in
             WidgetUsageSnapshot(meters: LAAWidgetUsageBuilder.widgetMeters(usage), checkedAt: usage.checkedAt,
                                 hasOtherUsage: usage.hasOtherUsage ?? false)
@@ -392,8 +392,8 @@ struct LAAEmployeeWidgetView: View {
     }
 }
 
-/// The medium widget's Usage column: six single-line readings in the owner's
-/// order (Codex 7d, Claude 5h / 7d / Mythos, Google 5h / 7d), each a mark, a label,
+/// The medium widget's Usage column: five single-line readings in the owner's
+/// order (Claude 5h / 7d / Mythos, Google 5h / 7d), each a mark, a label,
 /// a value in tabular digits, a reset time on the weekly rows and a 4pt bar.
 /// Room runs short in this order: the reset time shortens, then goes, and
 /// only then does larger text give up rows (five-hour readings first).
@@ -415,7 +415,7 @@ struct LAAWidgetUsageColumn: View {
 
     var body: some View {
         let rows = LAAWidgetUsageBuilder.widgetRows
-        // The first layout whose natural width and height fit: all six rows
+        // The first layout whose natural width and height fit: all the rows
         // with the full reset, then shorter resets, then fewer rows.
         ViewThatFits(in: [.horizontal, .vertical]) {
             // One flat list: ViewThatFits needs each candidate's id unique.

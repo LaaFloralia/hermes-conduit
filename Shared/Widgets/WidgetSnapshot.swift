@@ -277,7 +277,7 @@ struct WidgetUsageMeter: Codable, Equatable, Identifiable {
 struct WidgetUsageSnapshot: Codable, Equatable {
     /// The owner's display order and labels are fixed in the app; the widget
     /// only ever shows these providers.
-    static let shownProviders: Set<String> = ["codex", "opencode-go", "claude", "venice", "magnific", "openai-api", "claude-api", "liquid"]
+    static let shownProviders: Set<String> = ["opencode-go", "claude", "venice", "magnific", "claude-api", "liquid"]
 
     let meters: [WidgetUsageMeter]
     let checkedAt: Date?
@@ -289,15 +289,15 @@ struct WidgetUsageSnapshot: Codable, Equatable {
     }
 
     /// Rows saved by an older build keep their bytes but never render: a retired
-    /// provider (Jev, Google Cloud, Google Flow, fal) is dropped here. Venice
-    /// shows its balance only, and so do the two API rows: a snapshot still
+    /// provider (Jev, Google Cloud, Google Flow, fal, Codex, GPT API) is dropped
+    /// here. Venice shows its balance only, and so does Claude API: a snapshot still
     /// holding their monthly spend is dropped instead of drawn as a balance.
     var displayableMeters: [WidgetUsageMeter] {
         meters.filter { meter in
             let parts = meter.id.split(separator: ".")
             guard parts.count >= 2, Self.shownProviders.contains(String(parts[1])) else { return false }
             let provider = String(parts[1])
-            if ["venice", "openai-api", "claude-api"].contains(provider) { return meter.id == "provider.\(provider).balance" }
+            if ["venice", "claude-api"].contains(provider) { return meter.id == "provider.\(provider).balance" }
             return true
         }
     }

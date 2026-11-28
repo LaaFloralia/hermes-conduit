@@ -5,9 +5,10 @@ import LAAKit
 import WidgetKit
 
 enum LAAWidgetUsageBuilder {
-    /// One ordered list for the app's AI Usage screen. The first four are the
-    /// provider cards (Codex, Claude, Google, Muse); the rest are the ruled
-    /// rows below them. Muse is the one card the widget does not show.
+    /// One ordered list for the app's AI Usage screen. The first three are the
+    /// provider cards (Claude, Google, Muse); the rest are the ruled rows
+    /// below them. Muse is the one card the widget does not show. Codex and
+    /// GPT API left on 2026-11-28 (GPT cancelled, D-42).
     struct Slot {
         /// `accountGroup`: the rows whose `group` is `provider`, one per
         /// account, shown together.
@@ -23,24 +24,22 @@ enum LAAWidgetUsageBuilder {
     }
 
     static let slots: [Slot] = [
-        Slot(provider: "codex", name: "Codex", reading: .weeklyQuota, showsInWidget: true),
         Slot(provider: "claude", name: "Claude", reading: .weeklyQuota, showsInWidget: true),
         // Sub2・Sub3・Sub4 (2026-11-23): the card shows the account in use.
         Slot(provider: "google-ai-pro", name: "Google", reading: .accountGroup, showsInWidget: true),
         // Muse1・Muse2・Muse3 (2026-11-26): the Free accounts LAA's harness
         // switches between for TTS and video, each one's weekly allowance.
-        // App only: the widget's six rows stay as they are.
+        // App only: the widget's rows stay as they are.
         Slot(provider: "muse", name: "Muse", reading: .accountGroup, showsInWidget: false, card: true),
         // Below the cards, folded (2026-11-25). OpenCode left the widget.
         Slot(provider: "opencode-go", name: "OpenCode", reading: .weeklyQuota, showsInWidget: false),
         Slot(provider: "magnific", name: "Magnific", reading: .credits, showsInWidget: false),
-        Slot(provider: "openai-api", name: "GPT API", reading: .balance, showsInWidget: false),
         Slot(provider: "claude-api", name: "Claude API", reading: .balance, showsInWidget: false),
         Slot(provider: "liquid", name: "Liquid AI", reading: .recordedUsage, showsInWidget: false),
         Slot(provider: "venice", name: "Venice", reading: .balance, showsInWidget: false),
         Slot(provider: "deepseek", name: "DeepSeek API", reading: .balance, showsInWidget: false),
         // 2026-11-25: the official read-only /v1/credits balance is app-only;
-        // Refuseless does not change the widget's six quota rows.
+        // Refuseless does not change the widget's quota rows.
         Slot(provider: "refuseless", name: "Refuseless", reading: .balance, showsInWidget: false),
     ]
 
@@ -48,7 +47,7 @@ enum LAAWidgetUsageBuilder {
     static var cardSlots: [Slot] { slots.filter(\.isCard) }
     static var otherSlots: [Slot] { slots.filter { !$0.isCard } }
 
-    // MARK: The widget's six readings
+    // MARK: The widget's five readings
 
     /// Which quota window a reading is.
     enum Period: String, CaseIterable {
@@ -62,7 +61,7 @@ enum LAAWidgetUsageBuilder {
 
     /// One fixed widget row. Its meter id is stable across builds: the two
     /// weekly ids are the ones the seven-row widget wrote, so a snapshot saved
-    /// before this build still fills Codex 7d and Claude 7d.
+    /// before this build still fills Claude 7d.
     struct Row: Equatable, Identifiable {
         let provider: String
         let name: String
@@ -79,10 +78,9 @@ enum LAAWidgetUsageBuilder {
 
     static let googleGroup = "google-ai-pro"
 
-    /// The widget's rows in the owner's order (2026-11-25): Codex 7d, Claude
-    /// 5h / 7d / Mythos, Google 5h / 7d.
+    /// The widget's rows in the owner's order (2026-11-25): Claude 5h / 7d /
+    /// Mythos, Google 5h / 7d. Codex 7d left on 2026-11-28 (D-42).
     static let widgetRows: [Row] = [
-        Row(provider: "codex", name: "Codex", period: .weekly),
         Row(provider: "claude", name: "Claude", period: .fiveHour),
         Row(provider: "claude", name: "Claude", period: .weekly),
         Row(provider: "claude", name: "Claude", period: .fable),
@@ -90,15 +88,15 @@ enum LAAWidgetUsageBuilder {
         Row(provider: googleGroup, name: "Google", period: .weekly),
     ]
 
-    /// Which rows give way first when larger text leaves no room for six:
+    /// Which rows give way first when larger text leaves no room for all:
     /// the five-hour readings, then Google's week, then Mythos.
     static let dropOrder: [String] = [
-        widgetRows[4].id, widgetRows[1].id, widgetRows[5].id, widgetRows[3].id, widgetRows[2].id, widgetRows[0].id,
+        widgetRows[3].id, widgetRows[0].id, widgetRows[4].id, widgetRows[2].id, widgetRows[1].id,
     ]
 
     /// The snapshot keeps the weekly readings first, so a reader that knows
     /// one row per provider (the previous widget binary during an update)
-    /// meets Codex and Claude's weekly values before anything else.
+    /// meets Claude's weekly value before anything else.
     static let snapshotOrder: [Row] = widgetRows.filter { $0.period == .weekly }
         + widgetRows.filter { $0.period != .weekly }
 

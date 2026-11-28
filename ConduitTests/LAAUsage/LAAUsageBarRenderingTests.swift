@@ -18,12 +18,12 @@ final class LAAUsageBarRenderingTests: XCTestCase {
     private let now = LAAUsageFixtures.now
     private let scale: CGFloat = 3
 
-    /// Codex 7d, Claude 5h, Claude 7d, Fable, Google 5h, Google 7d: every one
-    /// of 0, 1, 50, 99 and 100 in more than one row.
+    /// Claude 5h, Claude 7d, Fable, Google 5h, Google 7d: every one of 0, 1,
+    /// 50, 99 and 100 in more than one row.
     private static let sets: [[Double]] = [
-        [0, 1, 50, 99, 100, 50],
-        [100, 99, 1, 50, 0, 1],
-        [50, 0, 100, 1, 99, 100],
+        [1, 50, 99, 100, 0],
+        [99, 1, 50, 0, 100],
+        [0, 100, 1, 99, 50],
     ]
 
     func testWidgetBarsTrackTheShareInEveryMode() throws {
@@ -36,7 +36,7 @@ final class LAAUsageBarRenderingTests: XCTestCase {
                         let name = "bar-\(index)-\(Int(size.width))-\(Self.modeName(mode))-\(style == .dark ? "dark" : "light")"
                         let image = try capture(entry, size: size, mode: mode, style: style, name: name)
                         let bars = Self.bars(in: image, mode: mode, style: style)
-                        XCTAssertEqual(bars.count, 6, "\(name): bars found")
+                        XCTAssertEqual(bars.count, 5, "\(name): bars found")
                         for (bar, share) in zip(bars, shares) {
                             // A nonzero share keeps a 2pt sliver; antialiasing adds a pixel.
                             let floor = share > 0 ? 2 * scale / CGFloat(bar.track) : 0
@@ -64,11 +64,10 @@ final class LAAUsageBarRenderingTests: XCTestCase {
 
     private func entry(_ shares: [Double]) throws -> LAAEmployeeWidgetEntry {
         let rows: [[String: Any]] = [
-            F.quota("codex", label: "Codex", windows: [F.window("Weekly", shares[0], minutes: 10_080, reset: 3 * 86_400)]),
-            F.quota("claude", label: "Claude", windows: [F.window("Session", shares[1], minutes: 300, reset: 7200),
-                                                         F.window("Weekly", shares[2], minutes: 10_080, reset: 4 * 86_400)],
-                    fable: F.fable(shares[3])),
-            F.google("sub2", active: true, fiveHour: shares[4], weekly: shares[5]),
+            F.quota("claude", label: "Claude", windows: [F.window("Session", shares[0], minutes: 300, reset: 7200),
+                                                         F.window("Weekly", shares[1], minutes: 10_080, reset: 4 * 86_400)],
+                    fable: F.fable(shares[2])),
+            F.google("sub2", active: true, fiveHour: shares[3], weekly: shares[4]),
         ]
         let usage = LAAWidgetUsageBuilder.make(items: try F.decode(rows), receivedAt: now)
         let snapshot = WidgetSnapshot(appLanguage: "ja", currentWorkspaceID: nil, workspaces: []).withUsage(usage)
