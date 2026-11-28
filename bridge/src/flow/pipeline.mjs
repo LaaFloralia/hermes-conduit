@@ -191,7 +191,7 @@ export function createFlowPipeline({ flows, inbox, requirements, projects, sessi
     if (!parsed.fatal && advisor.repairs < 1) {
       // One repair: tell the adviser what was unusable and wait for its next return.
       await runners.send({ sessionId: advisor.sessionId, messageId: `${flow.id}:advise:repair`, text: advisorRepair(parsed.error) });
-      flows.advance(flow.id, 'advising', 'advising', { advisor: { ...advisor, repairs: advisor.repairs + 1, reason: parsed.error } });
+      flows.advance(flow.id, 'advising', 'advising', { advisor: { ...advisor, repairs: advisor.repairs + 1, reason: parsed.error, resumedAt: stamp() } });
       return 'repair';
     }
     const next = parsed.fatal ? pickAdvisor(cfg, { after: advisor.profile }) : null;
@@ -292,7 +292,7 @@ export function createFlowPipeline({ flows, inbox, requirements, projects, sessi
     flows.update(flow.id, (draft) => {
       const item = draft.decisions.find((row) => row.id === record.id);
       Object.assign(item, { answer: label, answeredBy: answered ? record.answer.answeredBy ?? 'owner' : 'withdrawn', applied: mark });
-      if (item.purpose === 'verdict') { const pkg = draft.packages.find((row) => row.id === item.packageId); if (pkg && pkg.state === 'blocked') pkg.state = 'running'; }
+      if (item.purpose === 'verdict') { const pkg = draft.packages.find((row) => row.id === item.packageId); if (pkg && pkg.state === 'blocked') Object.assign(pkg, { state: 'running', resumedAt: stamp() }); }
     });
     const current = flows.get(flow.id);
     if (current.state === 'awaiting_decision' && current.decisions.every((item) => !item.id || item.answer !== null)) {
@@ -318,7 +318,7 @@ export function createFlowPipeline({ flows, inbox, requirements, projects, sessi
     const row = sessionId ? sessionStore.get(sessionId) : null;
     if (!row) return;
     const input = sessionEvent({ current: row, reconciled: true, hasOpenDecision: false });
-    if (input) offerSession(input);
+    if (input) offerSession(input, row);
   }
 
   async function stepActive(flow) {
@@ -394,9 +394,16 @@ export function createFlowPipeline({ flows, inbox, requirements, projects, sessi
     return null;
   }
 
+  // A flow's session has returned only if the row changed after the flow last set
+  // it to work. Without this, a row the sync has not refreshed yet (still showing
+  // the turn before a rework or a repair message) would read as a second return.
+  const fresh = (row, since) => !since || (Date.parse(row?.attentionTimestamp ?? row?.sourceUpdatedAt ?? row?.updatedAt ?? '') || 0) > Date.parse(since);
+
   // Decide who consumes a session event and attach what links it to a requirement.
-  function offerSession(input) {
+  function offerSession(input, row) {
     const hit = findBySession(input.sessionId);
+    const working = hit?.role === 'advisor' ? hit.flow.advisor : hit?.pkg;
+    if (working && input.kind === 'session.returned' && !fresh(row, working.resumedAt ?? working.startedAt)) return { event: null, created: false };
     let linked;
     if (hit?.role === 'advisor') linked = { flowId: hit.flow.id, projectId: hit.flow.projectId, handler: 'pipeline', packet: { ...input.packet, role: 'advisor' } };
     else if (hit) linked = { flowId: hit.flow.id, projectId: hit.flow.projectId, packageId: hit.pkg.id, requirementId: hit.pkg.requirementId, handler: 'monet' };
@@ -418,7 +425,7 @@ export function createFlowPipeline({ flows, inbox, requirements, projects, sessi
       const hasOpenDecision = decisions?.hasOpen?.(current) ?? false;
       const input = sessionEvent({ previous, current, child, labels, hasOpenDecision });
       if (!input) return null;
-      const offered = offerSession(input);
+      const offered = offerSession(input, current);
       if (offered.created && offered.event.handler === 'pipeline') track(consume());
       return offered.event;
     } catch (error) {
@@ -556,6 +563,8 @@ export function createFlowPipeline({ flows, inbox, requirements, projects, sessi
     };
     const result = { applied: verdict.verdict };
     let effective = verdict.verdict;
+    // A second event for a return that is already verified (one turn seen twice) changes nothing.
+    if (isSession && pkg?.state === 'verified') { effective = 'noted'; result.applied = 'superseded'; }
 
     // A package that has used its rework allowance is not sent back again: it becomes a board item.
     if (effective === 'rework' && pkg && pkg.rework >= config().maxRework) {
@@ -580,7 +589,7 @@ export function createFlowPipeline({ flows, inbox, requirements, projects, sessi
       if (!session) throw conflict('session_missing', 'the session of this event no longer exists');
       await runners.send({ sessionId: session.id, messageId: `${event.id}:rework`, text: verdict.followup });
       if (requirement?.acceptance && verdict.acceptance.length) requirements.update(projectId, requirement.id, { acceptance: merged() }, 'monet');
-      if (pkg) flows.setPackage(flow.id, pkg.id, (draft) => Object.assign(draft, { state: 'running', rework: draft.rework + 1, returnedAt: null }));
+      if (pkg) flows.setPackage(flow.id, pkg.id, (draft) => Object.assign(draft, { state: 'running', rework: draft.rework + 1, returnedAt: null, resumedAt: iso }));
     } else if (effective === 'needs_owner') {
       const d = verdict.decision;
       const decision = raiseDecision({ requestId: `${event.id}:decision`, title: d.title, summary: d.summary, options: d.options, recommended: d.recommended, impact: d.impact,
@@ -610,7 +619,7 @@ export function createFlowPipeline({ flows, inbox, requirements, projects, sessi
       }
     } else if (isSession && pkg && ['noted', 'not_mine'].includes(effective)) {
       // Nothing to verify yet: the session goes on, and its next return is a new event.
-      flows.setPackage(flow.id, pkg.id, (draft) => { if (draft.state === 'returned') draft.state = 'running'; });
+      flows.setPackage(flow.id, pkg.id, (draft) => { if (draft.state === 'returned') Object.assign(draft, { state: 'running', resumedAt: iso }); });
     }
 
     if (verdict.report && flow) flows.update(flow.id, (draft) => { draft.report = verdict.report; });

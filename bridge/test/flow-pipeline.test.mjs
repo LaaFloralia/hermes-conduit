@@ -565,3 +565,52 @@ test('an absent or late staff member does not hold the flow', async (t) => {
   assert.deepEqual(h.requirementsOf()[0].acceptance.map((item) => item.text), ['依頼した結果が実物で確認できる']);
   assert.equal(h.calls.staff.length, 2);
 });
+
+test('one turn seen twice (a late or stale row) is not a second return', async (t) => {
+  const h = harness(t);
+  const late = (sessionId, ms) => {
+    const row = structuredClone(h.rows.get(sessionId));
+    row.attentionTimestamp = new Date(h.clock.now + ms).toISOString();
+    return h.pipeline.onTransition({ previous: 'running', current: row });
+  };
+  // The adviser: after the repair message, the first turn arriving again must not count as the second unusable reply.
+  const advised = await h.start({ size: 'M', dryStaff: true });
+  await h.settle(); await h.settle();
+  const adviser = h.flows.get(advised.flow.id).advisor.sessionId;
+  h.returns(adviser, '設計は口頭で説明します。');
+  await h.settle();
+  assert.equal(h.calls.send.length, 1);
+  assert.equal(late(adviser, -1), null);
+  await h.settle();
+  assert.equal(h.flows.get(advised.flow.id).state, 'advising');
+  h.returns(adviser, designReply());
+  await h.settle();
+  assert.equal(h.flows.get(advised.flow.id).advisor.state, 'done');
+  await h.pipeline.withdraw(advised.flow.id);
+
+  // A package: the row still shows the turn before the rework message.
+  const { flow } = await h.start({ requestId: 'r2', dryStaff: true });
+  await h.settle(); await h.settle();
+  const sessionId = h.flows.get(flow.id).packages[0].sessionId;
+  h.returns(sessionId, SLIP);
+  let [turn] = (await h.pipeline.claim({ caller: MONET })).events;
+  await h.pipeline.applyVerdict(turn.id, { verdict: 'rework', followup: 'Run the check.' }, { caller: MONET });
+  const before = h.inbox.list({ kind: 'session.returned', limit: 500 }).length;
+  assert.equal(late(sessionId, -1), null);
+  await h.settle(); await h.settle();
+  assert.equal(h.inbox.list({ kind: 'session.returned', limit: 500 }).length, before);
+  assert.equal(h.flows.get(flow.id).packages[0].state, 'running');
+
+  // The real second return, reported twice under two keys: the second verdict changes nothing.
+  h.returns(sessionId, SLIP);
+  assert.notEqual(late(sessionId, 1), null);
+  const { events } = await h.pipeline.claim({ limit: 5, caller: MONET });
+  assert.equal(events.length, 2);
+  const first = await h.pipeline.applyVerdict(events[0].id, verified(['a1']), { caller: MONET });
+  assert.equal(first.requirement, 'completed');
+  const second = await h.pipeline.applyVerdict(events[1].id, verified(['a1']), { caller: MONET });
+  assert.equal(second.applied, 'superseded');
+  assert.equal(h.inbox.get(events[1].id).state, 'acked');
+  assert.equal(h.calls.reports.length, 1);
+  assert.equal(h.flows.get(flow.id).state, 'reported');
+});
