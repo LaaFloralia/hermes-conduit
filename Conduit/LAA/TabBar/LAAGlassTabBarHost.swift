@@ -152,7 +152,9 @@ struct LAAAppSettingsCard: View {
     }
 
     private var themeChoice: some View {
-        HStack(spacing: LAASpace.s4) {
+        // BUS-576: contiguous 30 pt hit columns (no gaps) leave the "Theme"
+        // label room for one line; the rows stay 44 pt high.
+        HStack(spacing: 0) {
             ForEach(LAAThemeSets.all) { set in
                 let colours = set.colors(dark: scheme == .dark)
                 let selected = LAAAppTheme.store.themeID == set.id
@@ -170,7 +172,7 @@ struct LAAAppSettingsCard: View {
                                 .fill(palette.selection)
                         }
                     }
-                    .frame(minWidth: 36, minHeight: LAAControl.IPhone.hitArea)
+                    .frame(minWidth: 30, minHeight: LAAControl.IPhone.hitArea)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
