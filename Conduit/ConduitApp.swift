@@ -14,10 +14,36 @@ import os
 
 private let backgroundPushLogger = Logger(subsystem: "com.milim.relay", category: "BackgroundPush")
 
+#if LAA_BUILD
+/// Launch-path intervals for Instruments and `log show --signpost` (BUS-557).
+/// Names only, never content; Release-safe.
+enum LAALaunchSignpost {
+    static let signposter = OSSignposter(subsystem: "com.laa.hortensia", category: "Launch")
+
+    static func measure<T>(_ name: StaticString, _ body: () throws -> T) rethrows -> T {
+        try signposter.withIntervalSignpost(name) { try body() }
+    }
+
+    /// An interval that spans more than one call (an initializer's body).
+    final class Interval {
+        private let name: StaticString
+        private let state: OSSignpostIntervalState
+        init(_ name: StaticString) {
+            self.name = name
+            state = LAALaunchSignpost.signposter.beginInterval(name, id: LAALaunchSignpost.signposter.makeSignpostID())
+        }
+        func end() { LAALaunchSignpost.signposter.endInterval(name, state) }
+    }
+}
+#endif
+
 final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         #if LAA_BUILD
-        _ = LAAReadingStyle.fontsAvailable
+        // Kept on main: SwiftUI resolves the reading faces by name when it
+        // first draws and does not redraw when a late registration lands, so
+        // deferring it could leave the first screen on a fallback face.
+        LAALaunchSignpost.measure("Fonts.register") { _ = LAAReadingStyle.fontsAvailable }
         #endif
         #if LAA_BUILD && !targetEnvironment(macCatalyst)
         let badgeColor = UIColor(LAAColor.attention)

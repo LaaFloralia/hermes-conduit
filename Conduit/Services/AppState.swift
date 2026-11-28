@@ -2761,7 +2761,7 @@ final class AppState: ObservableObject {
     /// The active profile's own choice for the big button beside a chat's
     /// composer (`ChatVoiceButtonAction` raw value); nil follows the app's.
     @Published private(set) var chatVoiceButtonOverride: String?
-    private static func currentSpeechAvailability() -> AppleSpeechRecognitionAvailability {
+    nonisolated private static func currentSpeechAvailability() -> AppleSpeechRecognitionAvailability {
         #if DEBUG
         // Drive UI fixtures do not use speech; simulator speech services can block.
         if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_DRIVE_NO_SPEECH") {
@@ -2770,7 +2770,27 @@ final class AppState: ObservableObject {
         #endif
         return AppleOnDeviceSpeechTranscriber.currentAvailability()
     }
+    #if LAA_BUILD
+    /// Not yet checked: the locale probe is XPC, so launch reads it off the
+    /// main thread (`refreshSpeechAvailabilityOffMain`, BUS-557). Until then
+    /// it does not block recognition (`canAttemptRecognition` is true), and
+    /// every voice start reads it again on its own.
+    @Published private(set) var appleSpeechAvailability = AppleSpeechRecognitionAvailability.permissionRequired(
+        localeIdentifier: Locale.current.identifier)
+    private func refreshSpeechAvailabilityOffMain() {
+        let placeholder = appleSpeechAvailability
+        Task.detached(priority: .utility) { [weak self] in
+            let value = LAALaunchSignpost.measure("SpeechAvailability") { AppState.currentSpeechAvailability() }
+            await MainActor.run {
+                // A value read meanwhile (a voice start, a test's pin) wins.
+                guard let self, self.appleSpeechAvailability == placeholder else { return }
+                self.appleSpeechAvailability = value
+            }
+        }
+    }
+    #else
     @Published private(set) var appleSpeechAvailability = AppState.currentSpeechAvailability()
+    #endif
 
     private var voiceAssistantObserverID: UUID?
 
@@ -7042,6 +7062,9 @@ final class AppState: ObservableObject {
         presentationCacheDebounceSuspension: (@Sendable (Duration) async throws -> Void)? = nil,
         deviceConditionsUpdates: AnyPublisher<DeviceConditions, Never>? = nil
     ) {
+        #if LAA_BUILD
+        let launchInterval = LAALaunchSignpost.Interval("AppState.init")
+        #endif
         self.presentationCacheDebounceSuspension =
             presentationCacheDebounceSuspension
             ?? { duration in try await Task.sleep(for: duration) }
@@ -7165,7 +7188,11 @@ final class AppState: ObservableObject {
         restoreActiveSessionState(for: activeProfile)
         restorePinnedSessions(for: activeProfile)
         if shouldLoadSavedConnection {
+            #if LAA_BUILD
+            LAALaunchSignpost.measure("Keychain.launch") { loadSavedConnection() }
+            #else
             loadSavedConnection()
+            #endif
         }
         // The monitor publishes on the main actor (willSet: `current` still
         // holds the old value, so the handler uses the one it is given).
@@ -7181,6 +7208,8 @@ final class AppState: ObservableObject {
         #if LAA_BUILD
         laaConfigureEmployeeOpenMetrics()
         laaPrewarmEmployeeTranscripts()
+        refreshSpeechAvailabilityOffMain()
+        launchInterval.end()
         #endif
     }
 
@@ -27156,9 +27185,15 @@ final class AppState: ObservableObject {
         if stableNotifierPluginVersion == nil, let saved = NotifierPluginLatestVersion.cachedStable(in: defaults) {
             applyStableNotifierPluginVersion(saved)
         }
+        #if LAA_BUILD
+        // The LAA build shows no plugin update notices, so nothing reads the
+        // changelog; its old 346 KB copy weighed on every prefs load (BUS-557).
+        defaults.removeObject(forKey: NotifierPluginChangelog.cacheKey)
+        #else
         if notifierPluginChangelog == nil, let saved = NotifierPluginChangelog.cached(in: defaults) {
             notifierPluginChangelog = saved
         }
+        #endif
         guard let fetched = await NotifierPluginLatestVersion.refresh(defaults: defaults) else { return }
         if let latest = fetched.latest { applyLatestNotifierPluginVersion(latest) }
         if let stable = fetched.stable { applyStableNotifierPluginVersion(stable) }

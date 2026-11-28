@@ -83,6 +83,10 @@ final class ComposerDraftStore: ObservableObject {
         self.capacity = max(0, capacity)
         self.fileURL = fileURL
         guard let fileURL, FileManager.default.fileExists(atPath: fileURL.path) else { return }
+        #if LAA_BUILD
+        let loadInterval = LAALaunchSignpost.Interval("Drafts.load")
+        defer { loadInterval.end() }
+        #endif
         do {
             let snapshot = try JSONDecoder().decode(Snapshot.self, from: Data(contentsOf: fileURL))
             guard snapshot.version == 1 else { throw CocoaError(.fileReadCorruptFile) }

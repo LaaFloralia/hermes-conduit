@@ -21,7 +21,8 @@ final class AppleOnDeviceSpeechTranscriber: DeviceSpeechTranscriptionService {
     /// must never complete the next transcription.
     private var operationGeneration: UInt64 = 0
 
-    static func currentAvailability(locale: Locale = SpeechRecognitionLocale.preferred(accepts: SpeechRecognitionLocale.recognizesOnDevice)) -> AppleSpeechRecognitionAvailability {
+    /// Nonisolated so launch can read it off the main thread (BUS-557).
+    nonisolated static func currentAvailability(locale: Locale = SpeechRecognitionLocale.preferred(accepts: SpeechRecognitionLocale.recognizesOnDevice)) -> AppleSpeechRecognitionAvailability {
         let identifier = locale.identifier
         guard let recognizer = SFSpeechRecognizer(locale: locale), recognizer.supportsOnDeviceRecognition else {
             return .unsupported(localeIdentifier: identifier)

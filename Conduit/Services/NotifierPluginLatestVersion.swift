@@ -95,7 +95,12 @@ enum NotifierPluginLatestVersion {
         defaults.set(now, forKey: checkedKey)
         let latest = await text(at: url, fetch: fetch).flatMap(version(fromPluginYAML:))
         let stable = await text(at: channelsURL, fetch: fetch).flatMap(stableVersion(fromChannelsYAML:))
+        #if LAA_BUILD
+        // Nothing in the LAA build reads it (no plugin update notices).
+        let changelogText: String? = nil
+        #else
         let changelogText = await text(at: changelogURL, fetch: fetch)
+        #endif
         let changelog = changelogText.flatMap(NotifierPluginChangelog.init(markdown:))
         if let latest { defaults.set(latest, forKey: versionKey) }
         if let stable { defaults.set(stable, forKey: stableKey) }
