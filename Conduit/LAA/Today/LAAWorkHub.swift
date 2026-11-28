@@ -53,6 +53,11 @@ struct LAAWorkHub: View {
             case .campaigns: LAACampaignCopy.section
             }
         }
+        /// Findings send no notification, so this count is how the owner notices them (D-18).
+        func title(decisions: Int, findings: Int) -> String {
+            let number = self == .decisions ? decisions : (self == .findings ? findings : 0)
+            return number > 0 ? "\(title) \(number)" : title
+        }
     }
 
     private func select(_ value: Section) {
@@ -70,7 +75,8 @@ struct LAAWorkHub: View {
                                    decisions: decisions.count)
                 .padding(.horizontal, LAASpacing.horizontal)
             if section == .decisions {
-                Self.decisionPicker(selection: $decisionSection)
+                Self.decisionPicker(selection: $decisionSection, decisions: decisions.count,
+                                    findings: findings.count ?? 0)
                     .padding(.horizontal, LAASpacing.horizontal)
             }
             if bridge.status != .paired { connectionState }
@@ -204,17 +210,17 @@ struct LAAWorkHub: View {
         }
     }
 
-    static func decisionPicker(selection: Binding<DecisionSection>) -> some View {
+    static func decisionPicker(selection: Binding<DecisionSection>, decisions: Int, findings: Int) -> some View {
         Menu {
             Picker("Decision Board", selection: selection) {
                 ForEach(DecisionSection.allCases, id: \.self) { page in
-                    Text(verbatim: page.title).tag(page)
+                    Text(verbatim: page.title(decisions: decisions, findings: findings)).tag(page)
                 }
             }
             .pickerStyle(.inline)
         } label: {
             Label {
-                Text(verbatim: selection.wrappedValue.title).laaTextStyle(.body)
+                Text(verbatim: selection.wrappedValue.title(decisions: decisions, findings: findings)).laaTextStyle(.body)
             } icon: {
                 Image(systemName: "chevron.down").accessibilityHidden(true)
             }

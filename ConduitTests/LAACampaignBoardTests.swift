@@ -125,6 +125,11 @@ final class LAACampaignBoardTests: XCTestCase {
         XCTAssertEqual(LAAWorkHub.Section.allCases, [.projects, .sessions, .decisions, .tasks])
         XCTAssertFalse(LAAWorkHub.Section.decisions.searchable)
         XCTAssertEqual(LAAWorkHub.DecisionSection.allCases.map(\.title), ["Decisions", "Findings", "Campaigns"])
+        // D-18: findings send no notification, so the pull-down carries the counts; zero stays plain.
+        XCTAssertEqual(LAAWorkHub.DecisionSection.decisions.title(decisions: 2, findings: 4), "Decisions 2")
+        XCTAssertEqual(LAAWorkHub.DecisionSection.findings.title(decisions: 2, findings: 4), "Findings 4")
+        XCTAssertEqual(LAAWorkHub.DecisionSection.findings.title(decisions: 2, findings: 0), "Findings")
+        XCTAssertEqual(LAAWorkHub.DecisionSection.campaigns.title(decisions: 2, findings: 4), "Campaigns")
     }
 
     func testCampaignListLightAndDark() throws {
@@ -147,7 +152,7 @@ final class LAACampaignBoardTests: XCTestCase {
                 LAAScreenHeader(title: "Work", identifier: "laa.work.title").padding(.horizontal, LAASpacing.horizontal)
                 LAAWorkSectionSelector(selection: .constant(.decisions), decisions: 0)
                     .padding(.horizontal, LAASpacing.horizontal)
-                LAAWorkHub.decisionPicker(selection: .constant(.campaigns))
+                LAAWorkHub.decisionPicker(selection: .constant(.campaigns), decisions: 0, findings: 0)
                     .padding(.horizontal, LAASpacing.horizontal)
                 list.frame(maxWidth: .infinity, maxHeight: .infinity)
             }
