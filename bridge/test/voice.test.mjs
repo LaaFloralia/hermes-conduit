@@ -129,10 +129,10 @@ test('the body is text-only: an arbitrary model, audio or chat messages are refu
   }
 });
 
-test('polish and summarize pass both allowed models through to the worker', async (t) => {
+test('polish and summarize pass every allowed model through to the worker', async (t) => {
   const { api, token } = await bridge(t, { worker: stubWorker() });
   for (const kind of ['polish', 'summarize']) {
-    for (const model of ['gpt-6-luna', 'gpt-6.1-terra']) {
+    for (const model of ['gemini-4-hydrogen', 'deepseek-v4.1-flash', 'qwen3-4b']) {
       const res = await api.request(`/v1/voice/${kind}`, { method: 'POST', token, body: { text: 'sample', model } });
       assert.equal(res.status, 200);
       // The stub only reports this value if it saw it on stdin.
@@ -141,10 +141,31 @@ test('polish and summarize pass both allowed models through to the worker', asyn
   }
 });
 
+test('the removed ChatGPT model ids from installed apps reach the worker as the standard engine', async (t) => {
+  const { api, token } = await bridge(t, { worker: stubWorker() });
+  for (const kind of ['polish', 'summarize']) {
+    for (const model of ['gpt-6-luna', 'gpt-6.1-terra']) {
+      const res = await api.request(`/v1/voice/${kind}`, { method: 'POST', token, body: { text: 'sample', model } });
+      assert.equal(res.status, 200);
+      assert.equal(res.body.data.model, 'gemini-4-hydrogen');
+    }
+  }
+});
+
+test('polish marks text the worker returned untouched as degraded, and nothing else', async (t) => {
+  const untouched = await bridge(t, { worker: withReply({ text: 'sample', model: 'passthrough', degraded: true }) });
+  const res = await untouched.api.request('/v1/voice/polish', { method: 'POST', token: untouched.token, body: { text: 'sample' } });
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body.data, { text: 'sample', model: 'passthrough', degraded: true });
+  const tidied = await bridge(t, { worker: withReply({ text: 'sample', model: 'deepseek-v4.1-flash', degraded: 'yes' }) });
+  const plain = await tidied.api.request('/v1/voice/polish', { method: 'POST', token: tidied.token, body: { text: 'sample' } });
+  assert.deepEqual(plain.body.data, { text: 'sample', model: 'deepseek-v4.1-flash' });
+});
+
 test('polish and summarize reject any model outside the exact allowlist before dispatch', async (t) => {
   const { api, token } = await bridge(t, { worker: { request() { assert.fail('invalid model reached worker'); } } });
   for (const kind of ['polish', 'summarize']) {
-    for (const model of [null, 1, {}, [], '', 'gpt-6.2-sol', 'GPT-6-LUNA', 'gpt-6-luna\n']) {
+    for (const model of [null, 1, {}, [], '', 'gpt-6.2-sol', 'GPT-6-LUNA', 'gpt-6-luna\n', 'gemini-4-helium', 'Qwen3-4b']) {
       const res = await api.request(`/v1/voice/${kind}`, { method: 'POST', token, body: { text: 'sample', model } });
       assert.equal(res.status, 400);
       assert.equal(res.body.error.code, 'payload_invalid');
@@ -156,19 +177,19 @@ test('responses report the actual worker model, including a polish no-op and tra
   const { api, token } = await bridge(t, { worker: withReply({ text: 'sample', model: 'passthrough' }) });
   for (const kind of ['polish', 'summarize']) {
     const res = await api.request(`/v1/voice/${kind}`, {
-      method: 'POST', token, body: { text: 'sample', model: 'gpt-6-luna' },
+      method: 'POST', token, body: { text: 'sample', model: 'deepseek-v4.1-flash' },
     });
     assert.equal(res.status, 200);
     assert.equal(res.body.data.model, 'passthrough');
   }
   const noop = await bridge(t, {
-    worker: withReply({ text: '', nothing: true, model: 'gpt-6.1-terra' }),
+    worker: withReply({ text: '', nothing: true, model: 'deepseek-v4.1-flash' }),
   });
   const polished = await noop.api.request('/v1/voice/polish', {
     method: 'POST', token: noop.token, body: { text: 'sample' },
   });
   assert.equal(polished.status, 200);
-  assert.deepEqual(polished.body.data, { text: '', nothing: true, model: 'gpt-6.1-terra' });
+  assert.deepEqual(polished.body.data, { text: '', nothing: true, model: 'deepseek-v4.1-flash' });
   const asr = await bridge(t, {
     worker: withReply({ text: 'sample', model: 'gemini-4-hydrogen' }),
     scopes: ['voice:transcribe'],
@@ -183,8 +204,8 @@ test('responses report the actual worker model, including a polish no-op and tra
 test('text routes preserve legacy model labels for missing or malformed reply models', async (t) => {
   const { api, token } = await bridge(t, { worker: withReply({ text: 'sample' }), scopes: ['voice:polish', 'voice:transcribe'] });
   const eachRoute = [
-    ['polish', { text: 'sample', model: 'gpt-6-luna' }, 'qwen3-4b'],
-    ['summarize', { text: 'sample', model: 'gpt-6-luna' }, 'qwen3-4b'],
+    ['polish', { text: 'sample', model: 'deepseek-v4.1-flash' }, 'qwen3-4b'],
+    ['summarize', { text: 'sample', model: 'deepseek-v4.1-flash' }, 'qwen3-4b'],
     ['transcribe', { pcm16: pcm(), sampleRate: 16000 }, 'haas-ja-v1.0-q8_0'],
   ];
   for (const [kind, body, fallback] of eachRoute) {
@@ -713,10 +734,10 @@ test('candidates need voice:polish and pass the reading and optional candidate l
   const existing = Array.from({ length: 10 }, (_, i) => i === 9 ? '😀'.repeat(40) : `候補${i}`);
   const first = await candidateRequest(api, token, { reading, candidates: existing }, 'same-key');
   assert.equal(first.status, 200);
-  assert.deepEqual(first.body.data, { items: [reading, ...existing.slice(-4)], model: 'gpt-6.1-terra' });
+  assert.deepEqual(first.body.data, { items: [reading, ...existing.slice(-4)], model: 'deepseek-v4.1-flash' });
   const second = await candidateRequest(api, token, { reading: 'Ｋanaカナーｶﾅ' }, 'same-key');
   assert.equal(second.status, 200);
-  assert.deepEqual(second.body.data, { items: ['Ｋanaカナーｶﾅ'], model: 'gpt-6.1-terra' });
+  assert.deepEqual(second.body.data, { items: ['Ｋanaカナーｶﾅ'], model: 'deepseek-v4.1-flash' });
   assert.deepEqual(api.store.read().idempotency, {});
 });
 
@@ -724,7 +745,7 @@ test('candidates reject invalid bodies before dispatch and keep the default HTTP
   const { api, token } = await bridge(t, { worker: { request() { assert.fail('invalid body reached worker'); } } });
   for (const body of [
     [], null, {}, { reading: '' }, { reading: 5 }, { reading: 'は\u3099'.repeat(33) },
-    { reading: '漢字' }, { reading: 'a\n' }, { reading: 'a b' }, { reading: 'a', model: 'gpt-6-luna' },
+    { reading: '漢字' }, { reading: 'a\n' }, { reading: 'a b' }, { reading: 'a', model: 'deepseek-v4.1-flash' },
     { reading: 'a', candidates: null }, { reading: 'a', candidates: 'x' },
     { reading: 'a', candidates: Array(11).fill('x') }, { reading: 'a', candidates: [''] },
     { reading: 'a', candidates: [5] }, { reading: 'a', candidates: ['😀'.repeat(41)] },
@@ -741,7 +762,7 @@ test('candidates reject invalid bodies before dispatch and keep the default HTTP
 });
 
 test('candidates can be empty, but a malformed items success is rejected by the worker parser', async (t) => {
-  const model = 'gpt-6.1-terra';
+  const model = 'deepseek-v4.1-flash';
   const payload = { kind: 'candidates', reading: 'sample', candidates: [] };
   const empty = withReply({ items: [], model });
   t.after(() => empty.stop());
@@ -761,7 +782,7 @@ test('candidates can be empty, but a malformed items success is rejected by the 
 
 test('items are rejected on all text worker requests, even alongside a text field', async () => {
   for (const kind of ['polish', 'summarize', 'transcribe']) {
-    const worker = withReply({ text: 'sample', items: ['x'], model: 'gpt-6.1-terra' });
+    const worker = withReply({ text: 'sample', items: ['x'], model: 'deepseek-v4.1-flash' });
     try {
       await assert.rejects(worker.request({ kind }), { kind: 'bad_reply' });
     } finally {
@@ -794,7 +815,7 @@ test('candidates uses the 15 s deadline and existing worker error mapping withou
     assert.equal(res.body.error.retryable, retryable);
     assert.equal(JSON.stringify(res.body).includes(candidate), false);
   }
-  answer = { items: [candidate], model: 'gpt-6.1-terra' };
+  answer = { items: [candidate], model: 'deepseek-v4.1-flash' };
   assert.equal((await candidateRequest(api, token, { reading, candidates: [candidate] })).status, 200);
   answer = { items: [], model: 'BAD MODEL' };
   assert.equal((await candidateRequest(api, token, { reading, candidates: [candidate] })).body.error.code, 'voice_bad_reply');
@@ -1186,7 +1207,7 @@ test('transcribe accepts an allowlisted model and vocabulary and passes them to 
 test('transcribe refuses an unknown model or malformed vocabulary', async (t) => {
   const { api, token } = await bridge(t, { worker: stubWorker(), scopes: ['voice:transcribe'] });
   const bad = [
-    { model: 'gpt-6-luna' },
+    { model: 'deepseek-v4.1-flash' },
     { model: 3 },
     { vocabulary: 'LAA' },
     { vocabulary: Array.from({ length: 41 }, (_, i) => `w${i}`) },

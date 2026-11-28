@@ -21,7 +21,11 @@ import {
 const POLISH_MODEL = 'qwen3-4b';
 const SUMMARY_MAX_CHARS = 2000;
 const TRANSCRIBE_MODEL = 'haas-ja-v1.0-q8_0';
-const POLISH_MODELS = new Set(['gpt-6-luna', 'gpt-6.1-terra']);
+// Tidy engines the worker can start from: Gemini 4 Hydrogen (used only while its switch is on in the worker),
+// DeepSeek on LAA DSH, Qwen on this Mac. The worker falls back along that order and reports which one answered.
+const POLISH_MODELS = new Set(['gemini-4-hydrogen', 'deepseek-v4.1-flash', 'qwen3-4b']);
+// Ids of the removed ChatGPT subscription. Installed apps may still send them; they mean the standard chain.
+const RETIRED_POLISH_MODELS = new Set(['gpt-6-luna', 'gpt-6.1-terra']);
 const REPLY_MODEL = /^[a-z0-9.\-]{1,40}$/;
 const LANGUAGES = new Set(['ja', 'zh', 'en', 'auto']);
 // The recogniser is Japanese-only; accepting another language would silently
@@ -63,7 +67,8 @@ function parseObject(rawBody, allowed) {
 }
 
 function validatePolish(payload, maxChars) {
-  const { text, model } = payload;
+  const { text } = payload;
+  const model = RETIRED_POLISH_MODELS.has(payload.model) ? 'gemini-4-hydrogen' : payload.model;
   if (model !== undefined && !POLISH_MODELS.has(model)) {
     throw badRequest('payload_invalid', 'model is not supported');
   }
@@ -254,7 +259,8 @@ export function voiceRoutes({
         }
         const text = typeof result?.text === 'string' ? result.text.trim() : '';
         if (text === '' || text.length > maxOutputChars) throw badReply();
-        return { status: 200, data: { text, model } };
+        // `degraded` marks text the worker returned untouched because no engine answered.
+        return { status: 200, data: result.degraded === true ? { text, model, degraded: true } : { text, model } };
       },
     },
     {

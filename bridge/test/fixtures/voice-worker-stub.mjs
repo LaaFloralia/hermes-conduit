@@ -136,7 +136,7 @@ lines.on('line', (line) => {
   }
   if (message.kind === 'candidates') {
     const items = [message.reading, ...message.candidates.slice(-4)];
-    process.stdout.write(`${JSON.stringify({ id: message.id, ok: true, items, model: 'gpt-6.1-terra' })}\n`);
+    process.stdout.write(`${JSON.stringify({ id: message.id, ok: true, items, model: 'deepseek-v4.1-flash' })}\n`);
     return;
   }
   // A missing `kind` is a polish request, as in the text-only worker.

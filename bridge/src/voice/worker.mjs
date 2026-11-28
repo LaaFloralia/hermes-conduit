@@ -10,7 +10,7 @@
 //   Bridge -> worker   {id, kind: 'polish'|'summarize', text, language, model?}
 //                      {id, kind: 'transcribe', pcm16, sampleRate, language}
 //                      {id, kind: 'candidates', reading, candidates}
-//   worker -> Bridge   {id, ok: true, text, nothing?, model?}
+//   worker -> Bridge   {id, ok: true, text, nothing?, model?, degraded?}
 //                      {id, ok: true, items, model} for candidates only
 //                      {id, ok: false, error: 'timeout'|'empty'|'unavailable'|'internal'}
 //
@@ -243,7 +243,8 @@ export function createVoiceWorker({
         if (message.nothing === true) {
           if (message.text === undefined || message.text === '') result = { nothing: true, ...metadata };
         } else if (typeof message.text === 'string') {
-          result = { text: message.text, ...metadata };
+          // `degraded` marks text returned untouched because no tidy engine answered.
+          result = { text: message.text, ...metadata, ...(message.degraded === true ? { degraded: true } : {}) };
         }
       }
       if (result) {
