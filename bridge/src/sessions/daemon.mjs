@@ -483,6 +483,9 @@ export function snapshot(a, now) {
       : typeof a.runtimeInfo?.extra?.harness === 'string' ? a.runtimeInfo.extra.harness : null,
     phase: pending.length ? 'awaiting_decision' : a.status === 'idle' && !a.activeTurn ? 'awaiting_review' : a.status,
     pending,
+    // The engine's provider-neutral permission level (0 read-only, 1 asks, 2 acts freely),
+    // so an imported session does not depend on the Bridge remembering how it was created.
+    permissionLevel: typeof a.permissionLevel === 'number' ? a.permissionLevel : null,
     // The runtime reports model/mode in `runtimeInfo` and the applied thinking
     // option separately; checking `runtimeInfo.effort` alone could never verify.
     modelCheck: { observed, runtimeVerified: Boolean(a.runtimeInfo?.model && effort) },

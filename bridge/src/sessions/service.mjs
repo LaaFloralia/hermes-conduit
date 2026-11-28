@@ -458,6 +458,7 @@ export function createSessionService({
           // from these spans (model-log.mjs).
           modelLog: foldModelLog(previous?.modelLog, state.modelCheck.observed, new Date(now()).toISOString()),
           pending: summarizePending(state.pending), runtimeVerified: state.modelCheck.runtimeVerified,
+          permissionLevel: state.permissionLevel ?? previous?.permissionLevel ?? null,
           observedFast: fastValue(state.features), fastAvailable: fastAvailable(state.features),
           harness: state.harness ?? previous?.harness ?? null,
           daemonStatus: a.status, // A pin promotes a row; an unpinned workspace says nothing, so a
@@ -1398,6 +1399,7 @@ export function createSessionService({
       }
       if (status.daemonStatus) record.daemonStatus = status.daemonStatus;
       if (typeof status.harness === 'string') record.harness = status.harness;
+      if (typeof status.permissionLevel === 'number') record.permissionLevel = status.permissionLevel;
       // A successful observation that does not report the provider toggle
       // clears the remembered value: "unknown now" must not stay "was on".
       // Sources that never report features (no key) and failed observations
@@ -1504,7 +1506,8 @@ export function createSessionService({
           && daemon.capabilities?.().modelUpdate === true,
         // A continuation starts without approval prompts; a session that asks first is not offered one.
         providerSwitch: daemon !== null && typeof record.delegate?.sessionId === 'string'
-          && typeof daemon.startContinuation === 'function' && record.mode === 'bypass',
+          && typeof daemon.startContinuation === 'function'
+          && (record.permissionLevel === 2 || (record.permissionLevel == null && record.mode === 'bypass')),
       },
       modelSwitch: record.modelSwitch ? { phase: record.modelSwitch.phase, target: record.modelSwitch.target } : null,
       phase: record.phase,

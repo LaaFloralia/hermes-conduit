@@ -298,3 +298,20 @@ test('project defaults persist with ETag, reject unlisted choices and feed new s
   assert.equal(creates.at(-1).profile, profiles[0].id);
   assert.equal((await patch({ defaultProfile: null }, '"2"', 'clear')).body.data.defaultProfile, null);
 });
+
+test('an imported session uses the engine permission level for provider switching', async (t) => {
+  const f = fixture(t);
+  f.store.update(f.record.id, (row) => { row.mode = null; row.permissionLevel = null; return []; });
+  const status = (permissionLevel) => ({ phase: 'awaiting_review', daemonStatus: 'idle', permissionLevel,
+    modelCheck: { observed: profiles[0], runtimeVerified: true }, features: [] });
+  f.daemon.status = async () => status(2);
+  f.daemon.capabilities = () => ({ effortUpdate: true, modelUpdate: true });
+  const service = createSessionService({ sessionStore: f.store, adapter: {}, daemon: f.daemon, history: f.history, choices, notify: async () => {} });
+  t.after(() => service.close());
+  await service.observe(f.record.id, { force: true });
+  assert.equal(f.store.get(f.record.id).permissionLevel, 2);
+  assert.equal(service.view(f.store.get(f.record.id)).capabilities.providerSwitch, true);
+  f.daemon.status = async () => status(1);
+  await service.observe(f.record.id, { force: true });
+  assert.equal(service.view(f.store.get(f.record.id)).capabilities.providerSwitch, false);
+});
