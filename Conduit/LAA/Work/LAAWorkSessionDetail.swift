@@ -180,7 +180,9 @@ struct LAAWorkSessionDetail: View {
         stopKey.flatMap { LAAWorkDrafts.pending(drafts, key: $0) }
     }
 
-    var body: some View {
+    /// The page with its bars. Apart from `body` so the compiler checks the
+    /// two halves of the modifier chain separately (it timed out on one).
+    private var chrome: some View {
         ZStack {
             LAAColor.background.ignoresSafeArea()
             if #available(iOS 18.0, *) {
@@ -250,6 +252,10 @@ struct LAAWorkSessionDetail: View {
                 }
             }
         }
+    }
+
+    var body: some View {
+        chrome
         .sheet(isPresented: $showingLauncher) {
             LAAWorkSessionLauncher(projects: projects, options: options, drafts: drafts) { created in
                 showingLauncher = false
