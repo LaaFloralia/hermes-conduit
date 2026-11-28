@@ -171,7 +171,7 @@ struct LAAWorkSessionLauncher: View {
                 }
                 .laaTextStyle(.secondary).foregroundStyle(chosenProject == nil ? LAAColor.attention : LAAColor.text)
                 .padding(.horizontal, LAASpacing.x3).frame(minHeight: 36)
-                .background(LAAColor.subtleSurface, in: Capsule())
+                .background(LAAColor.subtleSurface, in: RoundedRectangle(cornerRadius: LAARadius.selectionChip, style: .continuous))
             }
             .accessibilityLabel(Text(verbatim: "Project"))
             .accessibilityValue(Text(verbatim: chosenProject?.name ?? "None"))
@@ -274,7 +274,7 @@ struct LAAWorkSessionLauncher: View {
                             .laaTextStyle(.secondary).fontWeight(item == current ? .semibold : .regular)
                             .foregroundStyle(item == current ? LAAColor.filledButtonText : LAAColor.text)
                             .padding(.horizontal, LAASpacing.x3).frame(minHeight: 32)
-                            .background(item == current ? LAAColor.filledButton : LAAColor.subtleSurface, in: Capsule())
+                            .background(item == current ? LAAColor.filledButton : LAAColor.subtleSurface, in: RoundedRectangle(cornerRadius: LAARadius.selectionChip, style: .continuous))
                     }
                     .buttonStyle(.plain)
                     .disabled(profileItem == nil)

@@ -103,7 +103,7 @@ struct LAATaskBatchBar: View {
                 .foregroundStyle(LAAColor.filledButtonText)
                 .padding(.horizontal, 14)
                 .frame(minHeight: height)
-                .background(LAAColor.filledButton.opacity(enabled || progress != nil ? 1 : 0.45), in: Capsule())
+                .background(LAAColor.filledButton.opacity(enabled || progress != nil ? 1 : 0.45), in: RoundedRectangle(cornerRadius: LAARadius.selectionChip, style: .continuous))
                 .frame(minHeight: LAASpacing.minimumTouchTarget)
                 .contentShape(Rectangle())
             }
