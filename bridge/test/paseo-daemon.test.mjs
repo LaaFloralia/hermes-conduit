@@ -1032,3 +1032,81 @@ test('a "now" send whose interruption is not confirmed stays held, never lost', 
   assert.equal(service.view(result.session).queue.count, 1);
   assert.equal(f.calls.filter((c) => c[0] === 'send').length, 0);
 });
+
+function outageFixture(t, prefix) {
+  const dir = mkdtempSync(join(tmpdir(), prefix)); t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const f = fixture();
+  const sessionStore = createSessionStore({ file: join(dir, 'sessions.json') });
+  const service = createSessionService({ sessionStore, daemon: f.daemon, adapter: {}, findWorkspace: async () => null, notify: async () => {}, outboxPollMs: 0 });
+  t.after(() => service.close());
+  const fetchAgent = f.client.fetchAgent, fetchAgents = f.client.fetchAgents;
+  const down = () => {
+    f.client.fetchAgent = async () => { throw new Error('connect ECONNREFUSED'); };
+    f.client.fetchAgents = async () => { throw new Error('connect ECONNREFUSED'); };
+  };
+  const up = () => { f.client.fetchAgent = fetchAgent; f.client.fetchAgents = fetchAgents; };
+  return { f, service, sessionStore, down, up, sends: () => f.calls.filter((c) => c[0] === 'send') };
+}
+
+test('a follow-up sent while the Work engine is down is held on the Mac, verbatim, and delivered once when it answers (2026-11-28)', async (t) => {
+  const { f, service, sessionStore, down, up, sends } = outageFixture(t, 'paseo-outage-');
+  await service.syncDaemon(); const id = daemonSessionID('child');
+  const typed = '  一行目\n\n\n三行目のあと空行\n\n  ';
+  down();
+  const held = await service.sendMessage({ id, key: 'k1', owner: true, body: { message: typed, messageId: 'msg_out1' } });
+  assert.equal(held.queued, true);
+  const view = service.view(held.session).queue;
+  assert.equal(view.count, 1);
+  assert.equal(view.items[0].reason, 'engine_unreachable');
+  assert.equal(view.items[0].status, 'queued');
+  assert.equal(view.items[0].text, typed, 'the owner text is kept byte for byte');
+  // Polling while the engine is still down spends no attempt.
+  await service.flushQueue(id);
+  assert.equal(service.view(sessionStore.get(id)).queue.items[0].attempts, 0);
+  assert.equal(sends().length, 0);
+  // The list still answers from the stored rows and says the engine is down.
+  const page = await service.listSessions({});
+  assert.ok(page.items.length >= 1);
+  assert.deepEqual(page.engine, { available: false, code: 'paseo_unavailable' });
+  up();
+  assert.equal((await service.listSessions({})).engine, undefined);
+  await service.flushQueue(id);
+  assert.equal(sends().length, 1);
+  assert.equal(sends()[0][2], typed);
+  assert.equal(sends()[0][3].messageId, 'msg_out1');
+  assert.equal(service.view(sessionStore.get(id)).queue.count, 0);
+  // A retried request with the same id is not a second turn.
+  assert.equal((await service.sendMessage({ id, key: 'k1', body: { message: typed, messageId: 'msg_out1' } })).queued, false);
+  assert.equal(sends().length, 1);
+});
+
+test('a send the engine drops mid-call is held; a failed row sent again is queued afresh; held rows can be withdrawn', async (t) => {
+  const { f, service, sessionStore, sends } = outageFixture(t, 'paseo-outage2-');
+  await service.syncDaemon(); const id = daemonSessionID('child');
+  const sendMessage = f.client.sendMessage;
+  f.client.sendMessage = async () => { throw new Error('socket hang up'); };
+  const held = await service.sendMessage({ id, key: 'k2', body: { message: 'a\nb', messageId: 'msg_drop' } });
+  assert.equal(held.queued, true);
+  assert.equal(service.view(held.session).queue.items[0].reason, 'engine_unreachable');
+  await service.flushQueue(id);
+  assert.equal(service.view(sessionStore.get(id)).queue.items[0].attempts, 0, 'a transport failure is not a refusal');
+  f.client.sendMessage = sendMessage;
+
+  // A row that ran out of attempts shows as failed, with its text, and comes back on a re-send.
+  sessionStore.update(id, (record) => { Object.assign(record.outbox[0], { status: 'failed', attempts: 30, error: 'refused' }); return []; });
+  let queue = service.view(sessionStore.get(id)).queue;
+  assert.deepEqual([queue.count, queue.failed, queue.items[0].status, queue.items[0].text], [0, 1, 'failed', 'a\nb']);
+  const again = await service.sendMessage({ id, key: 'k3', body: { message: 'a\nb', messageId: 'msg_drop' } });
+  assert.equal(again.queued, true);
+  queue = service.view(again.session).queue;
+  assert.deepEqual([queue.count, queue.failed, queue.items[0].attempts, queue.items[0].reason], [1, 0, 0, 'retry']);
+
+  // Withdraw: the text comes back and the row is gone; unknown and sent ids are refused.
+  const taken = service.withdrawQueued(id, 'msg_drop');
+  assert.equal(taken.text, 'a\nb');
+  assert.equal(service.view(taken.session).queue.count, 0);
+  assert.throws(() => service.withdrawQueued(id, 'msg_drop'), { code: 'not_found' });
+  await service.sendMessage({ id, key: 'k4', body: { message: 'sent', messageId: 'msg_sent' } });
+  assert.equal(sends().filter((c) => c[3].messageId === 'msg_sent').length, 1);
+  assert.throws(() => service.withdrawQueued(id, 'msg_sent'), { code: 'message_sent' });
+});

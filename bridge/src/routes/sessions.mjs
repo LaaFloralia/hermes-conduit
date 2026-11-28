@@ -51,7 +51,7 @@ export function createSessionRoutes({ sessions, sessionOptions, refs = null, dae
     observeVisible();
     return {
       status: 200,
-      data: { items: sessions.views(page.items).map(decorate), nextCursor: page.nextCursor },
+      data: { items: sessions.views(page.items).map(decorate), nextCursor: page.nextCursor, ...(page.engine ? { engine: page.engine } : {}) },
     };
   }
 
@@ -235,7 +235,14 @@ export function createSessionRoutes({ sessions, sessionOptions, refs = null, dae
       idempotent: true,
       bodyLimit: 6 * 1024 * 1024,
       handler: send,
+      // A send that never finished (the engine dropped mid-call, a restart) is
+      // run again under the same key: the outbox row and the engine's seen
+      // message ids keep it to one delivery.
+      resumeUnresolved: true,
     },
+    // Take back a held (queued or failed) follow-up; its text comes back for the draft.
+    { method: 'DELETE', pattern: /^\/v1\/sessions\/(ses_[0-9a-f]{16})\/queue\/([A-Za-z0-9_.:-]{1,200})$/, auth: true, scope: 'sessions:write', idempotent: true,
+      handler: async ({ params }) => { const result = sessions.withdrawQueued(params[0], params[1]); return { status: 200, data: { session: decorate(sessions.view(result.session)), text: result.text } }; } },
     {
       method: 'POST',
       pattern: /^\/v1\/sessions\/(ses_[0-9a-f]{16})\/stop$/,

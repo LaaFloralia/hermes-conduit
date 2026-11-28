@@ -37,7 +37,7 @@ import { ownerText, readConversation } from './history.mjs';
 import { readFirstPrompt } from './first-prompt.mjs';
 import { settleLocalImages } from './local-images.mjs';
 import { daemonSessionID, snapshot } from './daemon.mjs';
-import { KEEP_SENT, MAX_ATTEMPTS, MAX_QUEUED, nextQueued, queuedEntries, readiness } from './outbox.mjs';
+import { KEEP_SENT, MAX_ATTEMPTS, MAX_QUEUED, nextQueued, outboxEntries, queuedEntries, readiness } from './outbox.mjs';
 import { fastAvailable, fastValue } from './features.mjs';
 import { attributeReplies, foldModelLog, lastModelChange, markOwnerChange } from './model-log.mjs';
 import { quickReply } from './quick-reply.mjs';
@@ -155,7 +155,7 @@ export function createSessionService({
   // dispatch; only then does the first instruction carry the owner's mark (work-origin.mjs).
   async function createSession({ deviceId, body = {}, resumedFrom = null, owner = false, ownerName = owner }) {
     const requestId = parseRequestId(body.requestId);
-    const prompt = asText(body.prompt, 'prompt');
+    const prompt = asText(body.prompt, 'prompt', { verbatim: true });
     const workspaceId = body.workspaceId === undefined || body.workspaceId === null || body.workspaceId === HOME_WORKSPACE_ID
       ? HOME_WORKSPACE_ID
       : parseWorkspaceId(body.workspaceId);
@@ -524,7 +524,15 @@ export function createSessionService({
   }
 
   async function listSessions(query = {}) {
-    await syncDaemon();
+    // An engine that is down or restarting must not blank the list: answer
+    // with the stored rows and say they are the last confirmed state.
+    let engine = null;
+    try {
+      await syncDaemon();
+    } catch (err) {
+      if (!(daemon && err instanceof BridgeError && err.code === 'paseo_unavailable')) throw err;
+      engine = { available: false, code: err.code };
+    }
     const limit = parseLimit(query.limit);
     const offset = parseOffset(query.cursor);
     const projectId = query.projectId ?? null;
@@ -556,6 +564,7 @@ export function createSessionService({
     return {
       items: page,
       nextCursor: offset + limit < filtered.length ? encodeOffset(offset + limit) : null,
+      ...(engine ? { engine } : {}),
     };
   }
 
@@ -682,18 +691,49 @@ export function createSessionService({
     return record;
   }
 
+  // `count` stays the queued rows (older apps read only that). `items` also
+  // lists failed rows, with the owner's own text, so a held or undeliverable
+  // message stays visible after the page is reopened and can be withdrawn.
   function queueView(record) {
     const queued = queuedEntries(record);
+    const held = outboxEntries(record).filter((entry) => entry?.status === 'queued' || entry?.status === 'failed');
     return {
       count: queued.length,
-      items: queued.map((entry) => ({
+      failed: held.length - queued.length,
+      items: held.map((entry) => ({
         id: entry.id,
+        status: entry.status,
+        reason: entry.reason ?? null,
+        text: entry.text ?? null,
         chars: count(entry.text ?? ''),
         queuedAt: entry.queuedAt ?? null,
         attempts: entry.attempts ?? 0,
         error: entry.error ?? null,
       })),
     };
+  }
+
+  /// Take back a message that has not been delivered (queued or failed). The
+  /// text is returned so the app can put it back into the draft.
+  function withdrawQueued(id, messageId) {
+    const record = requireSession(id);
+    const entry = outboxEntries(record).find((row) => row?.id === messageId);
+    if (!entry) throw notFound('message not found');
+    if (entry.status === 'sent') throw conflict('message_sent', 'the message was already delivered');
+    if (entry.status === 'queued' && flushing.has(id) && nextQueued(record)?.id === messageId) {
+      throw conflict('queue_delivering', 'the message is being delivered now');
+    }
+    let text = entry.text ?? '';
+    sessionStore.update(id, (current) => {
+      const rows = outboxEntries(current);
+      const index = rows.findIndex((row) => row?.id === messageId && (row.status === 'queued' || row.status === 'failed'));
+      if (index < 0) return [];
+      text = rows[index].text ?? text;
+      rows.splice(index, 1);
+      return [{ type: 'session.message.withdrawn', payload: { messageId, chars: count(text) } }];
+    });
+    const session = rememberQueue(id) ?? requireSession(id);
+    return { session, text };
   }
 
   function unavailableTarget(record, status) {
@@ -863,10 +903,15 @@ export function createSessionService({
         if (!observation.available || readiness(observation.status) !== 'ready') return;
         const current = sessionStore.get(id);
         if (followUpBlock(current, observation.status)) return;
+        // The row may have been withdrawn while the status was read.
+        if (nextQueued(current)?.id !== entry.id) continue;
         try {
           await deliver(current, entry);
         } catch (err) {
           const code = err instanceof BridgeError ? err.code : 'send_failed';
+          // The engine is down or draining: nothing was refused, so the row
+          // keeps its attempts and is offered again when the engine answers.
+          if (code === 'paseo_unavailable') return;
           // A session that stopped being eligible between read and send has not consumed an attempt.
           if (code === 'session_busy' || code === 'pending_decision_requires_reply') {
             await observe(id, { force: true }).catch(() => null);
@@ -939,7 +984,7 @@ export function createSessionService({
   async function sendMessage({ id, body = {}, key, owner = false }) {
     switcher.assertUnlocked(id);
     const record = requireFollowUpTarget(id);
-    const text = asText(body.message ?? body.text, 'message');
+    const text = asText(body.message ?? body.text, 'message', { verbatim: true });
     const messageId = body.messageId === undefined || body.messageId === null
       ? `msg_${sha(`${id}|${key ?? ''}`).slice(0, 24)}`
       : asText(body.messageId, 'messageId', { max: 200 });
@@ -955,6 +1000,22 @@ export function createSessionService({
     // A retried request carries the same message id: it is already held or
     // already sent, and must not become a second turn.
     const held = Array.isArray(record.outbox) ? record.outbox.find((row) => row?.id === messageId) : null;
+    if (held?.status === 'failed') {
+      // The owner sends an undeliverable message again: queue it afresh.
+      // The engine accepts a message id once, so this cannot become two turns.
+      const updated = sessionStore.update(id, (current) => {
+        const entry = outboxEntries(current).find((row) => row?.id === messageId);
+        if (!entry || entry.status !== 'failed') return [];
+        entry.status = 'queued';
+        entry.attempts = 0;
+        entry.reason = 'retry';
+        entry.queuedAt = new Date(now()).toISOString();
+        delete entry.error;
+        return [{ type: 'session.message.queued', payload: { messageId, chars: count(entry.text ?? ''), reason: 'retry' } }];
+      });
+      queuedSessions.add(id);
+      return { session: updated?.record ?? requireSession(id), queued: true };
+    }
     if (held) return { session: record, queued: held.status === 'queued' };
 
     // Read the authoritative status before sending or interrupting a turn.
@@ -970,6 +1031,12 @@ export function createSessionService({
     if (state === 'working') {
       if (delivery === 'queue') return { session: enqueue(id, { messageId, text }), queued: true };
       return sendNow(id, { messageId, text });
+    }
+    // The Work engine is down or draining (a restart): hold the message on the
+    // Mac and deliver it when the engine answers, instead of a 503 that left
+    // it nowhere (2026-11-28 restart loop). The engine dedupes message ids.
+    if (daemon && before.available === false && ENGINE_DOWN.has(before.code)) {
+      return { session: enqueue(id, { messageId, text, reason: 'engine_unreachable' }), queued: true };
     }
 
     try {
@@ -988,6 +1055,9 @@ export function createSessionService({
       // instead of reporting a failure the owner would have to retype.
       if (err instanceof BridgeError && err.code === 'session_busy') {
         return { session: enqueue(id, { messageId, text, reason: 'session_busy' }), queued: true };
+      }
+      if (daemon && err instanceof BridgeError && err.code === 'paseo_unavailable') {
+        return { session: enqueue(id, { messageId, text, reason: 'engine_unreachable' }), queued: true };
       }
       throw err;
     }
@@ -1193,7 +1263,7 @@ export function createSessionService({
     if (original.phase !== 'stopped') {
       throw conflict('session_not_stopped', 'only a stopped session can be resumed');
     }
-    const message = asText(body.message ?? body.prompt, 'message');
+    const message = asText(body.message ?? body.prompt, 'message', { verbatim: true });
     const profile = body.profile === undefined || body.profile === null ? original.profile : parseProfile(body.profile);
     if (profile !== original.profile) {
       throw badRequest('model_change_rejected', 'resume must keep the original profile; create a new session to change it');
@@ -1594,6 +1664,7 @@ export function createSessionService({
     // test) drain it at a known moment instead of waiting for a tick.
     flushQueue,
     flushQueues,
+    withdrawQueued,
     close,
   };
 }
@@ -1768,10 +1839,16 @@ function parseSessionId(raw) {
   return raw;
 }
 
-function asText(raw, field, { max = MAX_TEXT_BYTES } = {}) {
+// Observation codes that mean the Work engine itself did not answer.
+const ENGINE_DOWN = new Set(['paseo_unavailable', 'delegation_failed']);
+
+// `verbatim`: the owner's own words. Checked for content like any field, but
+// passed on exactly as typed: every line break and blank line is part of the
+// message (owner rule 2026-11-28: show and send what I sent, as I sent it).
+function asText(raw, field, { max = MAX_TEXT_BYTES, verbatim = false } = {}) {
   if (typeof raw !== 'string') throw badRequest('payload_invalid', `${field} is required`);
-  const value = raw.trim();
-  if (value === '') throw badRequest('payload_invalid', `${field} is required`);
+  const value = verbatim ? raw : raw.trim();
+  if (value.trim() === '') throw badRequest('payload_invalid', `${field} is required`);
   if (Buffer.byteLength(value) > max) throw badRequest('payload_too_large', `${field} exceeds ${max} bytes`);
   return value;
 }
