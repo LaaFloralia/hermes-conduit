@@ -130,6 +130,10 @@ final class LAACampaignBoardTests: XCTestCase {
         XCTAssertEqual(LAAWorkHub.DecisionSection.findings.title(decisions: 2, findings: 4), "Findings 4")
         XCTAssertEqual(LAAWorkHub.DecisionSection.findings.title(decisions: 2, findings: 0), "Findings")
         XCTAssertEqual(LAAWorkHub.DecisionSection.campaigns.title(decisions: 2, findings: 4), "Campaigns")
+        // The Findings count is read on every Decisions page, not only after Findings is opened.
+        XCTAssertTrue(LAAWorkHub.boardReads(section: .decisions, page: .decisions) == (findings: true, campaigns: false))
+        XCTAssertTrue(LAAWorkHub.boardReads(section: .decisions, page: .campaigns) == (findings: true, campaigns: true))
+        XCTAssertTrue(LAAWorkHub.boardReads(section: .sessions, page: .findings) == (findings: false, campaigns: false))
     }
 
     func testCampaignListLightAndDark() throws {

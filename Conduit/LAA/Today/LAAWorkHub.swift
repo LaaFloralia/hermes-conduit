@@ -60,6 +60,13 @@ struct LAAWorkHub: View {
         }
     }
 
+    /// Which boards the Decisions section reads. The pull-down's Findings number
+    /// is the owner's only notice (D-18), so findings are read on every page.
+    static func boardReads(section: Section, page: DecisionSection) -> (findings: Bool, campaigns: Bool) {
+        guard section == .decisions else { return (false, false) }
+        return (true, page == .campaigns)
+    }
+
     private func select(_ value: Section) {
         guard value != section else { return }
         searchFocused = false
@@ -162,10 +169,11 @@ struct LAAWorkHub: View {
         }
         .onChange(of: bridge.revision) { _, _ in campaigns.reset(); findings.reset() }
         .task(id: "board|\(bridge.revision)|\(scenePhase == .active)|\(section)|\(decisionSection)") {
-            guard scenePhase == .active, section == .decisions, decisionSection != .decisions else { return }
+            let reads = Self.boardReads(section: section, page: decisionSection)
+            guard scenePhase == .active, reads.findings || reads.campaigns else { return }
             while !Task.isCancelled {
-                if decisionSection == .campaigns { await campaigns.refreshIfStale(bridge) }
-                else { await findings.refreshIfStale(bridge) }
+                if reads.campaigns { await campaigns.refreshIfStale(bridge) }
+                if reads.findings { await findings.refreshIfStale(bridge) }
                 do { try await Task.sleep(for: .seconds(15)) } catch { return }
             }
         }
