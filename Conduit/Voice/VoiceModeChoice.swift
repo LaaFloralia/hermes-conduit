@@ -14,6 +14,16 @@ enum VoiceModeChoice: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// The modes a menu lists. LAA has no GPT contract (D-42), so its
+    /// builds don't offer GPT-Live.
+    static var offered: [VoiceModeChoice] {
+        #if LAA_BUILD
+        return allCases.filter { $0 != .gpt }
+        #else
+        return allCases
+        #endif
+    }
+
     var title: String {
         switch self {
         case .classic: return AppLocalization.string("Classic")

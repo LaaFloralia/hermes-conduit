@@ -14,14 +14,14 @@ final class LAAStaffCallTests: XCTestCase {
             defaults.removePersistentDomain(forName: suite)
         }
         let app = harness.appState
-        app.setGPTLiveEnabled(true)
+        app.setGeminiLiveEnabled(true)
         app.isConnected = true
         XCTAssertNil(app.phoneVoiceUnavailableReason)
-        app.laaEmployeeGPTLivePlan = app.laaEmployeeCallPlan(profile: "laa-cto")
+        app.laaStaffCallPlan = app.laaEmployeeCallPlan(profile: "laa-cto")
         XCTAssertEqual(app.phoneVoiceUnavailableReason, LAACopy.otherCallInProgress)
         XCTAssertTrue(LAACopy.dictationDuringCallHint.contains(LAACopy.otherCallInProgress))
         XCTAssertFalse(app.canStartPhoneVoiceConversation)
-        app.laaEmployeeGPTLivePlan = nil
+        app.laaStaffCallPlan = nil
         XCTAssertNil(app.phoneVoiceUnavailableReason)
     }
 
@@ -81,7 +81,7 @@ final class LAAStaffCallTests: XCTestCase {
             let workspace = WidgetWorkspaceID(dashboardID: UUID(), profile: profile)
             XCTAssertNil(WidgetLaunchLink(action: .employeeChat, workspace: workspace, reference: nil), profile)
             XCTAssertNil(LAAWidgetEmployee.forProfile(profile), profile)
-            XCTAssertNil(LAAEmployeeGPTLivePlan.make(profile: profile, savedVoice: "vale"), profile)
+            XCTAssertNil(LAAEmployeeCallPlan.make(profile: profile, engine: .localLive, savedVoice: nil), profile)
             XCTAssertTrue(LAAStaff.isHidden(profile: profile), profile)
         }
     }
@@ -137,9 +137,9 @@ final class LAAStaffCallTests: XCTestCase {
 
         appState.setActiveProfileForTesting("laa-cfo")
         XCTAssertEqual(appState.placedCallName, "Talos")
-        appState.laaEmployeeGPTLivePlan = appState.laaEmployeeCallPlan(profile: "laa-cto")
+        appState.laaStaffCallPlan = appState.laaEmployeeCallPlan(profile: "laa-cto")
         XCTAssertEqual(appState.placedCallName, "Ada", "a widget call names its selected employee")
-        appState.laaEmployeeGPTLivePlan = nil
+        appState.laaStaffCallPlan = nil
         appState.activeSessionId = nil
         XCTAssertEqual(appState.placedCallName, "Morgan")
     }
@@ -183,14 +183,14 @@ final class LAAStaffCallTests: XCTestCase {
         XCTAssertEqual(control.context?.conversationID, "morgan-chat")
         XCTAssertEqual(app.activeProfile, "default")
         let first = control.context?.id
-        app.laaEmployeeGPTLivePlan = app.laaEmployeeCallPlan(profile: "laa-cfo")
+        app.laaStaffCallPlan = app.laaEmployeeCallPlan(profile: "laa-cfo")
         calls.showChat()
         XCTAssertNil(LAAEmployeeCallAvailability.reason(appState: app, bridge: .paired, calls: calls))
         XCTAssertTrue(calls.startEmployeeConversation(app))
         XCTAssertTrue(calls.isShowingCall)
         XCTAssertEqual(control.context?.id, first)
         calls.end()
-        app.laaEmployeeGPTLivePlan = nil
+        app.laaStaffCallPlan = nil
         app.activeSessionId = nil
         XCTAssertFalse(calls.startEmployeeConversation(app))
     }

@@ -34,6 +34,12 @@ enum WatchAudioBridgeWire {
     /// host relays the Watch's session to it and answers its turns in a
     /// Hermes chat (plugin 0.48).
     static let localLive = "local_live"
+    #if LAA_BUILD
+    /// A call to an AI employee (`bridgeStartFor`). It names no engine: the
+    /// iPhone answers with the one the Mac's setting picks, Gemini Live
+    /// (`directSession`) or Local Live (`localLiveSession`).
+    static let staffCall = "staff"
+    #endif
     /// The relay's bound on one message.
     static let maxMessageBytes = 64 * 1024
     /// What fits in one sealed message: the type, counter and tag go

@@ -166,6 +166,16 @@ final class WatchDirectBroker {
 
     private var appState: AppState { AppStateRuntimeRegistry.shared.appState }
 
+    /// LAA has no GPT contract (D-42): its builds start no Watch call on
+    /// GPT-Live.
+    static var offersGPTLive: Bool {
+        #if LAA_BUILD
+        return false
+        #else
+        return true
+        #endif
+    }
+
     func handle(_ message: WatchVoiceWire.Message, reply: (([String: Any]) -> Void)?) {
         func answer(_ message: WatchVoiceWire.Message) { reply?(WatchVoiceWire.encode(message)) }
         // A call from Hermes this phone kept on its headset (#1204): the
@@ -206,18 +216,21 @@ final class WatchDirectBroker {
             }
         #if LAA_BUILD
         case .bridgeStartFor(let id, let version, let engine, let profile):
-            guard version == WatchVoiceWire.version, engine == WatchAudioBridgeWire.gptLive else {
+            // An employee's call. The Watch names no engine of its own
+            // (`staffCall`): the Mac's setting picks it here. A Watch build
+            // that still asks for GPT-Live is told to update, since LAA has
+            // no GPT contract (D-42).
+            guard version == WatchVoiceWire.version, engine == WatchAudioBridgeWire.staffCall else {
                 answer(.callRefused(callID: id, reason: WatchVoiceStartFailure.versionMismatch)); return
             }
-            guard appState.laaEmployeeCallPlan(profile: profile) != nil else {
+            guard LAAStaff(profile: profile)?.supportsCalls == true else {
                 answer(.callRefused(callID: id, reason: "この社員とは通話できません。Talkを使ってください")); return
             }
-            if let refusal = consentRefusal(.gptLive) { answer(.callRefused(callID: id, reason: refusal)); return }
-            let end = Self.beginBackgroundTask("conduit.watchBridge.employee")
+            let end = Self.beginBackgroundTask("conduit.watchStaffCall.start")
             let task: Task<WatchVoiceWire.Message, Never>
             if let preparing, preparing.callID == id { task = preparing.task }
             else {
-                task = Task { await self.prepareBridge(id, engine: engine, employeeProfile: profile) }
+                task = Task { await self.prepareEmployee(id, profile: profile) }
                 preparing = (id, task)
             }
             Task {
@@ -230,6 +243,10 @@ final class WatchDirectBroker {
         case .bridgeStart(let id, let version, let engine, let ring):
             guard version == WatchVoiceWire.version else {
                 answer(.callRefused(callID: id, reason: WatchVoiceStartFailure.versionMismatch))
+                return
+            }
+            guard Self.offersGPTLive else {
+                answer(.callRefused(callID: id, reason: "このアプリではGPT-Liveを使えません"))
                 return
             }
             guard engine == WatchAudioBridgeWire.gptLive else {
@@ -319,7 +336,13 @@ final class WatchDirectBroker {
                 defer { end() }
                 let startedAt = Date()
                 do {
+                    #if LAA_BUILD
+                    // An employee's call mints under the employee it began as.
+                    let employee = self.ledger.call(id).map(\.connection.profile).flatMap { LAAStaff(profile: $0) == nil ? nil : $0 }
+                    let token = try await self.appState.watchDirectToken(provider: provider, employeeProfile: employee)
+                    #else
                     let token = try await self.appState.watchDirectToken(provider: provider)
+                    #endif
                     // Minted while the phone switched: not this call's.
                     guard self.onCallsConnection(id) else {
                         answer(.callRefused(callID: id, reason: WatchVoiceStartFailure.connectionChanged))
@@ -400,7 +423,28 @@ final class WatchDirectBroker {
         return nil
     }
 
-    private func prepare(_ id: UInt32, ring: String? = nil, provider: DirectLiveProvider = .gemini) async -> WatchVoiceWire.Message {
+    #if LAA_BUILD
+    /// An employee's call from the Watch, on the engine the Mac chose
+    /// (LAAStaffCallEngine): Gemini Live or Local Live, each prepared under
+    /// the employee's profile whatever the phone shows.
+    private func prepareEmployee(_ id: UInt32, profile: String) async -> WatchVoiceWire.Message {
+        let appState = self.appState
+        // The engine check asks the Hermes host, which a phone woken by
+        // the Watch may not have reached yet.
+        guard await appState.connectForWatchDirectCall(timeout: .seconds(20)) else {
+            return .callRefused(callID: id, reason: WatchVoiceStartFailure.hermesUnreachable)
+        }
+        switch await appState.laaStaffCallEngine(profile: profile) {
+        case .geminiLive: return await prepare(id, provider: .gemini, employeeProfile: profile)
+        case .localLive: return await prepareLocalLive(id, employeeProfile: profile)
+        case .qwenLive, .gptLive, .grokLive, nil:
+            link.log.note("watchStaffCallRefused", ["callID": Int(id), "reason": "noEngine"])
+            return .callRefused(callID: id, reason: LAAStaffCallError.noEngine.reason)
+        }
+    }
+    #endif
+
+    private func prepare(_ id: UInt32, ring: String? = nil, provider: DirectLiveProvider = .gemini, employeeProfile: String? = nil) async -> WatchVoiceWire.Message {
         let appState = self.appState
         if let active = callID, active != id { endCall() }
         callID = id
@@ -427,9 +471,19 @@ final class WatchDirectBroker {
             "connected": appState.isConnected,
         ])
         do {
-            let plan = try await appState.prepareWatchDirectCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) }, provider: provider)
+            let phoneConnection = appState.watchDirectConnection
+            let plan: AppState.WatchDirectPlan
+            #if LAA_BUILD
+            if let employeeProfile { plan = try await appState.prepareWatchEmployeeDirectCall(profile: employeeProfile) }
+            else { plan = try await appState.prepareWatchDirectCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) }, provider: provider) }
+            #else
+            plan = try await appState.prepareWatchDirectCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) }, provider: provider)
+            #endif
+            // An employee's call keeps its own profile: the phone only has
+            // to be on the connection the call began on.
+            let expected = employeeProfile == nil ? plan.connection : phoneConnection
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
-            guard appState.watchDirectConnection == plan.connection else {
+            guard appState.watchDirectConnection == expected else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
             connection = plan.connection
@@ -453,7 +507,7 @@ final class WatchDirectBroker {
             let grant = await requestGrant(id, profile: plan.connection.profile)
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
             ledger.setGrant(grantScope, for: id)
-            guard appState.watchDirectConnection == plan.connection else {
+            guard appState.watchDirectConnection == expected else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
             // The model answers approvals only when the user allowed it and
@@ -533,7 +587,7 @@ final class WatchDirectBroker {
     /// opens the host's audio bridge, with jobs for GPT-Live's delegations
     /// as the user allows and web_search for when they don't. Nothing else
     /// runs here until the call ends.
-    private func prepareBridge(_ id: UInt32, engine: String, ring: String? = nil, employeeProfile: String? = nil) async -> WatchVoiceWire.Message {
+    private func prepareBridge(_ id: UInt32, engine: String, ring: String? = nil) async -> WatchVoiceWire.Message {
         let appState = self.appState
         if let active = callID, active != id { endCall() }
         callID = id
@@ -558,13 +612,7 @@ final class WatchDirectBroker {
         ])
         do {
             let phoneConnection = appState.watchDirectConnection
-            let plan: AppState.WatchBridgePlan
-            #if LAA_BUILD
-            if let employeeProfile { plan = try await appState.prepareWatchEmployeeBridgeCall(profile: employeeProfile) }
-            else { plan = try await appState.prepareWatchBridgeCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) }) }
-            #else
-            plan = try await appState.prepareWatchBridgeCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) })
-            #endif
+            let plan = try await appState.prepareWatchBridgeCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) })
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
             guard appState.watchDirectConnection == phoneConnection else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
@@ -788,7 +836,7 @@ final class WatchDirectBroker {
     /// speech server and runs the server's turns in a Hermes chat, as the
     /// phone's Local Live call runs them. The grant needs a tool; the call
     /// never uses it.
-    private func prepareLocalLive(_ id: UInt32, ring: String? = nil) async -> WatchVoiceWire.Message {
+    private func prepareLocalLive(_ id: UInt32, ring: String? = nil, employeeProfile: String? = nil) async -> WatchVoiceWire.Message {
         let appState = self.appState
         if let active = callID, active != id { endCall() }
         callID = id
@@ -811,9 +859,19 @@ final class WatchDirectBroker {
             "connected": appState.isConnected,
         ])
         do {
-            let plan = try await appState.prepareWatchLocalLiveCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) })
+            let phoneConnection = appState.watchDirectConnection
+            let plan: AppState.WatchLocalLivePlan
+            #if LAA_BUILD
+            if let employeeProfile { plan = try await appState.prepareWatchEmployeeLocalLiveCall(profile: employeeProfile) }
+            else { plan = try await appState.prepareWatchLocalLiveCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) }) }
+            #else
+            plan = try await appState.prepareWatchLocalLiveCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) })
+            #endif
+            // An employee's call keeps its own profile: the phone only has
+            // to be on the connection the call began on.
+            let expected = employeeProfile == nil ? plan.connection : phoneConnection
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
-            guard appState.watchDirectConnection == plan.connection else {
+            guard appState.watchDirectConnection == expected else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
             connection = plan.connection
@@ -838,7 +896,7 @@ final class WatchDirectBroker {
                 throw WatchDirectPrepareError(lastGrantError.map { AppLocalization.string("Hermes couldn't open Local Live for the Watch: \($0)") }
                     ?? Self.unavailableGrantReason(.local))
             }
-            guard appState.watchDirectConnection == plan.connection else {
+            guard appState.watchDirectConnection == expected else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
             let reply = WatchVoiceWire.Message.localLiveSession(callID: id, call: .init(

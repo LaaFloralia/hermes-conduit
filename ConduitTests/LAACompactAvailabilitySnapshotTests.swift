@@ -63,8 +63,8 @@ extension LAACompactChatSnapshotTests {
             name = "unsupported-artifacts"
         case .pendingCall:
             state.setActiveProfileForTesting("default")
-            state.laaEmployeeGPTLivePlan = state.laaEmployeeCallPlan(profile: "laa-cto")
-            XCTAssertNotNil(state.laaEmployeeGPTLivePlan)
+            state.laaStaffCallPlan = state.laaEmployeeCallPlan(profile: "laa-cto")
+            XCTAssertNotNil(state.laaStaffCallPlan)
             XCTAssertEqual(state.conversationIdentityProfile, "default")
             XCTAssertEqual(state.phoneVoiceUnavailableReason, LAACopy.otherCallInProgress)
             content = AnyView(NavigationStack { V2ConversationScreen() })

@@ -1369,7 +1369,7 @@ final class CarPlayVoiceCoordinator {
         let appState = lastBoundAppState ?? appStateProvider()
         #if LAA_BUILD
         // Ending the prior CarPlay call here must not clear a pending phone call.
-        guard appState.laaEmployeeGPTLivePlan == nil else { forward(.ready); return }
+        guard appState.laaStaffCallPlan == nil else { forward(.ready); return }
         #endif
         chosenChat = row
         chatOpenRequest &+= 1
@@ -1626,7 +1626,7 @@ final class CarPlayVoiceCoordinator {
             return
         }
         #if LAA_BUILD
-        guard appState.laaEmployeeGPTLivePlan == nil else { forward(.ready); return }
+        guard appState.laaStaffCallPlan == nil else { forward(.ready); return }
         #endif
         let startRequest = voiceStartRequest
         let controller = appState.voiceConversationController
@@ -1792,8 +1792,14 @@ final class CarPlayVoiceCoordinator {
         guard isConnected else { return }
         let appState = lastBoundAppState ?? appStateProvider()
         #if LAA_BUILD
-        // CarPlay has no call to end while the phone is waiting on CallKit.
-        guard appState.laaEmployeeGPTLivePlan == nil || appState.showGPTLiveSheet || appState.isGPTLiveActive else { return }
+        // An employee's call ends on the engine its plan names, whatever
+        // voice mode the profile is set to. CarPlay has no call to end
+        // while the phone is still waiting on CallKit.
+        if let plan = appState.laaStaffCallPlan {
+            guard appState.isLiveVoiceCallActive(plan.engine) || appState.isVoiceCallScreenPresented else { return }
+            appState.endLiveVoiceCall()
+            return
+        }
         #endif
         switch CarPlayVoiceMode.current(in: appState) {
         case .classic: appState.closeVoiceConversation()
@@ -1934,7 +1940,7 @@ final class CarPlayVoiceCoordinator {
             return
         }
         #if LAA_BUILD
-        guard appState.laaEmployeeGPTLivePlan == nil else { forward(.ready); return }
+        guard appState.laaStaffCallPlan == nil else { forward(.ready); return }
         #endif
         let controller = appState.voiceConversationController
         if controller.hasLiveVoiceSession {
@@ -1970,13 +1976,13 @@ final class CarPlayVoiceCoordinator {
         guard isCurrent(generation), isConnected, voiceStartRequest == startRequest,
               CarPlayVoiceMode.current(in: appState) == mode.voiceMode else { return }
         #if LAA_BUILD
-        guard appState.laaEmployeeGPTLivePlan == nil else { forward(.ready); return }
+        guard appState.laaStaffCallPlan == nil else { forward(.ready); return }
         #endif
         appState.keepVoiceFromHermesCallCleanup()
         if let liveCallStartGate { await liveCallStartGate() }
         #if LAA_BUILD
         // The phone may begin while the car's start is suspended.
-        guard appState.laaEmployeeGPTLivePlan == nil else {
+        guard appState.laaStaffCallPlan == nil else {
             if isCurrent(generation), isConnected, voiceStartRequest == startRequest { forward(.ready) }
             return
         }
@@ -2059,7 +2065,7 @@ final class CarPlayVoiceCoordinator {
         // call, or carry on into a classic listening turn.
         func stillClassic() -> Bool {
             #if LAA_BUILD
-            guard appState.laaEmployeeGPTLivePlan == nil else { return false }
+            guard appState.laaStaffCallPlan == nil else { return false }
             #endif
             return CarPlayVoiceMode.current(in: appState) == .classic
         }

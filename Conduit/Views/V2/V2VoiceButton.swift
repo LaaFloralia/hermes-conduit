@@ -106,7 +106,7 @@ struct V2VoiceButton: View {
         if employeeCall != nil, !returnsToCall {
             return employeeCallReason == nil && !isStarting && !appState.isPreparingVoiceResume
         }
-        if appState.laaEmployeeGPTLivePlan != nil && !returnsToCall { return false }
+        if appState.laaStaffCallPlan != nil && !returnsToCall { return false }
         #endif
         if returnsToCall || needsSetup { return true }
         guard !isStarting, !appState.isPreparingVoiceResume,
@@ -175,7 +175,7 @@ struct V2VoiceButton: View {
     private var hint: String? {
         if dictates {
             #if LAA_BUILD
-            if canAct, appState.laaEmployeeGPTLivePlan != nil {
+            if canAct, appState.laaStaffCallPlan != nil {
                 return LAACopy.dictationDuringCallHint
             }
             #endif
@@ -232,7 +232,7 @@ struct V2VoiceButton: View {
                         callTap()
                     } label: {
 #if LAA_BUILD
-                        Label(appState.laaEmployeeGPTLivePlan == nil
+                        Label(appState.laaStaffCallPlan == nil
                               ? conversationCallLabel : "\(conversationCallLabel) — \(LAACopy.otherCallInProgress)",
                               systemImage: "waveform")
 #else
@@ -240,7 +240,7 @@ struct V2VoiceButton: View {
 #endif
                     }
 #if LAA_BUILD
-                    .disabled(appState.laaEmployeeGPTLivePlan != nil && !returnsToCall)
+                    .disabled(appState.laaStaffCallPlan != nil && !returnsToCall)
                     .accessibilityIdentifier("laa.voice.menu.call")
 #endif
                     Button {

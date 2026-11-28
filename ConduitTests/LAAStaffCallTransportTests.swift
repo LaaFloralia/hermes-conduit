@@ -77,18 +77,19 @@ final class LAAStaffCallTransportTests: XCTestCase {
         }
         let app = harness.appState
         app.setActiveProfileForTesting("default")
-        XCTAssertFalse(app.gptLiveBriefing().contains("LAA employee call"), "a workspace call is unchanged")
+        XCTAssertNil(app.laaStaffCallStaff, "a workspace call is unchanged")
         XCTAssertNil(app.liveVoiceStyle.greeting)
 
         for staff in LAAStaff.allCases where staff.supportsCalls {
-            app.laaEmployeeGPTLivePlan = try XCTUnwrap(app.laaEmployeeCallPlan(profile: "laa-\(staff.rawValue)"))
-            let briefing = app.gptLiveBriefing()
-            XCTAssertTrue(briefing.hasPrefix("[LAA employee call. You are \(staff.name), \(staff.role) at LAA"), staff.name)
-            XCTAssertTrue(briefing.contains("Never call yourself ChatGPT"))
+            app.laaStaffCallPlan = try XCTUnwrap(app.laaEmployeeCallPlan(profile: "laa-\(staff.rawValue)"))
+            // The words that lead the call's instructions on every engine.
+            let identity = try XCTUnwrap(app.laaStaffCallStaff?.callIdentity)
+            XCTAssertTrue(identity.hasPrefix("[LAA employee call. You are \(staff.name), \(staff.role) at LAA"), staff.name)
+            XCTAssertTrue(identity.contains("Never call yourself Gemini, ChatGPT"))
             XCTAssertEqual(app.liveVoiceStyle.greeting, "社長、\(staff.name)です。")
             XCTAssertTrue(app.liveVoiceStyle.openingPrompt?.contains("Say: \"社長、\(staff.name)です。\"") == true)
         }
-        app.laaEmployeeGPTLivePlan = nil
+        app.laaStaffCallPlan = nil
         XCTAssertNil(app.liveVoiceStyle.greeting)
     }
 
@@ -138,9 +139,9 @@ final class LAAStaffCallTransportTests: XCTestCase {
         let app = harness.appState
         app.setActiveProfileForTesting("default")
         app.setLiveVoiceStyle(LiveVoiceStyle(greeting: "お疲れさまです、Adaです"), profile: "laa-cto")
-        app.laaEmployeeGPTLivePlan = try XCTUnwrap(app.laaEmployeeCallPlan(profile: "laa-cto"))
+        app.laaStaffCallPlan = try XCTUnwrap(app.laaEmployeeCallPlan(profile: "laa-cto"))
         XCTAssertEqual(app.liveVoiceStyle.greeting, "お疲れさまです、Adaです")
-        app.laaEmployeeGPTLivePlan = nil
+        app.laaStaffCallPlan = nil
     }
 }
 #endif
@@ -161,14 +162,15 @@ final class LAAStaffCallBriefingDump: XCTestCase {
         let app = harness.appState
         for profile in ["laa-monet", "laa-cfo", "laa-cto"] {
             let persona = try String(contentsOfFile: "\(folder)/persona-\(profile).txt", encoding: .utf8)
-            app.laaEmployeeGPTLivePlan = try XCTUnwrap(app.laaEmployeeCallPlan(profile: profile))
-            app.setGPTLivePersonalityForTesting(persona)
-            try app.gptLiveBriefing().write(toFile: "\(folder)/briefing-\(profile).txt", atomically: true, encoding: .utf8)
+            app.laaStaffCallPlan = try XCTUnwrap(app.laaEmployeeCallPlan(profile: profile))
+            // What leads the call on every engine: who answers, then the
+            // employee's SOUL as the call speaks it.
+            let identity = try XCTUnwrap(app.laaStaffCallStaff?.callIdentity)
+            try (identity + LAASpokenWords.strip(persona)).write(toFile: "\(folder)/briefing-\(profile).txt", atomically: true, encoding: .utf8)
             try (app.liveVoiceStyle.greeting ?? "").write(toFile: "\(folder)/greeting-\(profile).txt", atomically: true, encoding: .utf8)
             try (app.liveVoiceStyle.openingPrompt ?? "").write(toFile: "\(folder)/opening-\(profile).txt", atomically: true, encoding: .utf8)
         }
-        app.setGPTLivePersonalityForTesting(nil)
-        app.laaEmployeeGPTLivePlan = nil
+        app.laaStaffCallPlan = nil
     }
 }
 #endif

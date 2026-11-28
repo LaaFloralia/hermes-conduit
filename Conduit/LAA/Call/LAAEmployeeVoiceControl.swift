@@ -18,6 +18,8 @@ enum LAAEmployeeVoiceOpenResult {
     case opened(LAAEmployeeCallContext)
     case ended
     case failed
+    /// The call cannot start, for a reason the owner can act on.
+    case refused(String)
 }
 
 /// A narrow seam around AppState makes start/end races testable without CallKit.
@@ -52,6 +54,9 @@ final class LAAEmployeeVoiceControl: LAAEmployeeCallControlling {
     func bind(_ appState: AppState) {
         guard context == nil else { return }
         host = .appState(appState)
+        // The Mac's engine choice, read ahead so the consent question and
+        // the voice picker already match the next call.
+        Task { await LAAStaffCallEngineStore.shared.refresh() }
     }
 
     var unavailableReason: String? { host?.unavailable() ?? (host == nil ? "通話を準備中です" : nil) }
@@ -77,6 +82,9 @@ final class LAAEmployeeVoiceControl: LAAEmployeeCallControlling {
                 return
             case .failed:
                 self.publish(phase: .failed("通話を開始できませんでした"), status: host.status())
+                return
+            case .refused(let reason):
+                self.publish(phase: .failed(reason), status: host.status())
                 return
             case .opened(let opened):
                 self.context = opened
@@ -156,15 +164,19 @@ private extension LAAEmployeeVoiceHost {
     static func appState(_ app: AppState) -> LAAEmployeeVoiceHost {
         let audio = VoiceAudioSessionCoordinator.shared
         var ownsVoiceStart = false
-        var ownedPlan: LAAEmployeeGPTLivePlan?
+        var ownedPlan: LAAEmployeeCallPlan?
         return LAAEmployeeVoiceHost(
             unavailable: { [weak app] in
                 guard let app else { return "通話を準備中です" }
-                return app.isVoiceCallInProgress || app.laaEmployeeGPTLivePlan != nil
+                return app.isVoiceCallInProgress || app.laaStaffCallPlan != nil
                     ? "別の通話を終了してください" : nil
             },
             consent: { [weak app] context in
-                if LAAStaff(profile: context.profile) != nil { return LiveVoiceProviderConsent.missing(.gptLive) }
+                // The engine the Mac chose last. Local Live sends nothing to a
+                // third party, so it asks nothing.
+                if LAAStaff(profile: context.profile) != nil {
+                    return mode(for: LAAStaffCallEngineStore.shared.engine).flatMap { LiveVoiceProviderConsent.missing($0) }
+                }
                 guard let app, let engine = app.configuredLiveVoiceEngine(profile: app.activeProfile),
                       let mode = mode(for: engine) else { return nil }
                 return LiveVoiceProviderConsent.missing(mode)
@@ -172,7 +184,7 @@ private extension LAAEmployeeVoiceHost {
             grant: { [weak app] in app?.setLiveVoiceConsent(true, for: $0) },
             open: { [weak app] context in
                 ownsVoiceStart = false
-                guard let app, app.isConnected, !app.isVoiceCallInProgress, app.laaEmployeeGPTLivePlan == nil,
+                guard let app, app.isConnected, !app.isVoiceCallInProgress, app.laaStaffCallPlan == nil,
                       app.conversationIdentityProfile == context.profile,
                       app.activeSessionId == context.conversationID else { return .failed }
                 var nativeCallWasActive = false
@@ -180,15 +192,27 @@ private extension LAAEmployeeVoiceHost {
                     if active { nativeCallWasActive = true }
                 }
                 defer { nativeCallObservation.cancel() }
-                let employeePlan = app.laaEmployeeCallPlan(profile: context.profile)
+                var employeePlan: LAAEmployeeCallPlan?
+                if LAAStaff(profile: context.profile)?.supportsCalls == true {
+                    // The Mac's engine, asked now; the same checks again
+                    // after the wait, since another call may have started.
+                    guard let engine = await app.laaStaffCallEngine(profile: context.profile) else {
+                        return Task.isCancelled ? .ended : .refused(LAAStaffCallError.noEngine.reason)
+                    }
+                    guard !Task.isCancelled else { return .ended }
+                    guard app.isConnected, !app.isVoiceCallInProgress, app.laaStaffCallPlan == nil,
+                          app.conversationIdentityProfile == context.profile,
+                          app.activeSessionId == context.conversationID else { return .failed }
+                    employeePlan = app.laaEmployeeCallPlan(profile: context.profile, engine: engine)
+                }
                 ownedPlan = employeePlan
                 ownsVoiceStart = true
-                app.laaEmployeeGPTLivePlan = employeePlan
+                app.laaStaffCallPlan = employeePlan
                 let started = await app.openVoiceConversation(PendingVoiceIntent(
                     profile: app.activeProfile, startsFreshConversation: false, source: .composer))
-                if !started, app.laaEmployeeGPTLivePlan == employeePlan { app.laaEmployeeGPTLivePlan = nil }
+                if !started, app.laaStaffCallPlan == employeePlan { app.laaStaffCallPlan = nil }
                 guard !Task.isCancelled else {
-                    if app.laaEmployeeGPTLivePlan == employeePlan { app.laaEmployeeGPTLivePlan = nil }
+                    if app.laaStaffCallPlan == employeePlan { app.laaStaffCallPlan = nil }
                     return .ended
                 }
                 if !started, nativeCallWasActive, !app.isPlacedPhoneCallActive { return .ended }
@@ -199,7 +223,7 @@ private extension LAAEmployeeVoiceHost {
                         app.endVoiceForPlacedCall()
                         app.voicePlacedCalls.voiceChanged(running: false)
                     }
-                    if app.laaEmployeeGPTLivePlan == employeePlan { app.laaEmployeeGPTLivePlan = nil }
+                    if app.laaStaffCallPlan == employeePlan { app.laaStaffCallPlan = nil }
                     return .failed
                 }
                 return .opened(LAAEmployeeCallContext(id: context.id, profile: context.profile, name: context.name,
@@ -208,7 +232,7 @@ private extension LAAEmployeeVoiceHost {
             adopt: { [weak app] in
                 guard let app, app.isVoiceCallScreenPresented else { return false }
                 ownsVoiceStart = true
-                ownedPlan = app.laaEmployeeGPTLivePlan
+                ownedPlan = app.laaStaffCallPlan
                 return true
             },
             status: { [weak app] in
@@ -224,7 +248,6 @@ private extension LAAEmployeeVoiceHost {
                 if app.showQwenLiveSheet { result.append(app.qwenLiveController.objectWillChange.sink { _ in changed() }) }
                 if app.showGrokLiveSheet { result.append(app.grokLiveController.objectWillChange.sink { _ in changed() }) }
                 if app.showLocalLiveSheet { result.append(app.localLiveController.objectWillChange.sink { _ in changed() }) }
-                if app.showGPTLiveSheet { result.append(app.gptLiveController.objectWillChange.sink { _ in changed() }) }
                 return result
             },
             beginClassicListening: { [weak app] in app?.startDeferredVoiceSheetAutoListen() },
@@ -235,17 +258,16 @@ private extension LAAEmployeeVoiceHost {
                 ownsVoiceStart = false
                 // An unsuccessful or superseded open must never end a call
                 // that another entry point owns.
-                guard app.laaEmployeeGPTLivePlan == nil || app.laaEmployeeGPTLivePlan == ownedPlan else { return }
+                guard app.laaStaffCallPlan == nil || app.laaStaffCallPlan == ownedPlan else { return }
                 app.endVoiceForPlacedCall()
                 // A failed live call may no longer be active or scheduled,
                 // but its presentation and context still need full teardown.
-                if app.showGPTLiveSheet { app.closeGPTLiveConversation() }
                 if app.showGeminiLiveSheet { app.closeGeminiLiveConversation() }
                 if app.showQwenLiveSheet { app.closeQwenLiveConversation() }
                 if app.showGrokLiveSheet { app.closeGrokLiveConversation() }
                 if app.showLocalLiveSheet { app.closeLocalLiveConversation() }
                 app.voicePlacedCalls.voiceChanged(running: false)
-                app.laaEmployeeGPTLivePlan = nil
+                app.laaStaffCallPlan = nil
             }
         )
     }
@@ -284,18 +306,13 @@ private extension LAAEmployeeVoiceHost {
         } else if app.showLocalLiveSheet {
             phase = livePhase(app.localLiveController.phase, scheduled: app.hasScheduledLiveVoiceStart)
             speaking = app.localLiveController.phase == .speaking
-        } else if app.showGPTLiveSheet {
-            phase = app.gptLiveController.isReconnecting ? .reconnecting
-                : gptPhase(app.gptLiveController.phase, scheduled: app.hasScheduledLiveVoiceStart)
-            speaking = app.gptLiveController.phase == .speaking
         } else {
             phase = .ended
         }
         return LAAEmployeeVoiceStatus(phase: phase, muted: app.nativeCallVoiceMuted ?? false,
                                       speaker: audio.conversationSpeakerChosen,
                                       nativeRoute: audio.isInNativeCall, level: level, speaking: speaking,
-                                      activity: app.showGPTLiveSheet ? app.gptLiveController.callActivity : .ready,
-                                      voiceNote: app.showGPTLiveSheet ? app.gptLiveController.voiceNote : nil)
+                                      activity: .ready, voiceNote: nil)
     }
 
     static func livePhase(_ phase: GeminiLiveConversationController.Phase, scheduled: Bool) -> LAAEmployeeCallPhase {
@@ -306,18 +323,6 @@ private extension LAAEmployeeVoiceHost {
         case .listening, .speaking, .paused: return .connected
         case .ending: return .ending
         case .failed: return .failed("音声に接続できませんでした")
-        }
-    }
-
-    static func gptPhase(_ phase: GPTLiveConversationController.Phase, scheduled: Bool) -> LAAEmployeeCallPhase {
-        switch phase {
-        case .idle: return scheduled ? .connecting : .failed("音声に接続できませんでした")
-        case .connecting: return .connecting
-        case .listening, .speaking, .paused: return .connected
-        case .ending: return .ending
-        case .failed(let reason):
-            return .failed(reason == VoiceAudioError.microphonePermissionDenied.localizedDescription
-                ? "設定でマイクの使用を許可してください" : "音声に接続できません")
         }
     }
 }

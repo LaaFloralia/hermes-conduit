@@ -240,7 +240,7 @@ extension AppState {
         #if LAA_BUILD
         context.laaCallableProfiles = LAAStaff.allCases.compactMap { staff in
             let profile = "laa-\(staff.rawValue)"
-            return LAAEmployeeGPTLivePlan.make(profile: profile, savedVoice: nil) == nil ? nil : profile
+            return LAAStaff(profile: profile)?.supportsCalls == true ? profile : nil
         }
         let ambient = LAAWatchAmbientSource.current()
         context.laaAmbient = ambient

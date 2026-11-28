@@ -56,6 +56,15 @@ final class LocalLiveClient: LocalLiveConnecting {
         self.makeSocketRequest = socketRequest
     }
 
+    #if LAA_BUILD
+    /// The same host, read under `profile` whatever the phone shows: an
+    /// employee's call from the Watch.
+    func captured(profile: String) -> LocalLiveClient {
+        LocalLiveClient(profile: { profile }, profileParameter: profileParameter, dashboardBaseURL: dashboardBaseURL,
+                        request: request, mintTicket: mintTicket, socketRequest: makeSocketRequest)
+    }
+    #endif
+
     /// Whether the host can run a call: a speech server address set, and a
     /// key the server can use to reach the plugin.
     func status() async throws -> SpeechServerVoiceStatus {

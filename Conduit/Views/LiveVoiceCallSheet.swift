@@ -66,7 +66,7 @@ struct LiveVoiceCallSheet: View {
 
     private var callProfile: String {
         #if LAA_BUILD
-        return appState.laaGPTLiveProfile
+        return appState.laaStaffCallProfile
         #else
         return appState.activeProfile
         #endif

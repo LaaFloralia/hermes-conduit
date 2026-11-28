@@ -16,7 +16,7 @@ struct VoiceModeMenu<Face: View>: View {
     var body: some View {
         Menu {
             Section(AppLocalization.string("Voice mode")) {
-                ForEach(VoiceModeChoice.allCases) { choice in
+                ForEach(VoiceModeChoice.offered) { choice in
                     Button {
                         // The call's own mode carries on as it is.
                         guard modeSwitch.moves(to: choice) else { return }

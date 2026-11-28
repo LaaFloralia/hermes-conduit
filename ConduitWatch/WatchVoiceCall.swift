@@ -199,8 +199,10 @@ final class WatchVoiceCall: ObservableObject {
         dismissEnded()
         laaEmployeeName = staff.name
         laaEmployeeCallPending = true
-        bridge.laaProfile = "laa-\(staff.rawValue)"
-        start(engine: .gptLive)
+        direct.laaProfile = "laa-\(staff.rawValue)"
+        // The Mac picks the engine (Gemini Live or Local Live) and the
+        // iPhone's answer names it; both run on the direct call model.
+        start(engine: .localLive)
     }
     #endif
 
@@ -213,7 +215,7 @@ final class WatchVoiceCall: ObservableObject {
     func start(ring: String? = nil, answer: HermesRingAnswer? = nil, engine chosen: WatchVoiceEngine? = nil) {
         guard !isActive else { return }
         #if LAA_BUILD
-        if !laaEmployeeCallPending { laaEmployeeName = nil; bridge.laaProfile = nil }
+        if !laaEmployeeCallPending { laaEmployeeName = nil; direct.laaProfile = nil }
         laaEmployeeCallPending = false
         #endif
         callEngine = chosen ?? engine

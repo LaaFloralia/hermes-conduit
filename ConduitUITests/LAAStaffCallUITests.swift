@@ -34,32 +34,30 @@ final class LAAStaffCallUITests: XCTestCase {
     }
 
     func testEmployeeVoiceSettingAndCall() {
-        let app = launch("-AppleLanguages", "(en)", "-conduit.appLanguage", "en")
+        // The picker exists only where the engine has voices to choose:
+        // this launch's engine is Gemini Live.
+        let app = launch("-laa-gemini-call-engine", "-AppleLanguages", "(en)", "-conduit.appLanguage", "en")
         XCTAssertTrue(app.buttons["laa.employee.header"].waitForExistence(timeout: 10))
         app.buttons["laa.employee.header"].tap()
         let picker = app.descendants(matching: .any)["laa.employee.voice-setting"]
         XCTAssertTrue(picker.waitForExistence(timeout: 5))
         attachScreenshot(name: "employee-voice-settings")
         picker.tap()
-        let choice = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Juniper")).firstMatch
+        let choice = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Kore")).firstMatch
         XCTAssertTrue(choice.waitForExistence(timeout: 5))
         choice.tap()
         app.buttons["laa.staff.intro.close"].tap()
         app.buttons["laa.employee.call"].tap()
         XCTAssertTrue(app.buttons["laa.call.end"].waitForExistence(timeout: 10))
-        attachScreenshot(name: "employee-gpt-live-call")
+        attachScreenshot(name: "employee-call")
     }
 
-    func testGeneralGPTLiveSettingsHideAPIBillingEvenWithAnOldPreference() {
-        let app = launch("-laa-gpt-live-settings")
-        let voice = app.descendants(matching: .any)["laa.gptlive.subscription-voice"]
-        XCTAssertTrue(voice.waitForExistence(timeout: 10))
-        XCTAssertFalse(app.descendants(matching: .any)["laa.gptlive.billing"].exists)
-        XCTAssertFalse(app.descendants(matching: .any)["laa.gptlive.api-hermes-calls"].exists)
-        voice.tap()
-        let subscriptionVoice = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Arbor")).firstMatch
-        XCTAssertTrue(subscriptionVoice.waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Cedar")).firstMatch.exists)
+    func testLocalLiveEngineOffersNoVoiceToChoose() {
+        let app = launch()
+        XCTAssertTrue(app.buttons["laa.employee.header"].waitForExistence(timeout: 10))
+        app.buttons["laa.employee.header"].tap()
+        XCTAssertTrue(app.staticTexts["社長秘書・総合アドバイザー"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.descendants(matching: .any)["laa.employee.voice-setting"].exists)
     }
 
     func testEmployeeCallStartsFromThePhoneNotTheComposer() {
@@ -87,7 +85,7 @@ final class LAAStaffCallUITests: XCTestCase {
     func testPhoneResumesSavedEmployeeCallWithPersona() {
         // The argument domain supplies consent only to this test process.
         let app = launch("-laa-composer-fixture", "-laa-saved-call",
-                         "-conduit.liveVoiceProviderConsent.gpt-live", "YES")
+                         "-conduit.liveVoiceProviderConsent.gemini-live", "YES")
         XCTAssertTrue(app.staticTexts["laa.fixture.saved-call"].waitForExistence(timeout: 10))
         let phone = app.buttons["laa.employee.call"]
         XCTAssertTrue(phone.waitForExistence(timeout: 10))
@@ -98,12 +96,9 @@ final class LAAStaffCallUITests: XCTestCase {
         assertLabel(app, "laa.fixture.resume-evidence",
                     "fixture-conversation|laa-cfo|fixture-conversation|laa-cfo")
         assertLabel(app, "laa.fixture.status-path",
-                    "/api/plugins/conduit_push/gpt-live/status?profile=laa-cfo")
+                    "/api/plugins/conduit_push/gemini-live/status?profile=laa-cfo")
         assertLabel(app, "laa.fixture.persona-path",
                     "/api/plugins/conduit_push/personality?profile=laa-cfo")
-        // These are the actual session factory arguments, including the
-        // saved turn, summary, employee voice and employee persona.
-        assertLabel(app, "laa.fixture.session-evidence", "spruce|true|true|true|true")
         app.buttons["laa.call.chat"].tap()
         let context = app.staticTexts["laa.fixture.call-context"]
         XCTAssertTrue(context.waitForExistence(timeout: 5))

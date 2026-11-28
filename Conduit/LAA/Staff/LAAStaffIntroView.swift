@@ -7,7 +7,7 @@ import SwiftUI
 extension LAACopy {
     static let staffIntroDuty = "担当"
     static let staffIntroVoice = "Call Voice"
-    static let staffIntroVoiceNote = "ChatGPT の声を社員ごとに設定します"
+    static let staffIntroVoiceNote = "通話の声を社員ごとに設定します"
     static let staffIntroConversation = "Chat"
     static let staffIntroTurnHint = "左右になぞると回ります"
     static let conversationInfo = "Chat Info"
@@ -42,11 +42,13 @@ extension LAACopy {
 }
 
 extension AppState {
-    /// The employee's ChatGPT voice for calls, or nil for a profile that has
-    /// no in-app call.
+    /// The employee's call voice on the engine the Mac chose last, or nil
+    /// where there is none to choose: a profile with no in-app call, or
+    /// Local Live, which speaks in the speech server's own voice.
     func laaEmployeeVoiceBinding(profile: String) -> Binding<String>? {
-        guard let staff = LAAStaff(profile: profile), staff.supportsCalls else { return nil }
-        return Binding(get: { self.laaEmployeeVoice(profile: profile) ?? staff.defaultGPTLiveVoice },
+        guard let staff = LAAStaff(profile: profile), staff.supportsCalls,
+              let fallback = staff.defaultCallVoice(engine: LAAStaffCallEngineStore.shared.engine) else { return nil }
+        return Binding(get: { self.laaEmployeeVoice(profile: profile) ?? fallback },
                        set: { self.setLAAEmployeeVoice($0, profile: profile) })
     }
 }
@@ -170,7 +172,9 @@ struct LAAStaffIntroView: View {
                 LAAStaffIntroRow(label: LAACopy.staffIntroVoice) {
                     VStack(alignment: .leading, spacing: LAASpacing.x1) {
                         Picker(selection: voiceSetting) {
-                            ForEach(GPTLiveVoice.all) { voice in Text(voice.label).tag(voice.name) }
+                            ForEach(LAAEmployeeCallVoice.choices(engine: LAAStaffCallEngineStore.shared.engine)) { voice in
+                                Text(verbatim: voice.label).tag(voice.name)
+                            }
                         } label: {
                             Text(verbatim: LAACopy.staffIntroVoice)
                         }

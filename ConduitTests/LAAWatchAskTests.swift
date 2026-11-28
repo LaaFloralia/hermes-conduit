@@ -40,7 +40,7 @@ final class LAAWatchAskTests: XCTestCase {
         var context = WatchPhoneContext()
         context.laaCallableProfiles = LAAStaff.allCases.compactMap { member in
             let profile = "laa-\(member.rawValue)"
-            return LAAEmployeeGPTLivePlan.make(profile: profile, savedVoice: nil) == nil ? nil : profile
+            return LAAEmployeeCallPlan.make(profile: profile, engine: .localLive, savedVoice: nil) == nil ? nil : profile
         }
         XCTAssertEqual(WatchPhoneContext.decode(context.encoded())?.laaCallableProfiles, context.laaCallableProfiles)
         let older = try JSONDecoder().decode(WatchPhoneContext.self, from: Data("{\"voices\":{},\"callsRing\":false}".utf8))

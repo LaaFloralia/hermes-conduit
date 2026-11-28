@@ -106,7 +106,7 @@ final class LAAEmployeeCallCoordinator: ObservableObject {
         let identity = Self.existingIdentity(activeProfile: appState.activeProfile,
                                              conversationProfile: appState.conversationIdentityProfile,
                                              conversationID: appState.activeSessionId,
-                                             employeeProfile: appState.laaEmployeeGPTLivePlan?.profile,
+                                             employeeProfile: appState.laaStaffCallPlan?.profile,
                                              isClassic: appState.showVoiceSheet, thread: thread)
         let profile = identity.profile
         let name = LAAStaff(profile: profile)?.name
@@ -141,7 +141,7 @@ final class LAAEmployeeCallCoordinator: ObservableObject {
            context.conversationID == appState.activeSessionId {
             showCall()
         } else {
-            guard appState.laaEmployeeGPTLivePlan == nil else { return false }
+            guard appState.laaStaffCallPlan == nil else { return false }
             start(profile: profile, name: employee.name, conversationID: appState.activeSessionId)
         }
         return true

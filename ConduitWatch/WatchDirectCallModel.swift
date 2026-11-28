@@ -180,6 +180,12 @@ final class WatchDirectCallModel: ObservableObject {
     private var meter = WatchSocketMeter()
     private var session: GeminiLiveSessionControlling?
     private(set) var engine: Engine = .gemini
+    #if LAA_BUILD
+    /// The AI employee (a `laa-…` profile) this call is to; nil for any
+    /// other call. Its engine is the Mac's choice, which the iPhone's
+    /// answer names: Gemini Live or Local Live.
+    var laaProfile: String?
+    #endif
     /// The call from Hermes this call answers, so the iPhone opens it with
     /// what Hermes called about (designs/hermes-calls-watch.md).
     private var ring: String?
@@ -691,7 +697,14 @@ final class WatchDirectCallModel: ObservableObject {
         sessionRequests += 1
         let id = callID
         if sessionRequests == 1, let answer { fetchHandoff(answer) }
-        link.send(Self.startRequest(engine: engine, callID: id, ring: ring), reply: { [weak self] answer in
+        #if LAA_BUILD
+        let request: WatchVoiceWire.Message = laaProfile.map {
+            .bridgeStartFor(callID: id, version: WatchVoiceWire.version, engine: WatchAudioBridgeWire.staffCall, profile: $0)
+        } ?? Self.startRequest(engine: engine, callID: id, ring: ring)
+        #else
+        let request = Self.startRequest(engine: engine, callID: id, ring: ring)
+        #endif
+        link.send(request, reply: { [weak self] answer in
             guard let self, self.callID == id, self.phase == .preparing else { return }
             self.sessionAnswered(answer)
         }, failure: { [weak self] error in
@@ -721,6 +734,17 @@ final class WatchDirectCallModel: ObservableObject {
 
     /// The iPhone's answer to the start, over the link or through the relay.
     private func sessionAnswered(_ answer: WatchVoiceWire.Message?) {
+        #if LAA_BUILD
+        // An employee's call runs on the engine the Mac chose, which the
+        // iPhone's answer names.
+        if laaProfile != nil {
+            switch answer {
+            case .directSession?: engine = .gemini
+            case .localLiveSession?: engine = .localLive
+            default: break
+            }
+        }
+        #endif
         switch answer {
         case .directSession(_, let session)? where engine == .gemini || engine == .qwen:
             begin(session)

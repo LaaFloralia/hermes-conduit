@@ -122,7 +122,7 @@ struct ComposerInputs: Equatable {
         #if LAA_BUILD
         conversationIdentityProfile = appState.conversationIdentityProfile
         isVoiceCallInProgress = appState.isVoiceCallInProgress
-        hasEmployeeCallPlan = appState.laaEmployeeGPTLivePlan != nil
+        hasEmployeeCallPlan = appState.laaStaffCallPlan != nil
         #endif
     }
 }

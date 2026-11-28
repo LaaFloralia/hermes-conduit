@@ -381,9 +381,11 @@ enum WatchVoiceWire {
         /// an older Watch, which can't.
         case callsToken(token: String?, key: String? = nil, engine: String? = nil, phoneHeadset: Bool? = nil)
         #if LAA_BUILD
-        /// A Watch call through the host's audio bridge to one AI employee
-        /// (a `laa-…` profile), wherever the iPhone's chat is. Answered as
-        /// `bridgeStart` is; never answers a call from Hermes.
+        /// A Watch call to one AI employee (a `laa-…` profile), wherever the
+        /// iPhone's chat is. `engine` is `WatchAudioBridgeWire.staffCall`:
+        /// the iPhone answers with the engine the Mac's setting picks,
+        /// `directSession` (Gemini Live) or `localLiveSession` (Local
+        /// Live). Never answers a call from Hermes.
         case bridgeStartFor(callID: UInt32, version: Int, engine: String, profile: String)
         /// LAA Voice typed or dictated on the Watch (LAAWatchAsk); the
         /// answer is `laaAskState`. Spoken asks come as a file transfer.
